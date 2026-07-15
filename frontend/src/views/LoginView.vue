@@ -15,6 +15,11 @@
           {{ loading ? '登录中...' : '登录' }}
         </button>
       </form>
+      <form @submit.prevent="handleRegister">
+        <button type="submit" :disabled="registering">
+          {{ registering ? '注册中...' : '注册' }}
+        </button>
+      </form>
       <p v-if="message" :class="['msg', success ? 'success' : 'error']">{{ message }}</p>
     </div>
   </div>
@@ -23,10 +28,12 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { request } from '../utils/request'  // 新增：导入请求工具
 
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
+const registering = ref(false)
 const message = ref('')
 const success = ref(false)
 const router = useRouter()
@@ -39,18 +46,21 @@ async function handleLogin() {
     params.append('username', username.value)
     params.append('password', password.value)
 
-    const res = await fetch('/api/auth/login', {
+    const data = await request('/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params
     })
-    const data = await res.json()
     if (data.code === 200) {
       success.value = true
       message.value = data.mes
+
+      // 新增：保存 Token 到 localStorage
+      localStorage.setItem('token', data.data.token)
+      localStorage.setItem('nickname', data.data.nickname)
+
       setTimeout(() => {
         router.push('/home')
-      }, 800)
+      }, 200)
     } else {
       success.value = false
       message.value = data.mes || '登录失败'
@@ -61,6 +71,11 @@ async function handleLogin() {
   } finally {
     loading.value = false
   }
+}
+
+async function handleRegister(){
+  registering.value = true
+  message.value = ''
 }
 </script>
 

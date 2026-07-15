@@ -1,50 +1,69 @@
-package  com.xuweney.demo.Controller;
+package com.xuweney.demo.Controller;
 
 import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.xuweney.demo.common.Result;
+import com.xuweney.demo.util.JwtUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import java.util.HashMap;
+import org.springframework.web.bind.annotation.*;
+
 import java.util.Map;
-import java.util.Objects;
 
-@RestController             // = @Controller + @Responsebody
-@RequestMapping("/auth")    // 定义路由接口
+@RestController
+@RequestMapping("/auth")
 public class AuthController {
-    @Autowired
-    private UserService userService;    //注入service层服务
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;    //密码加密服务
+    private final UserService userService;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
 
-    @PostMapping("/login")
-    public Map<String, Object> login(@RequestParam String username,@RequestParam String password) {
-        Map<String, Object> result = new HashMap<>();
-
-        //查询用户
-        User user = userService.findUsername(username);
-        if (user == null) {
-            result.put("code",401);
-            result.put("mes","用户不存在");
-            return result;
-        }
-
-        //校验密码
-        if (!passwordEncoder.matches(password,user.getPassword())) {
-            result.put("code",401);
-            result.put("mes","密码错误");
-            return result;
-        }
-
-        //成功登录
-        result.put("code",200);
-        result.put("mes","登陆成功");
-        result.put("data",Map.of("nickname",user.getNickname()));
-        return result;
+    public AuthController(UserService userService,
+                          PasswordEncoder passwordEncoder,
+                          JwtUtil jwtUtil) {
+        this.userService = userService;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
     }
 
+    @PostMapping("/login")
+    public Result<?> login(@RequestParam String username,
+                           @RequestParam String password) {
+        User user = userService.findUsername(username);
+
+        if (user == null) {
+            return Result.error(401, "用户不存在");
+        }
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            return Result.error(401, "密码错误");
+        }
+        if (user.getStatus() == 0) {
+            return Result.error(403, "账号已被禁用");
+        }
+
+        String token = jwtUtil.generateToken(username);
+        return Result.ok(Map.of(
+                "token", token,
+                "nickname", user.getNickname()
+        ));
+    }
+
+    @PostMapping("/register")
+    public Result<?> register(@RequestParam String username,
+                              @RequestParam String password,
+                              @RequestParam String nickname) {
+        if (userService.findUsername(username) != null) {
+            return Result.error(400, "用户名已存在");
+        }
+
+        User user = new User();
+        user.setUsername(username);
+        user.setPassword(passwordEncoder.encode(password));
+        user.setNickname(nickname);
+        user.setStatus(1);
+        user.setCreateTime(java.time.LocalDateTime.now());
+
+        return userService.save(user)
+                ? Result.ok("注册成功")
+                : Result.error(500, "注册失败");
+    }
 }

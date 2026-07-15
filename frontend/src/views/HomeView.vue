@@ -14,6 +14,11 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 function handleLogout() {
+  // 清除 Token 和用户信息
+  localStorage.removeItem('token')
+  localStorage.removeItem('nickname')
+
+  // 跳转到登录页
   router.push('/login')
 }
 </script>
