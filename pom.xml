@@ -13,8 +13,8 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.xwy's project</groupId>
-    <artifactId>Java SpringBoot + MySQL + Redis</artifactId>
+    <groupId>com.xuwenye</groupId>
+    <artifactId>Java-SpringBoot-MySQL-Redis</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
@@ -31,6 +31,11 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- MyBatis-Plus 3.x（Spring Boot 3 对应版本） -->
         <dependency>
             <groupId>com.baomidou</groupId>
@@ -44,6 +49,12 @@
             <artifactId>mysql-connector-j</artifactId>
             <version>8.3.0</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- Redis（缓存） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
         <!-- Lombok -->
