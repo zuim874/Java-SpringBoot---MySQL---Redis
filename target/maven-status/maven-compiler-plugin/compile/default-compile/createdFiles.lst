@@ -1,9 +1,0 @@
-com\xuweney\demo\config\InitAdminRunner.class
-com\xuweney\demo\DemoApplication.class
-com\xuweney\demo\config\SecurityConfig.class
-com\xuweney\demo\Controller\TestController.class
-com\xuweney\demo\Mapper\UserMapper.class
-com\xuweney\demo\Service\UserService.class
-com\xuweney\demo\config\RedisConfig.class
-com\xuweney\demo\Entity\User.class
-com\xuweney\demo\Controller\AuthController.class
