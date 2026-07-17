@@ -32,10 +32,10 @@ public class AuthController {
         User user = userService.findUsernameforlogin(username);
 
         if (user == null) {
-            return Result.error(401, "用户不存在");
+            return Result.error(400, "用户不存在");
         }
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            return Result.error(401, "密码错误");
+            return Result.error(400, "密码错误");
         }
         if (user.getStatus() == 0) {
             return Result.error(403, "账号已被禁用");
@@ -68,7 +68,7 @@ public class AuthController {
         user.setCreate_time(java.time.LocalDateTime.now());
 
         return userService.save(user)
-                ? Result.ok("注册成功")
+                ? Result.ok("注册成功") //成功自动返回200
                 : Result.error(500, "注册失败");
     }
 }

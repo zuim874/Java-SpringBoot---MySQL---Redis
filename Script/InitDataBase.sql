@@ -33,7 +33,7 @@ CREATE TABLE sys_user (
                           create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
                           update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
                           last_login_time DATETIME DEFAULT NULL COMMENT '最后登录时间',
-                          is_deleted TINYINT DEFAULT 1 COMMENT '状态：0删除 1未删除',
+                          is_deleted TINYINT DEFAULT 0 COMMENT '状态：0未删除 1删除',
                           INDEX idx_username (username) COMMENT '用户名索引（高频查询）'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 

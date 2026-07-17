@@ -1,0 +1,85 @@
+2026.7.17
+========== 问题：
+DROP TABLE IF EXISTS sys_user;
+CREATE TABLE sys_user (
+                          id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+                          username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名（唯一）',
+                          password VARCHAR(255) NOT NULL COMMENT '密码（BCrypt加密）',
+                          nickname VARCHAR(50) DEFAULT NULL COMMENT '昵称',
+                          user_role VARCHAR(50) DEFAULT 'ROLE_USER' COMMENT '用户权限',
+                          avatar VARCHAR(255) DEFAULT NULL COMMENT '头像URL',
+                          email VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
+                          status TINYINT DEFAULT 1 COMMENT '状态：0禁用 1启用',
+                          create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                          update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                          last_login_time DATETIME DEFAULT NULL COMMENT '最后登录时间',
+                          is_deleted TINYINT DEFAULT 0 COMMENT '状态：0未删除 1删除',
+                          INDEX idx_username (username) COMMENT '用户名索引（高频查询）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
+is_deleted字段控制用户软删除 0存在 1删除
+
+    @PostMapping("/register")
+    public Result<?> register(@RequestParam String username,
+                              @RequestParam String password,
+                              @RequestParam String password_exam,
+                              @RequestParam String nickname) {
+        if (userService.findUsername(username) != null) {
+            return Result.error(400, "用户名已存在");
+        }
+        ...
+注册通过userService.findUsername(username)检验是否重复
+
+    //根据用户名查询用户
+    public User findUsername(String username) {
+        //QueryWrapper<实体> wrapper = new QueryWrapper<>();创造一个条件构造器
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        //wrapper.eq("数据表字段名",传入参数);用条件构造器判断值是否相等
+        wrapper.eq("username",username);
+        //导入mapper层（user）查询方法，selectone匹配一个符合条件的值，结合上一行使匹配username
+        return userMapper.selectOne(wrapper);
+    }
+未过滤删除状态，检验的是所有用户
+
+{
+    "code": 500,
+    "mes": "服务器异常：\r\n### Error updating database.  Cause: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'admin' for key 'sys_user.username'\r\n### The error may exist in com/xuweney/demo/Mapper/UserMapper.java (best guess)\r\n### The error may involve com.xuweney.demo.Mapper.UserMapper.insert-Inline\r\n### The error occurred while setting parameters\r\n### SQL: INSERT INTO sys_user  ( username, password, nickname,   status, create_time )  VALUES (  ?, ?, ?,   ?, ?  )\r\n### Cause: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'admin' for key 'sys_user.username'\n; Duplicate entry 'admin' for key 'sys_user.username'",
+    "data": null
+}
+但是绕过了400，注册遇到唯一主键数据库报错，返回500
+
+========== 原因：
+UserMapper 继承了 BaseMapper
+MyBatis-Plus 的 selectOne 方法：MyBatis-Plus 的 selectOne 默认过滤逻辑删除数据，注册时需要用自定义 SQL 查全部
+    // BaseMapper 的 selectOne
+    default User selectOne(Wrapper<User> queryWrapper) {
+        // 内部会执行：
+        // SELECT * FROM sys_user WHERE username = 'admin' AND is_deleted = 0
+    }
+
+========== 解决方案：
+1. 在 UserMapper 添加方法
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+@Mapper
+public interface UserMapper extends BaseMapper<User> {
+
+    // 查所有（包括已删除），用于注册时判断
+    @Select("SELECT * FROM sys_user WHERE username = #{username}")
+    User findByUsernameAll(@Param("username") String username);
+}
+2. 修改 UserService
+public User findUsername(String username) {
+    return userMapper.findByUsernameAll(username);  // 用自定义方法
+}
+
+========== 结果：
+{
+    "code": 400,
+    "mes": "用户名已存在",
+    "data": null
+}
+成功
+
+========== 注意：
+mybatis-plus.global-config.db-config.logic-delete-field=is_deleted
+(其中is_deleted要与数据库字段一致，否则配置会失效)
