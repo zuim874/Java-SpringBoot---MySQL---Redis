@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { isTokenExpired } from "../utils/token.js"
+import { clearUserData } from "../utils/tokenChecker.js";
 import LoginView from '../views/LoginView.vue'
 import HomeView from '../views/HomeView.vue'
 
@@ -13,7 +15,7 @@ const router = createRouter({
   routes
 })
 
-// 新增：路由守卫
+// 新增：路由守卫(切换页面时触发token校验)
 router.beforeEach((to, from, next) => {
   // 获取 Token
   const token = localStorage.getItem('token')
@@ -22,6 +24,11 @@ router.beforeEach((to, from, next) => {
   if (to.name !== 'Login' && !token) {
     // 跳转到登录页
     next({ name: 'Login' })
+  }
+  // 如果token过期，清空登录状态
+  else if (to.name !== 'Login' && isTokenExpired(token)) {
+    clearUserData()
+    next({ name: 'Login'})
   }
   // 如果已经登录，但要去登录页
   else if (to.name === 'Login' && token) {

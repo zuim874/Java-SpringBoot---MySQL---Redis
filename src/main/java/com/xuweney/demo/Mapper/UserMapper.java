@@ -3,7 +3,6 @@ package com.xuweney.demo.Mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xuweney.demo.Entity.User;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.reflection.wrapper.BaseWrapper;
 
 @Mapper
 public interface UserMapper extends BaseMapper<User> {

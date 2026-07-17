@@ -10,9 +10,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/api/auth")
 public class AuthController {
 
+    // final只能赋值一次
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
@@ -28,7 +29,7 @@ public class AuthController {
     @PostMapping("/login")
     public Result<?> login(@RequestParam String username,
                            @RequestParam String password) {
-        User user = userService.findUsername(username);
+        User user = userService.findUsernameforlogin(username);
 
         if (user == null) {
             return Result.error(401, "用户不存在");
@@ -50,9 +51,13 @@ public class AuthController {
     @PostMapping("/register")
     public Result<?> register(@RequestParam String username,
                               @RequestParam String password,
+                              @RequestParam String password_exam,
                               @RequestParam String nickname) {
         if (userService.findUsername(username) != null) {
             return Result.error(400, "用户名已存在");
+        }
+        if (!password.equals(password_exam)) {
+            return Result.error(400, "密码不一致");
         }
 
         User user = new User();
@@ -60,7 +65,7 @@ public class AuthController {
         user.setPassword(passwordEncoder.encode(password));
         user.setNickname(nickname);
         user.setStatus(1);
-        user.setCreateTime(java.time.LocalDateTime.now());
+        user.setCreate_time(java.time.LocalDateTime.now());
 
         return userService.save(user)
                 ? Result.ok("注册成功")

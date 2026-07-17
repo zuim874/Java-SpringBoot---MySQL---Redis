@@ -37,15 +37,21 @@ export async function request(url, options = {}) {
     try {
         // 发送请求
         const res = await fetch(BASE_URL + url, mergedOptions)
-        const data = await res.json()
 
-        // 如果返回 401（未授权），可能是 Token 过期或无效
-        if (data.code === 401) {
-            // 清除 Token
+        // 第一层判断：HTTP 状态码为 401 时直接跳转
+        if (res.status === 401) {
             localStorage.removeItem('token')
             localStorage.removeItem('nickname')
+            window.location.href = '/login'
+            return
+        }
 
-            // 跳转到登录页
+        const data = await res.json()
+
+        // 第二层判断：响应体中的 code（兜底）
+        if (data.code === 401) {
+            localStorage.removeItem('token')
+            localStorage.removeItem('nickname')
             window.location.href = '/login'
         }
 

@@ -21,6 +21,7 @@ public class JwtUtil {
         this.expirationMs = expirationMs;
     }
 
+    // 生成ToKen
     public String generateToken(String username) {
         return Jwts.builder()
                 .subject(username)
@@ -31,6 +32,7 @@ public class JwtUtil {
     }
 
     public String parseUsername(String token) {
+
         return parseClaims(token).getSubject();
     }
 
