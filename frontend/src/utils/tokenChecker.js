@@ -1,5 +1,5 @@
 // src/utils/tokenChecker.js
-import { isTokenExpired, getTokenRemainingTime } from "./token.js"
+import { isTokenExpired } from "./token.js"
 
 let checkInterval = null
 let countdownTimer = null

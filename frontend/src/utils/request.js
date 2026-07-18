@@ -48,8 +48,8 @@ export async function request(url, options = {}) {
         // fetch：浏览器原生发送网络请求的API
         const res = await fetch(BASE_URL + url, mergedOptions)
 
-        // 第一层判断：HTTP 状态码为 401 时直接跳转
-        if (res.status === 401) {
+        // 第一层判断：HTTP 状态码为 400 时直接跳转
+        if (res.status === 400) {
             localStorage.removeItem('token')
             localStorage.removeItem('nickname')
             window.location.href = '/login'
@@ -59,7 +59,7 @@ export async function request(url, options = {}) {
         const data = await res.json()
 
         // 第二层判断：响应体中的 code（兜底）
-        if (data.code === 401) {
+        if (data.code === 400) {
             localStorage.removeItem('token')
             localStorage.removeItem('nickname')
             window.location.href = '/login'

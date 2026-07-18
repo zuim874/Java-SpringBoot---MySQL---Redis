@@ -48,6 +48,13 @@ public class UserService {
         return userMapper.selectList(wrapper);
     }
 
+    //根据用户ID查询用户
+    public User getById(Long id) {
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.eq("id",id);
+        return userMapper.selectOne(wrapper);
+    }
+
     //保存用户
     public boolean save(User user) {
         return userMapper.insert(user) > 0;

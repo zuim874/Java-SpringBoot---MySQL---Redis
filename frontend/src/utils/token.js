@@ -33,18 +33,3 @@ export function isTokenExpired(token) {
     const currentTime = Math.floor(Date.now() / 1000)
     return payload.exp < currentTime
 }
-
-/**
- * 获取 Token 剩余有效期（毫秒）
- */
-export function getTokenRemainingTime(token) {
-    if (!token) return 0
-
-    const payload = parseJWT(token)
-    if (!payload || !payload.exp) return 0
-
-    const currentTime = Math.floor(Date.now() / 1000)
-    const remaining = payload.exp - currentTime
-
-    return Math.max(0, remaining * 1000) // 转为毫秒
-}
