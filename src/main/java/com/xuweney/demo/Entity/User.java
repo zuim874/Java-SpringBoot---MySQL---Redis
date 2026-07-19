@@ -21,6 +21,7 @@ public class User {
     private LocalDateTime create_time;      //创建账号时间
     private LocalDateTime update_time;                 //上一次更新资料时间
     private LocalDateTime last_login_time;             //上一次登陆时间
+    private Integer is_deleted;
 
     // 逻辑删除（MyBatis-Plus 需要这个注解识别逻辑删除字段）
     @TableLogic

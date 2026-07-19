@@ -5,6 +5,7 @@ import com.xuweney.demo.Entity.User;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface UserMapper extends BaseMapper<User> {
@@ -13,4 +14,8 @@ public interface UserMapper extends BaseMapper<User> {
     // 查所有（包括已删除），用于注册时判断
     @Select("SELECT * FROM sys_user WHERE username = #{username}")
     User findByUsernameAll(@Param("username") String username);
+
+    // 恢复删除用户
+    @Update("UPDATE sys_user SET is_deleted = 0 WHERE id = #{id}")
+    int recoverById(@Param("id") Long id);
 }

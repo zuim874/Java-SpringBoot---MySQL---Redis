@@ -63,4 +63,9 @@ public class UserService {
     //删除用户(逻辑删除)
     public boolean deleteById(Long id) { return userMapper.deleteById(id) > 0;
     }
+
+    //恢复用户
+    public boolean recoverById(Long id) {
+        return userMapper.recoverById(id) > 0;
+    }
 }
