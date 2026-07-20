@@ -3,6 +3,7 @@ import { isTokenExpired } from "../utils/token.js"
 import { clearUserData } from "../utils/tokenChecker.js";
 // import { 函数名 } from "address";  => 导入其他文件的函数
 import LoginView from '../views/LoginView.vue'
+import RegisterView from '../views/RegisterView.vue'
 import HomeView from '../views/HomeView.vue'
 // import 导入 页面组件
 
@@ -10,6 +11,7 @@ import HomeView from '../views/HomeView.vue'
 const routes = [
   { path: '/', redirect: '/login' },  // 根路径'/' 重定向至'/login'
   { path: '/login', name: 'Login', component: LoginView },  // 浏览器地址：'/login'，匹配成功后，页面渲染LoginView，Login是路由命名
+  { path: '/register', name: 'Register', component: RegisterView },
   { path: '/home', name: 'Home', component: HomeView }
 ]
 
@@ -36,12 +38,12 @@ router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
 
   // 如果要访问的页面需要登录（如 /home），但没有 Token
-  if (to.name !== 'Login' && !token) {
+  if (to.name !== 'Login' && to.name !== 'Register' && !token) {
     // 跳转到登录页
     next({ name: 'Login' })
   }
   // 如果token过期，清空登录状态
-  else if (to.name !== 'Login' && isTokenExpired(token)) {
+  else if (to.name !== 'Login' && to.name !== 'Register' && isTokenExpired(token)) {
     clearUserData()
     next({ name: 'Login'})
   }

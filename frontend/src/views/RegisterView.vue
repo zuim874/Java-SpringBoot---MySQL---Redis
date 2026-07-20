@@ -1,5 +1,5 @@
 <template>
-  <div class="login-page">
+  <div class="register-page">
     <!-- 背景装饰 -->
     <div class="bg-shapes">
       <div class="bg-circle bg-circle--1"></div>
@@ -7,22 +7,22 @@
       <div class="bg-circle bg-circle--3"></div>
     </div>
 
-    <!-- 导航条（保持风格一致） -->
+    <!-- 导航条 -->
     <nav class="nav">
       <div class="nav-logo">XuWenYeTech</div>
       <div class="nav-slogan">定义数字未来</div>
     </nav>
 
-    <!-- 登录卡片 -->
-    <div class="login-wrapper">
-      <div class="login-card">
-        <div class="login-header">
-          <div class="login-icon">✦</div>
-          <h2 class="login-title">欢迎回来</h2>
-          <p class="login-desc">登录以进入企业管理系统</p>
+    <!-- 注册卡片 -->
+    <div class="register-wrapper">
+      <div class="register-card">
+        <div class="register-header">
+          <div class="register-icon">✦</div>
+          <h2 class="register-title">创建账号</h2>
+          <p class="register-desc">注册以加入企业管理系统</p>
         </div>
 
-        <form @submit.prevent="handleLogin" class="login-form">
+        <form @submit.prevent="handleRegister" class="register-form">
           <div class="form-group">
             <label>用户名</label>
             <div class="input-wrap">
@@ -30,7 +30,19 @@
               <input
                 v-model="username"
                 type="text"
-                placeholder="请输入用户名"
+                placeholder="2-20个字符"
+                required
+              />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>昵称</label>
+            <div class="input-wrap">
+              <span class="input-icon">✨</span>
+              <input
+                v-model="nickname"
+                type="text"
+                placeholder="您的显示名称"
                 required
               />
             </div>
@@ -42,21 +54,33 @@
               <input
                 v-model="password"
                 type="password"
-                placeholder="请输入密码"
+                placeholder="至少6位密码"
+                required
+              />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>确认密码</label>
+            <div class="input-wrap">
+              <span class="input-icon">🔐</span>
+              <input
+                v-model="passwordExam"
+                type="password"
+                placeholder="再次输入密码"
                 required
               />
             </div>
           </div>
 
-          <button type="submit" class="login-btn" :disabled="loading">
+          <button type="submit" class="register-btn" :disabled="loading">
             <span v-if="loading" class="btn-loading"></span>
-            <span v-else>登录系统</span>
+            <span v-else>注册账号</span>
           </button>
         </form>
 
-        <div class="register-link">
-          <span>还没有账号？</span>
-          <router-link to="/register">创建新账号</router-link>
+        <div class="login-link">
+          <span>已有账号？</span>
+          <router-link to="/login">立即登录</router-link>
         </div>
 
         <p v-if="message" :class="['msg', success ? 'msg--success' : 'msg--error']">
@@ -66,7 +90,7 @@
     </div>
 
     <!-- 底部版权 -->
-    <div class="login-footer">
+    <div class="register-footer">
       <span>© 2026 XuWenYeTech. All rights reserved.</span>
     </div>
   </div>
@@ -77,34 +101,36 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
 
+const router = useRouter()
 const username = ref('')
+const nickname = ref('')
 const password = ref('')
+const passwordExam = ref('')
 const loading = ref(false)
 const message = ref('')
 const success = ref(false)
-const router = useRouter()
 
-async function handleLogin() {
+async function handleRegister() {
   loading.value = true
   message.value = ''
   try {
     const params = new URLSearchParams()
-    params.append('username', username.value)
+    params.append('username', username.value.trim())
     params.append('password', password.value)
+    params.append('password_exam', passwordExam.value)
+    params.append('nickname', nickname.value.trim())
 
-    const data = await request('/auth/login', {
+    const data = await request('/auth/register', {
       method: 'POST',
       body: params
     })
     if (data.code === 200) {
       success.value = true
-      message.value = data.mes
-      localStorage.setItem('token', data.data.token)
-      localStorage.setItem('nickname', data.data.nickname)
-      setTimeout(() => { router.push('/home') }, 300)
+      message.value = '注册成功，即将跳转登录...'
+      setTimeout(() => { router.push('/login') }, 1500)
     } else {
       success.value = false
-      message.value = data.mes || '登录失败'
+      message.value = data.mes || '注册失败'
     }
   } catch (err) {
     success.value = false
@@ -116,8 +142,7 @@ async function handleLogin() {
 </script>
 
 <style scoped>
-/* ===== 全局 ===== */
-.login-page {
+.register-page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -130,7 +155,6 @@ async function handleLogin() {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ===== 背景装饰 ===== */
 .bg-shapes {
   position: absolute;
   inset: 0;
@@ -159,7 +183,6 @@ async function handleLogin() {
   background: radial-gradient(circle, #4a9eff, transparent);
 }
 
-/* ===== 导航 ===== */
 .nav {
   position: fixed;
   top: 0; left: 0; right: 0;
@@ -191,8 +214,7 @@ async function handleLogin() {
   text-transform: uppercase;
 }
 
-/* ===== 登录卡片 ===== */
-.login-wrapper {
+.register-wrapper {
   flex: 1;
   display: flex;
   align-items: center;
@@ -202,7 +224,7 @@ async function handleLogin() {
   position: relative;
   z-index: 1;
 }
-.login-card {
+.register-card {
   width: 420px;
   max-width: 100%;
   padding: 48px 40px;
@@ -223,12 +245,11 @@ async function handleLogin() {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ===== 卡片头部 ===== */
-.login-header {
+.register-header {
   text-align: center;
   margin-bottom: 36px;
 }
-.login-icon {
+.register-icon {
   font-size: 2rem;
   margin-bottom: 12px;
   animation: pulse 2s ease-in-out infinite;
@@ -237,20 +258,19 @@ async function handleLogin() {
   0%, 100% { transform: scale(1); opacity: 0.6; }
   50% { transform: scale(1.1); opacity: 1; }
 }
-.login-title {
+.register-title {
   font-family: 'Playfair Display', Georgia, serif;
   font-size: 1.8rem;
   font-weight: 700;
   color: #212529;
   margin-bottom: 8px;
 }
-.login-desc {
+.register-desc {
   font-size: 0.9rem;
   color: #868e96;
 }
 
-/* ===== 表单 ===== */
-.login-form { margin-bottom: 16px; }
+.register-form { margin-bottom: 16px; }
 .form-group {
   margin-bottom: 20px;
 }
@@ -296,8 +316,7 @@ async function handleLogin() {
   font-weight: 400;
 }
 
-/* ===== 按钮 ===== */
-.login-btn {
+.register-btn {
   width: 100%;
   padding: 16px;
   border: none;
@@ -313,11 +332,11 @@ async function handleLogin() {
   position: relative;
   overflow: hidden;
 }
-.login-btn:hover:not(:disabled) {
+.register-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 12px 32px rgba(43,108,176,0.30);
 }
-.login-btn:disabled {
+.register-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -331,21 +350,20 @@ async function handleLogin() {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.register-link {
+.login-link {
   text-align: center;
-  margin-top: 16px;
+  margin-top: 20px;
   font-size: 0.85rem;
   color: #868e96;
 }
-.register-link a {
+.login-link a {
   color: #2b6cb0;
   font-weight: 600;
   text-decoration: none;
   transition: color 0.3s;
 }
-.register-link a:hover { color: #4a9eff; }
+.login-link a:hover { color: #4a9eff; }
 
-/* ===== 消息提示 ===== */
 .msg {
   margin-top: 16px;
   text-align: center;
@@ -366,23 +384,21 @@ async function handleLogin() {
   border: 1px solid rgba(201,42,42,0.12);
 }
 
-/* ===== 底部 ===== */
-.login-footer {
+.register-footer {
   position: relative;
   z-index: 1;
   padding: 24px 56px;
   text-align: center;
 }
-.login-footer span {
+.register-footer span {
   font-size: 0.7rem;
   color: #adb5bd;
   letter-spacing: 0.02em;
 }
 
-/* ===== 响应式 ===== */
 @media (max-width: 480px) {
   .nav { padding: 0 24px; }
   .nav-slogan { display: none; }
-  .login-card { padding: 36px 24px; }
+  .register-card { padding: 36px 24px; }
 }
 </style>
