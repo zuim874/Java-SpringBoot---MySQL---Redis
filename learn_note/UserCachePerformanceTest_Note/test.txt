@@ -1,0 +1,131 @@
+测试结果：
+========== 模拟高并发登录场景 ==========
+并发线程数: 50
+每线程登录用户数: 20
+总登录次数: 1000
+使用测试用户: tester_1 ~ tester_1000
+
+===== 第1轮：无缓存（全部查MySQL）=====
+无缓存总耗时: 72ms
+平均每次登录: 0.072ms
+
+===== 预热缓存中... =====
+缓存预热完成
+
+===== 第2轮：有缓存（全部查Redis）=====
+有缓存总耗时: 45ms
+平均每次登录: 0.045ms
+
+========== 性能对比 ==========
+无缓存耗时: 72ms
+有缓存耗时: 45ms
+🚀 性能提升: 1.6倍
+
+
+测试代码：
+package com.xuweney.demo;
+
+import com.xuweney.demo.Service.UserService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.RedisTemplate;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.*;
+
+@SpringBootTest
+public class UserCachePerformanceTest {
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    private final List<String> testUsernames = new ArrayList<>();
+
+    @BeforeEach
+    public void init() {
+        testUsernames.clear();
+        for (int i = 1; i <= 100; i++) {
+            testUsernames.add("tester_" + i);
+        }
+    }
+
+    @Test
+    public void testCacheEffect() {
+        String username = "admin";
+        String cacheKey = "demo:user:login:" + username;
+
+        redisTemplate.delete(cacheKey);
+        System.out.println("========== 第1轮：冷查询（查MySQL）==========");
+        long start1 = System.currentTimeMillis();
+        for (int i = 0; i < 100; i++) {
+            userService.findUsernameforlogin(username);
+        }
+        long time1 = System.currentTimeMillis() - start1;
+        System.out.println("100次查询耗时: " + time1 + "ms, 平均: " + (time1 / 100.0) + "ms");
+
+        System.out.println("\n========== 第2轮：热查询（查Redis）==========");
+        long start2 = System.currentTimeMillis();
+        for (int i = 0; i < 100; i++) {
+            userService.findUsernameforlogin(username);
+        }
+        long time2 = System.currentTimeMillis() - start2;
+        System.out.println("100次查询耗时: " + time2 + "ms, 平均: " + (time2 / 100.0) + "ms");
+
+        double boost = time1 * 1.0 / (time2 == 0 ? 1 : time2);
+        System.out.println("\n🚀 性能提升: " + String.format("%.1f", boost) + "倍");
+    }
+
+    @Test
+    public void testConcurrentAccess() throws InterruptedException {
+        int threadCount = 10;
+        int queryCount = 100;
+        CountDownLatch latch = new CountDownLatch(threadCount);
+        java.util.concurrent.atomic.AtomicLong totalTime = new java.util.concurrent.atomic.AtomicLong(0);
+
+        System.out.println("========== 并发测试：" + threadCount + "线程 × " + queryCount + "次查询 ==========");
+        long overallStart = System.currentTimeMillis();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            for (int i = 0; i < threadCount; i++) {
+                executor.submit(() -> {
+                    try {
+                        long start = System.currentTimeMillis();
+                        for (int j = 0; j < queryCount; j++) {
+                            String username = testUsernames.get(j % testUsernames.size());
+                            userService.findUsernameforlogin(username);
+                        }
+                        totalTime.addAndGet(System.currentTimeMillis() - start);
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+            }
+            latch.await();
+        }
+
+        long overallTime = System.currentTimeMillis() - overallStart;
+        System.out.println("总耗时: " + overallTime + "ms");
+        System.out.println("线程累计耗时: " + totalTime.get() + "ms");
+        System.out.println("总查询次数: " + threadCount * queryCount);
+    }
+
+    @Test
+    public void testRedisTemplate() {
+        String testKey = "demo:test:hello";
+        String testValue = "Hello Redis!";
+
+        System.out.println("========== RedisTemplate 基础测试 ==========");
+        redisTemplate.opsForValue().set(testKey, testValue, 60, TimeUnit.SECONDS);
+        Object result = redisTemplate.opsForValue().get(testKey);
+        System.out.println("写入值: " + testValue);
+        System.out.println("读取值: " + result);
+        System.out.println("测试结果: " + (testValue.equals(result) ? "✅ 成功" : "❌ 失败"));
+        redisTemplate.delete(testKey);
+    }
+}

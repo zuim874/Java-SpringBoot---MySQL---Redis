@@ -22,7 +22,7 @@ public class UserService {
     //根据用户名查询用户（登录用，含 Redis 缓存）
     public User findUsernameforlogin(String username) {
         // Redis key 命名规则：项目名:模块:业务标识
-        String cacheKey = "demo:user:login:" + username;
+        String cacheKey = "demo:user:login:active:" + username;
 
         // 第 1 步：先从 Redis 查，有则直接返回
         User cached = (User) redisTemplate.opsForValue().get(cacheKey);
@@ -50,7 +50,23 @@ public class UserService {
 
     //根据用户名查询用户（包含已逻辑删除的）
     public User findUsername(String username) {
-        return userMapper.findByUsernameAll(username);
+        // Redis key 命名规则：项目名:模块:业务标识
+        String cacheKey = "demo:user:login:all:" + username;
+
+        // redis查询
+        User cached = (User) redisTemplate.opsForValue().get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        // redis没有，查mysql
+        User user = userMapper.findByUsernameAll(username);
+
+        // 写入redis(10分钟过期)
+        if (user != null) {
+            redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+        }
+        return user;
     }
 
     //根据昵称查询用户
