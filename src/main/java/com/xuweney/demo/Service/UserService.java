@@ -92,15 +92,41 @@ public class UserService {
 
     //保存用户
     public boolean save(User user) {
-        return userMapper.insert(user) > 0;
+        String username = user.getUsername();
+        // Redis key 命名规则：项目名:模块:业务标识
+        String cacheKey = "demo:user:login:active:" + username;
+        boolean result = userMapper.insert(user) > 0;
+
+        redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+
+        return result;
     }
 
     //删除用户(逻辑删除)
-    public boolean deleteById(Long id) { return userMapper.deleteById(id) > 0;
+    public boolean deleteById(Long id) {
+        // 先查出用户信息，用于删除缓存
+        User user = userMapper.selectById(id);
+        boolean result = userMapper.deleteById(id) > 0;
+
+        if (result && user != null) {
+            // username 唯一，删除该用户对应的缓存即可
+            redisTemplate.delete("demo:user:login:active:" + user.getUsername());
+            redisTemplate.delete("demo:user:login:all:" + user.getUsername());
+        }
+        return result;
     }
 
     //恢复用户
     public boolean recoverById(Long id) {
-        return userMapper.recoverById(id) > 0;
+        boolean result = userMapper.recoverById(id) > 0;
+        if (result) {
+            User user = userMapper.selectById(id);
+            if (user != null) {
+                // 恢复后重新写入redis缓存
+                String cacheKey = "demo:user:login:active:" + user.getUsername();
+                redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+            }
+        }
+        return result;
     }
 }

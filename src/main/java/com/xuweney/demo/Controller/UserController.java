@@ -5,7 +5,6 @@ import com.xuweney.demo.Service.UserService;
 import com.xuweney.demo.common.Result;
 import com.xuweney.demo.util.JwtUtil;
 import jakarta.validation.constraints.Min;
-import org.apache.ibatis.annotations.Update;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -94,6 +93,10 @@ public class UserController {
             @RequestHeader("Authorization") String token,
             @Min(1) @RequestParam Long id
     ){
+        // 前提：检验用户是否真的需要恢复
+        if(userService.getById(id) != null) {
+            return Result.error(400, "当前用户无需恢复");
+        }
         // 第一步：剥离Bearer前缀，校验token合法性
         if(token == null || !token.startsWith("Bearer ")){
             return Result.error(401, "未登录，请先登录");
@@ -102,14 +105,42 @@ public class UserController {
         if(!jwtUtil.validate(realToken)){
             return Result.error(401, "令牌失效，请重新登录");
         }
-        // 获取当前登录用户名，用于做权限判断（仅管理员可删除）
+        // 获取当前登录用户名(严重错误：要修改，应该为获取权限)，用于做权限判断（仅管理员可删除）
         String loginUsername = jwtUtil.parseUsername(realToken);
-        if(!"admin".equals(loginUsername)){
+        if(!"admin".equals(loginUsername)){ //应改为权限检测Role
             return Result.error(403, "权限不足，仅管理员可删除用户");
         }
 
         // 第二步：调用业务层执行恢复
         boolean recoverSuccess = userService.recoverById(id);
+        if(recoverSuccess){
+            return Result.ok("恢复用户成功");
+        }else{
+            return Result.error(400, "恢复失败，该用户不存在");
+        }
+    }
+
+    @PutMapping("recover_user") // 当前逻辑异常：若要恢复说明已删除，已删除则不可登录（需引入新验证方式）
+    public Result<?> recoverUserByUserParam(
+            @RequestHeader("Authorization") String token
+    ){
+        // 1：剥离Bearer前缀，校验token合法性
+        if(token == null || !token.startsWith("Bearer ")){
+            return Result.error(401, "未登录，请先登录");
+        }
+        String realToken = token.substring(7);
+        if(!jwtUtil.validate(realToken)){
+            return Result.error(401, "令牌失效，请重新登录");
+        }
+        // 2：直接从token获取当前登录用户名，无需前端传id
+        String loginUsername = jwtUtil.parseUsername(realToken);
+        // 3：根据用户名查询当前登录用户
+        User targetUser = userService.findUsernameforlogin(loginUsername);
+        if(targetUser == null){
+            return Result.error(400, "用户不存在");
+        }
+        // 4：调用业务层执行恢复
+        boolean recoverSuccess = userService.recoverById(targetUser.getId());
         if(recoverSuccess){
             return Result.ok("恢复用户成功");
         }else{

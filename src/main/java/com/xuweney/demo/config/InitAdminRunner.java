@@ -27,8 +27,8 @@ public class InitAdminRunner implements CommandLineRunner {
             // 测试环境开启，创建管理员+批量创建1000个测试账号
             if (examStatus) {
                 // 检查是否有用户
+                System.out.println("===== 开始创建管理员admin =====");
                 if (userService.findUsername("admin") == null) {
-                    System.out.println("===== 开始创建管理员admin =====");
                     User admin = new User();
                     admin.setUsername("admin");
                     admin.setPassword(passwordEncoder.encode("123456"));  // 加密存储
@@ -36,8 +36,8 @@ public class InitAdminRunner implements CommandLineRunner {
                     admin.setStatus(1);
                     admin.setCreate_time(LocalDateTime.now());
                     userService.save(admin);
-                    System.out.println("✅ 初始化管理员账号：admin / 123456");
                 }
+                System.out.println("✅ 初始化管理员账号：admin / 123456");
 
                 System.out.println("===== 开始批量创建1000个测试账号 =====");
                 for (int i = 1; i <= 1000; i++) {
