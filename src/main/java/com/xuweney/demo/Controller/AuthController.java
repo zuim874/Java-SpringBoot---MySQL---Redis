@@ -4,6 +4,8 @@ import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Service.UserService;
 import com.xuweney.demo.common.Result;
 import com.xuweney.demo.util.JwtUtil;
+import com.xuweney.demo.util.PasswordStrengthUtils;
+import com.xuweney.demo.util.SanitizeUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -31,8 +33,8 @@ public class AuthController {
     public Result<?> login(@RequestParam String username,
                            @RequestParam String password) {
         // 输入清洗：去掉首尾空格和危险字符
-        username = sanitize(username);
-        password = sanitize(password);
+        username = SanitizeUtil.Sanitize(username);
+        password = SanitizeUtil.Sanitize(password);
 
         User user = userService.findUsernameforlogin(username);
 
@@ -56,10 +58,10 @@ public class AuthController {
                               @RequestParam String password_exam,
                               @RequestParam String nickname) {
         // 输入清洗
-        username = sanitize(username);
-        password = sanitize(password);
-        password_exam = sanitize(password_exam);
-        nickname = sanitize(nickname);
+        username = SanitizeUtil.Sanitize(username);
+        password = SanitizeUtil.Sanitize(password);
+        password_exam = SanitizeUtil.Sanitize(password_exam);
+        nickname = SanitizeUtil.Sanitize(nickname);
 
         if (userService.findUsername(username) != null) {
             return Result.error(400, "用户名已存在");
@@ -70,8 +72,12 @@ public class AuthController {
         if (username.length() < 2 || username.length() > 20) {
             return Result.error(400, "用户名长度需在2-20个字符之间");
         }
-        if (password.length() < 6) {
-            return Result.error(400, "密码长度不能少于6位");
+        // 4. 密码强度检验（替换原来的简单长度校验）
+        PasswordStrengthUtils.StrengthResult strengthResult =
+                PasswordStrengthUtils.checkStrength(password);
+
+        if (!strengthResult.isValid()) {
+            return Result.error(400, strengthResult.getMessage());
         }
 
         User user = new User();
@@ -84,26 +90,5 @@ public class AuthController {
         return userService.save(user)
                 ? Result.ok("注册成功")
                 : Result.error(500, "注册失败");
-    }
-
-    /**
-     * 清洗输入：去除危险字符，防止 XSS 和 SQL 注入
-     */
-    private String sanitize(String input) {
-        if (input == null) return null;
-        // 去掉首尾空格
-        input = input.trim();
-        // 替换常见的危险字符
-        input = input.replaceAll("<", "&lt;")
-                     .replaceAll(">", "&gt;")
-                     .replaceAll("'", "")
-                     .replaceAll("--", "")
-                     .replaceAll("(?i)select\\s", "")
-                     .replaceAll("(?i)drop\\s", "")
-                     .replaceAll("(?i)delete\\s", "")
-                     .replaceAll("(?i)insert\\s", "")
-                     .replaceAll("(?i)union\\s", "")
-                     .replaceAll("(?i)or\\s+1=1", "");
-        return input;
     }
 }

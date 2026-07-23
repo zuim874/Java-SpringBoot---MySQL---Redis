@@ -7,9 +7,24 @@
 /dataSources/
 /dataSources.local.xml
 
-.idea/
-
-target/
 *.class
 
+# properties 多环境配置
+application-dev.properties
+application-prod.properties
+application-test.properties
+application-local.properties
+
+# 环境变量文件
+.env
+.env.local
+
+# 编译产物
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE 文件
+.idea/
 *.iml
+*.xml
+.vscode/

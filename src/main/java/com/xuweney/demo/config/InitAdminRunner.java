@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 
 @Component      // 标记为组件，Spring启动时会自动执行
 public class InitAdminRunner implements CommandLineRunner {
-    @Value("${exam.status:false}")
+    @Value("${test.username.status:false}")
     private Boolean examStatus;
 
     @Autowired
