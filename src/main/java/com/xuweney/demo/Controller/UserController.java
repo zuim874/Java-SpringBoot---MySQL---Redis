@@ -41,6 +41,7 @@ public class UserController {
         }
         // 获取当前登录用户名，用于做权限判断（仅管理员可删除）
         String loginUsername = jwtUtil.parseUsername(realToken);
+        System.out.println(loginUsername);
         if(!userService.is_admin(loginUsername)){
             return Result.error(403, "权限不足，仅管理员可删除用户");
         }

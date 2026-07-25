@@ -34,8 +34,8 @@ public class InitAdminRunner implements CommandLineRunner {
                     admin.setPassword(passwordEncoder.encode("123456"));  // 加密存储
                     admin.setNickname("超级管理员");
                     admin.setStatus(1);
-                    admin.setUser_role("ROLE_ADMIN");
-                    admin.setCreate_time(LocalDateTime.now());
+                    admin.setUserRole("ROLE_ADMIN");
+                    admin.setCreateTime(LocalDateTime.now());
                     userService.save(admin);
                 }
                 System.out.println("✅ 初始化管理员账号：admin / 123456");
@@ -51,7 +51,7 @@ public class InitAdminRunner implements CommandLineRunner {
                         testUser.setPassword(passwordEncoder.encode("123456"));
                         testUser.setNickname("测试用户" + i);
                         testUser.setStatus(1);
-                        testUser.setCreate_time(LocalDateTime.now());
+                        testUser.setCreateTime(LocalDateTime.now());
                         userService.save(testUser);
                         if (i % 100 == 0) {
                             System.out.println("已创建：" + i + " 个测试账号");

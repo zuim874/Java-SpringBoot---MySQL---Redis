@@ -1,0 +1,96 @@
+2026.7.25
+
+========== 问题：
+管理员删除用户接口 /api/user/delete_admin 返回 403：
+{
+    "code": 403,
+    "mes": "权限不足，仅管理员可删除用户",
+    "data": null
+}
+
+但数据库确认 admin 用户存在，且 user_role 字段值为 ROLE_ADMIN。
+
+========== 排查过程（曲折）：
+
+第一步：确认 SQL 查询结果正确
+控制台打印 SQL 日志显示：
+    ==>  Preparing: SELECT * FROM sys_user WHERE username = ?
+    ==> Parameters: admin(String)
+    <==    Columns: id, username, password, nickname, user_role, ...
+    <==        Row: 1, admin, ..., ROLE_ADMIN, ...
+    <==      Total: 1
+
+数据库返回的 user_role = ROLE_ADMIN，数据没问题。
+
+第二步：怀疑 is_admin 方法逻辑问题
+添加调试日志打印 userRole 值：
+    【权限检查】用户名=admin, user_role=null, 整条记录=User(..., user_role=null, ...)
+
+发现 user_role 在 Java 对象中为 null，尽管 SQL 结果中有值
+
+第三步：怀疑 @TableField 注解失效
+User.java 中已有 @TableField("user_role") 注解，但字段名是 user_role（蛇形命名）：
+    @TableField("user_role")
+    private String user_role;
+
+但这并没有解决问题，user_role 仍然是 null
+
+第四步：观察更多异常现象
+toString() 输出显示 create_time=null, update_time=null, is_deleted=null，
+同时 isDeleted=0（有值），说明所有蛇形字段都映射失败
+
+========== 原因：
+MyBatis-Plus 默认开启 mapUnderscoreToCamelCase（下划线转驼峰）
+处理流程如下：
+    数据库列：user_role
+        ↓ mapUnderscoreToCamelCase 转换
+    驼峰属性：userRole
+        ↓ 查找 Java 字段
+    找不到 userRole（只有 user_role），赋值失败 → user_role = null
+
+同理 create_time → createTime（找不到 create_time）
+同理 update_time → updateTime（找不到 update_time）
+同理 is_deleted → isDeleted（找到了 isDeleted 字段，所以 isDeleted 有值）
+
+虽然加了 @TableField("user_role") 注解，但字段名 user_role 本身
+与 MyBatis-Plus 的反射查找机制存在冲突，导致注解未能正确生效
+
+========== 解决方案：
+将所有 Java 实体字段改为标准驼峰命名，并加 @TableField 显式映射数据库列名：
+
+User.java 修改：
+    @TableField("user_role")
+    private String userRole;                    // 原：user_role
+    
+    @TableField("create_time")
+    private LocalDateTime createTime;           // 原：create_time
+    
+    @TableField("update_time")
+    private LocalDateTime updateTime;           // 原：update_time
+    
+    @TableField("last_login_time")
+    private LocalDateTime lastLoginTime;        // 原：last_login_time
+    
+    @TableField("is_deleted")
+    private Integer isDeleted;                  // 移除冗余的 is_deleted 字段
+
+同时更新所有调用方的 getter/setter：
+    UserService.java:    getUser_role()  → getUserRole()
+    InitAdminRunner.java: setUser_role()  → setUserRole()
+                          setCreate_time() → setCreateTime()
+    AuthController.java:  setCreate_time() → setCreateTime()
+
+========== 结果：
+重启应用后，is_admin("admin") 正确返回 true，删除接口返回 200 OK
+{
+    "code": 200,
+    "mes": "成功",
+    "data": "删除用户成功"
+}
+
+========== 教训：
+1. Java 实体字段名应始终使用驼峰命名（标准 Java 规范）
+   不要使用蛇形命名，即使数据库列是蛇形
+2. @TableField 注解用于声明数据库列名，而非字段名
+3. 当 MyBatis-Plus 的 mapUnderscoreToCamelCase 开启时，
+   蛇形字段名会导致字段赋值失败，问题隐蔽（SQL 正确但对象字段为空）

@@ -8,8 +8,4 @@ import org.springframework.stereotype.Service;
 public class RoleService {
     @Autowired
     private UserMapper userMapper;
-
-    public boolean is_admin(String username) {
-        return userMapper.checkRole(username);
-    }
 }

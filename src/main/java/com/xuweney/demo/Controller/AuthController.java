@@ -118,7 +118,7 @@ public class AuthController {
         user.setNickname(nickname);
         user.setStatus(1);
         user.setEmail(email);
-        user.setCreate_time(java.time.LocalDateTime.now());
+        user.setCreateTime(java.time.LocalDateTime.now());
 
         boolean saved = userService.save(user);
         if (saved) {

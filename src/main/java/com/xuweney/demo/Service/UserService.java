@@ -90,9 +90,7 @@ public class UserService {
         return userMapper.selectOne(wrapper);
     }
 
-    /**
-     * 检查邮箱是否已存在
-     */
+    //检查邮箱是否已存在
     public boolean isEmailExist(String email) {
         return userMapper.findByEmail(email) != null;
     }
@@ -137,8 +135,23 @@ public class UserService {
         return result;
     }
 
-    // 查询用户权限是否为管理员
+    //检查权限
     public boolean is_admin(String username) {
-        return userMapper.checkRole(username);
+        // 1. 查询用户
+        User user = userMapper.findByUsernameAll(username);
+
+        // 2. 判空
+        if (user == null) {
+            return false;
+        }
+
+        // 3. 获取角色并判空
+        String userRole = user.getUserRole();
+        if (userRole == null) {
+            return false;
+        }
+
+        // 4. 比较
+        return "ROLE_ADMIN".equals(userRole);
     }
 }
