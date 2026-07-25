@@ -47,32 +47,92 @@
               />
             </div>
           </div>
+
+          <!-- 新增邮箱输入 -->
+          <div class="form-group">
+            <label>邮箱</label>
+            <div class="input-wrap">
+              <span class="input-icon">📧</span>
+              <input
+                  v-model="email"
+                  type="email"
+                  placeholder="请输入邮箱地址"
+                  required
+              />
+            </div>
+          </div>
+
+          <!-- 新增邮箱验证码 -->
+          <div class="form-group">
+            <label>邮箱验证码</label>
+            <div class="input-wrap verification-wrap">
+              <span class="input-icon">✉️</span>
+              <input
+                  v-model="verificationCode"
+                  type="text"
+                  placeholder="请输入6位验证码"
+                  maxlength="6"
+                  required
+              />
+              <button
+                  type="button"
+                  class="send-code-btn"
+                  @click="sendVerificationCode"
+                  :disabled="codeCountdown > 0 || !isEmailValid"
+              >
+                {{ codeCountdown > 0 ? `${codeCountdown}s` : '发送验证码' }}
+              </button>
+            </div>
+          </div>
+
           <div class="form-group">
             <label>密码</label>
             <div class="input-wrap">
               <span class="input-icon">🔒</span>
               <input
                 v-model="password"
-                type="password"
+                :type="showPassword ? 'text' : 'password'"
                 placeholder="至少6位密码"
                 required
               />
+              <span class="toggle-pwd" @click.stop="showPassword = !showPassword">
+                {{ showPassword ? '🙈' : '👁️' }}
+              </span>
             </div>
+          <!-- 密码强度指示条 -->
+          <div v-if="password.length > 0" class="strength-wrap">
+            <div class="strength-bar">
+              <div
+                class="strength-fill"
+                :class="'fill--' + passwordStrength.level"
+                :style="{ width: passwordStrength.score === 0 ? '8%' : (passwordStrength.score / 9 * 100) + '%' }"
+              ></div>
+            </div>
+            <span class="strength-text" :class="'text--' + passwordStrength.level">
+              {{ passwordStrength.message }}
+            </span>
           </div>
-          <div class="form-group">
-            <label>确认密码</label>
+        </div>
+        <div class="form-group">
+          <label>确认密码</label>
             <div class="input-wrap">
               <span class="input-icon">🔐</span>
               <input
                 v-model="passwordExam"
-                type="password"
+                :type="showPasswordExam ? 'text' : 'password'"
                 placeholder="再次输入密码"
                 required
               />
+              <span class="toggle-pwd" @click.stop="showPasswordExam = !showPasswordExam">
+                {{ showPasswordExam ? '🙈' : '👁️' }}
+              </span>
             </div>
+          <p v-if="passwordExam.length > 0" class="match-hint" :class="passwordMatch.valid ? 'hint--ok' : 'hint--err'">
+            {{ passwordMatch.msg }}
+          </p>
           </div>
 
-          <button type="submit" class="register-btn" :disabled="loading">
+          <button type="submit" class="register-btn" :disabled="!canSubmit">
             <span v-if="loading" class="btn-loading"></span>
             <span v-else>注册账号</span>
           </button>
@@ -97,19 +157,123 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
 
 const router = useRouter()
 const username = ref('')
 const nickname = ref('')
+const email = ref('')
+const verificationCode = ref('')
 const password = ref('')
 const passwordExam = ref('')
 const loading = ref(false)
 const message = ref('')
 const success = ref(false)
+const showPassword = ref(false)
+const showPasswordExam = ref(false)
+const codeCountdown = ref(0)
+let countdownTimer = null
 
+// ==================== 邮箱验证 ====================
+const isEmailValid = computed(() => {
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+  return emailRegex.test(email.value)
+})
+
+// ==================== 密码强度校验 ====================
+const passwordStrength = computed(() => {
+  const pwd = password.value
+  if (!pwd) return { level: '', score: 0, valid: false, message: '' }
+
+  const length = pwd.length
+  const hasUpper = /[A-Z]/.test(pwd)
+  const hasLower = /[a-z]/.test(pwd)
+  const hasDigit = /[0-9]/.test(pwd)
+  const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd)
+
+  let score = 0
+  // 长度评分（与后端 PasswordStrengthUtils 一致）
+  if (length >= 12) score += 3
+  else if (length >= 10) score += 2
+  else if (length >= 8) score += 1
+
+  // 字符类型评分
+  if (hasUpper) score += 1
+  if (hasLower) score += 1
+  if (hasDigit) score += 1
+  if (hasSpecial) score += 2
+
+  // 判定等级（与后端一致）
+  if (length < 8) return { level: 'WEAK', score: 0, valid: false, message: '密码强度：弱（长度至少8位）' }
+  if (score <= 4) return { level: 'WEAK', score, valid: false, message: '密码强度：弱（建议包含大小写字母、数字和特殊字符）' }
+  if (score <= 6) return { level: 'MEDIUM', score, valid: true, message: '密码强度：中' }
+  if (score <= 8) return { level: 'STRONG', score, valid: true, message: '密码强度：强' }
+  return { level: 'VERY_STRONG', score: 9, valid: true, message: '密码强度：非常强' }
+})
+
+// 密码一致性
+const passwordMatch = computed(() => {
+  if (!passwordExam.value || !password.value) return { valid: false, msg: '' }
+  const match = password.value === passwordExam.value
+  return { valid: match, msg: match ? '✓ 密码一致' : '✗ 密码不一致' }
+})
+
+// 是否可以提交
+const canSubmit = computed(() => {
+  return passwordStrength.value.valid &&
+      passwordMatch.value.valid &&
+      verificationCode.value.length === 6 &&
+      isEmailValid.value &&
+      !loading.value
+})
+
+// ==================== 发送验证码 ====================
+async function sendVerificationCode() {
+  if (!isEmailValid.value) {
+    message.value = '请输入正确的邮箱地址'
+    success.value = false
+    return
+  }
+
+  try {
+    loading.value = true
+    message.value = ''
+
+    const params = new URLSearchParams()
+    params.append('email', email.value.trim())
+
+    const data = await request('/auth/send-code', {
+      method: 'POST',
+      body: params
+    })
+
+    if (data.code === 200) {
+      success.value = true
+      message.value = '验证码已发送到您的邮箱'
+      // 开始倒计时
+      codeCountdown.value = 60
+      countdownTimer = setInterval(() => {
+        codeCountdown.value--
+        if (codeCountdown.value <= 0) {
+          clearInterval(countdownTimer)
+          countdownTimer = null
+        }
+      }, 1000)
+    } else {
+      success.value = false
+      message.value = data.mes || '发送验证码失败'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = '网络错误，请检查后端服务是否启动'
+  } finally {
+    loading.value = false
+  }
+}
+
+// ==================== 注册 ====================
 async function handleRegister() {
   loading.value = true
   message.value = ''
@@ -119,6 +283,8 @@ async function handleRegister() {
     params.append('password', password.value)
     params.append('password_exam', passwordExam.value)
     params.append('nickname', nickname.value.trim())
+    params.append('email', email.value.trim())  // 新增
+    params.append('code', verificationCode.value)  // 新增验证码
 
     const data = await request('/auth/register', {
       method: 'POST',
@@ -142,6 +308,43 @@ async function handleRegister() {
 </script>
 
 <style scoped>
+.verification-wrap {
+  padding-right: 4px;
+}
+.send-code-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4a9eff, #7c3aed);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+.send-code-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+}
+.send-code-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle-pwd {
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.5;
+  transition: opacity 0.3s;
+  user-select: none;
+  padding: 4px;
+}
+.toggle-pwd:hover {
+  opacity: 1;
+}
+
 .register-page {
   min-height: 100vh;
   display: flex;
@@ -395,6 +598,48 @@ async function handleRegister() {
   color: #adb5bd;
   letter-spacing: 0.02em;
 }
+
+/* ==================== 密码强度指示条 ==================== */
+.strength-wrap {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.strength-bar {
+  flex: 1;
+  height: 4px;
+  background: #e9ecef;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.strength-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), background 0.4s ease;
+}
+.fill--WEAK { background: #e03131; }
+.fill--MEDIUM { background: #f08c00; }
+.fill--STRONG { background: #2f9e44; }
+.fill--VERY_STRONG { background: #0c8599; }
+.strength-text {
+  font-size: 0.75rem;
+  white-space: nowrap;
+  transition: color 0.3s ease;
+}
+.text--WEAK { color: #e03131; }
+.text--MEDIUM { color: #f08c00; }
+.text--STRONG { color: #2f9e44; }
+.text--VERY_STRONG { color: #0c8599; }
+
+/* ==================== 密码一致性提示 ==================== */
+.match-hint {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  animation: fadeIn 0.3s ease;
+}
+.hint--ok { color: #2f9e44; }
+.hint--err { color: #e03131; }
 
 @media (max-width: 480px) {
   .nav { padding: 0 24px; }

@@ -9,7 +9,7 @@ createApp(App).use(router).mount('#app')
 startTokenCheck(
     30000,//30秒检查一次
     (reason) => {
-        if (window.location.pathname !== '/login') {
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
             window.location.href = '/login'
         }
     }

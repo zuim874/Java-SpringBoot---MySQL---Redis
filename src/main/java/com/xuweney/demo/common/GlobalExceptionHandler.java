@@ -37,6 +37,7 @@ public class GlobalExceptionHandler {
     // 通用异常屏蔽底层堆栈
     @ExceptionHandler(Exception.class)
     public Result<?> handle(Exception e) {
+        log.error("未捕获异常", e);  // 打印完整堆栈
         return Result.error(500, "服务器异常，请稍后重试");
     }
 }

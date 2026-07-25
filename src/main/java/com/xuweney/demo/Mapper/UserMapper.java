@@ -15,6 +15,10 @@ public interface UserMapper extends BaseMapper<User> {
     @Select("SELECT * FROM sys_user WHERE username = #{username}")
     User findByUsernameAll(@Param("username") String username);
 
+    // 查邮箱
+    @Select("SELECT * FROM sys_user WHERE email = #{email}")
+    User findByEmail(@Param("email") String email);
+
     // 恢复删除用户
     @Update("UPDATE sys_user SET is_deleted = 0 WHERE id = #{id}")
     int recoverById(@Param("id") Long id);

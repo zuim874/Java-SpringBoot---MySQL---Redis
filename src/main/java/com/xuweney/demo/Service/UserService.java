@@ -90,6 +90,13 @@ public class UserService {
         return userMapper.selectOne(wrapper);
     }
 
+    /**
+     * 检查邮箱是否已存在
+     */
+    public boolean isEmailExist(String email) {
+        return userMapper.findByEmail(email) != null;
+    }
+
     //保存用户
     public boolean save(User user) {
         String username = user.getUsername();
