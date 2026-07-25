@@ -5,12 +5,16 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   server: {
+    host: '0.0.0.0',
     port: 5173,
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true
       }
-    }
-  }
+    },
+    // 允许所有主机访问（开发环境）
+    allowedHosts: ['frp-bar.com', '.frp-bar.com'],
+  },
+  https: false
 })

@@ -18,6 +18,7 @@ public class User {
     private String avatar;
     private String email;
     private Integer status;                 //0禁用，1启用
+    private String user_role;
     private LocalDateTime create_time;      //创建账号时间
     private LocalDateTime update_time;                 //上一次更新资料时间
     private LocalDateTime last_login_time;             //上一次登陆时间

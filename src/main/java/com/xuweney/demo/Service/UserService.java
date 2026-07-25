@@ -136,4 +136,9 @@ public class UserService {
         }
         return result;
     }
+
+    // 查询用户权限是否为管理员
+    public boolean is_admin(String username) {
+        return userMapper.checkRole(username);
+    }
 }

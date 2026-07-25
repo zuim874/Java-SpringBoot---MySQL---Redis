@@ -22,4 +22,8 @@ public interface UserMapper extends BaseMapper<User> {
     // 恢复删除用户
     @Update("UPDATE sys_user SET is_deleted = 0 WHERE id = #{id}")
     int recoverById(@Param("id") Long id);
+
+    // 检查用户权限
+    @Select("SELECT role from sys_user WHERE username = #{username}")
+    boolean checkRole(@Param("username") String username);
 }

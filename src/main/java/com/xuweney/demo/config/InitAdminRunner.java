@@ -34,6 +34,7 @@ public class InitAdminRunner implements CommandLineRunner {
                     admin.setPassword(passwordEncoder.encode("123456"));  // 加密存储
                     admin.setNickname("超级管理员");
                     admin.setStatus(1);
+                    admin.setUser_role("ROLE_ADMIN");
                     admin.setCreate_time(LocalDateTime.now());
                     userService.save(admin);
                 }
