@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit;
 @RequestMapping("/api/auth")
 @RestController
 public class AuthController {
-    @Value("${test.codecheck.status:true}")
-    private boolean codecheckstatus;
+    @Value("${test.registerCodeCheck.status:true}")
+    private boolean registerCodeCheckStatus;
 
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
@@ -97,9 +97,9 @@ public class AuthController {
             return Result.error(400, strengthResult.getMessage());
         }
 
-        String redisKey = "verify_code:" + email;
+        String redisKey = "verify_registerCode:" + email;
         String storedCode = (String) redisUtil.get(redisKey);
-        if (codecheckstatus) {
+        if (registerCodeCheckStatus) {
             // 1. 校验验证码是否正确且未过期
             if (storedCode == null) {
                 return Result.error(400, "验证码已过期，请重新获取");
@@ -130,9 +130,9 @@ public class AuthController {
         return Result.error(500, "注册失败");
     }
 
-    @PostMapping("/send-code")
+    @PostMapping("/send-registercode")
     public Result<?> sendVerificationCode(@RequestParam String email) {
-        if (codecheckstatus) {
+        if (registerCodeCheckStatus) {
             try {
                 // 1. 检查邮箱是否已注册
                 if (userService.isEmailExist(email)) {
@@ -140,8 +140,8 @@ public class AuthController {
                 }
 
                 // 2. 检查是否频繁发送（防刷）
-                String redisKey = "verify_code:" + email;
-                String sendLimitKey = "verify_code_limit:" + email;
+                String redisKey = "verify_registerCode:" + email;
+                String sendLimitKey = "verify_registerCode_limit:" + email;
 
                 // 检查是否在60秒内重复发送
                 if (redisUtil.hasKey(sendLimitKey)) {
@@ -158,17 +158,17 @@ public class AuthController {
                 redisUtil.set(sendLimitKey, "1", 60, TimeUnit.SECONDS);
 
                 // 5. 发送邮件（异步发送）
-                emailUtil.sendVerificationCode(email, code);
+                emailUtil.sendRegisterVerificationCode(email, code);
 
-                return Result.ok("验证码已发送到您的邮箱，请注意查收");
+                return Result.ok("注册验证码已发送到您的邮箱，请注意查收");
 
             } catch (Exception e) {
-                e.printStackTrace();
+                e.printStackTrace();    // 控制台定位报错代码行数
                 return Result.error(400, "发送验证码失败：" + e.getMessage());
             }
         }
         else {
-            return Result.ok("已跳过邮箱验证");
+            return Result.ok("已跳过注册邮箱验证");
         }
     }
 

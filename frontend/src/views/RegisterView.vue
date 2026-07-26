@@ -244,7 +244,7 @@ async function sendVerificationCode() {
     const params = new URLSearchParams()
     params.append('email', email.value.trim())
 
-    const data = await request('/auth/send-code', {
+    const data = await request('/auth/send-rigistercode', {
       method: 'POST',
       body: params
     })

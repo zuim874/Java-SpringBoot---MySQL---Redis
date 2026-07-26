@@ -69,6 +69,26 @@ public class UserService {
         return user;
     }
 
+    //查询删除用户
+    public User findUsernameforRecover(String username) {
+        String cacheKey = "demo:user:recover:" + username;
+
+        // redis查询
+        User cached = (User) redisTemplate.opsForValue().get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        // redis没有，查mysql
+        User user = userMapper.findByUsernameDeleted(username);
+
+        // 写入redis(10分钟过期)
+        if (user != null) {
+            redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+        }
+        return user;
+    }
+
     //根据昵称查询用户
     public List<User> findNickname(String nickname) {
         QueryWrapper<User> wrapper = new QueryWrapper<>();
@@ -121,7 +141,7 @@ public class UserService {
         return result;
     }
 
-    //恢复用户
+    //恢复用户(根据ID)
     public boolean recoverById(Long id) {
         boolean result = userMapper.recoverById(id) > 0;
         if (result) {

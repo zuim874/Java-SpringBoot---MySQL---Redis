@@ -13,6 +13,8 @@ import java.time.LocalDateTime;
 public class InitAdminRunner implements CommandLineRunner {
     @Value("${test.username.status:false}")
     private Boolean examStatus;
+//    @Value("${test.initEmailName}")
+//    private String testInitEmailName;
 
     @Autowired
     private UserService userService;
@@ -52,6 +54,7 @@ public class InitAdminRunner implements CommandLineRunner {
                         testUser.setNickname("测试用户" + i);
                         testUser.setStatus(1);
                         testUser.setCreateTime(LocalDateTime.now());
+//                        testUser.setEmail(testInitEmailName);
                         userService.save(testUser);
                         if (i % 100 == 0) {
                             System.out.println("已创建：" + i + " 个测试账号");

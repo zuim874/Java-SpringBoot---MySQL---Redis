@@ -4,28 +4,38 @@ import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Service.UserService;
 import com.xuweney.demo.common.Result;
 import com.xuweney.demo.util.JwtUtil;
+import com.xuweney.demo.util.RedisUtil;
+import com.xuweney.demo.util.EmailUtil;
 import jakarta.validation.constraints.Min;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/user")
 @Validated
 public class UserController {
+    @Value("${test.recoverCodeCheck.status:true}")
+    private Boolean recoverCodeCheckStatus;
 
-    @Autowired
-    private UserService userService;
+    private final UserService userService;
+    private final JwtUtil jwtUtil;
+    private final RedisUtil redisUtil;
+    private final EmailUtil emailUtil;
 
-    @Autowired
-    private JwtUtil jwtUtil;
+    public UserController(UserService userService,
+                          JwtUtil jwtUtil,
+                          RedisUtil redisUtil,
+                          EmailUtil emailUtil) {
+        this.userService = userService;
+        this.jwtUtil = jwtUtil;
+        this.redisUtil = redisUtil;
+        this.emailUtil = emailUtil;
+    }
 
-    /**
-     *
-     * @param token
-     * @param id
-     * @return
-     */
     @DeleteMapping("/delete_admin")
     public Result<?> deleteUserByAdminParam(
             @RequestHeader("Authorization") String token,
@@ -55,11 +65,6 @@ public class UserController {
         }
     }
 
-    /**
-     *
-     * @param token
-     * @return
-     */
     @DeleteMapping("/delete_user")
     public Result<?> deleteUserByUserParam(
             @RequestHeader("Authorization") String token
@@ -106,9 +111,9 @@ public class UserController {
         if(!jwtUtil.validate(realToken)){
             return Result.error(401, "令牌失效，请重新登录");
         }
-        // 获取当前登录用户名(严重错误：要修改，应该为获取权限)，用于做权限判断（仅管理员可删除）
+        // 获取当前登录用户权限
         String loginUsername = jwtUtil.parseUsername(realToken);
-        if(!"admin".equals(loginUsername)){ //应改为权限检测Role
+        if(!userService.is_admin(loginUsername)){
             return Result.error(403, "权限不足，仅管理员可删除用户");
         }
 
@@ -123,29 +128,97 @@ public class UserController {
 
     @PutMapping("recover_user") // 当前逻辑异常：若要恢复说明已删除，已删除则不可登录（需引入新验证方式）
     public Result<?> recoverUserByUserParam(
-            @RequestHeader("Authorization") String token
-    ){
-        // 1：剥离Bearer前缀，校验token合法性
-        if(token == null || !token.startsWith("Bearer ")){
-            return Result.error(401, "未登录，请先登录");
+            @RequestParam String username,
+            @RequestParam String email,
+            @RequestParam String code
+    ) {
+        // 1:检查用户名
+        User user = userService.findUsernameforRecover(username);
+        if (user == null) {
+            return Result.error(400,"请检查用户名是否正确");
         }
-        String realToken = token.substring(7);
-        if(!jwtUtil.validate(realToken)){
-            return Result.error(401, "令牌失效，请重新登录");
+        // 2:检查email
+        if (!user.getEmail().equals(email)) {
+            return Result.error(400, "请检查绑定的邮箱是否正确");
         }
-        // 2：直接从token获取当前登录用户名，无需前端传id
-        String loginUsername = jwtUtil.parseUsername(realToken);
-        // 3：根据用户名查询当前登录用户
-        User targetUser = userService.findUsernameforlogin(loginUsername);
-        if(targetUser == null){
-            return Result.error(400, "用户不存在");
+
+        String redisKey = "verify_recoverCode:" + email;
+        String storedCode = (String) redisUtil.get(redisKey);
+        // 3:发送验证码并验证其正确
+        if (recoverCodeCheckStatus) {
+            // 1. 校验验证码是否正确且未过期
+            if (storedCode == null) {
+                return Result.error(400, "验证码已过期，请重新获取");
+            }
+            if (!storedCode.equals(code)) {
+                return Result.error(400, "验证码错误");
+            }
         }
-        // 4：调用业务层执行恢复
-        boolean recoverSuccess = userService.recoverById(targetUser.getId());
+        else {
+            System.out.println("已跳过验证");
+        }
+
+        // 4:调用业务层执行恢复
+        boolean recoverSuccess = userService.recoverById(user.getId());
         if(recoverSuccess){
             return Result.ok("恢复用户成功");
         }else{
             return Result.error(400, "恢复失败，该用户不存在");
         }
+
+    }
+
+    @PostMapping("/send-recovercode")
+    public Result<?> sendVerificationCode(@RequestParam String email) {
+        if (recoverCodeCheckStatus) {
+            try {
+                // 1. 检查邮箱是否已注册
+                if (!userService.isEmailExist(email)) {
+                    return Result.error(400, "该邮箱未绑定账号");
+                }
+
+                // 2. 检查是否频繁发送（防刷）
+                String redisKey = "verify_recoverCode:" + email;
+                String sendLimitKey = "verify_recoverCode_limit:" + email;
+
+                // 检查是否在60秒内重复发送
+                if (redisUtil.hasKey(sendLimitKey)) {
+                    long ttl = redisUtil.getExpire(sendLimitKey, TimeUnit.SECONDS);
+                    return Result.error(400,"请等待 " + ttl + " 秒后再试");
+                }
+
+                // 3. 生成6位随机验证码
+                String code = generateVerificationCode();
+
+                // 4. 存入 Redis（设置过期时间 5分钟）
+                redisUtil.set(redisKey, code, 5, TimeUnit.MINUTES);
+                // 发送限制标记（60秒过期）
+                redisUtil.set(sendLimitKey, "1", 60, TimeUnit.SECONDS);
+
+                // 5. 发送邮件（异步发送）
+                emailUtil.sendRecoverAccountCode(email, code);
+
+                return Result.ok("账号恢复验证码已发送到您的邮箱，请注意查收");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Result.error(400, "发送验证码失败：" + e.getMessage());
+            }
+        }
+        else {
+            return Result.ok("已跳过账号恢复邮箱验证");
+        }
+    }
+
+    /**
+     * 生成6位数字验证码
+     */
+    private String generateVerificationCode() {
+        Random random = new Random();
+        StringBuilder code = new StringBuilder();
+        for (int i = 0; i < 6; i++) {
+            code.append(random.nextInt(10));
+        }
+        return code.toString();
     }
 }
