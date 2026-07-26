@@ -23,6 +23,9 @@ application-local.properties
 target/
 !.mvn/wrapper/maven-wrapper.jar
 
+# reasonix
+.reasonix/
+
 # IDE 文件
 .idea/
 *.iml

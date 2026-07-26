@@ -6,5 +6,5 @@ import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
 public interface RoleMapper extends BaseMapper<Role> {
-    //方法已经由basemapper自动生成
+    // 基础 CRUD 方法已由 BaseMapper 自动生成
 }

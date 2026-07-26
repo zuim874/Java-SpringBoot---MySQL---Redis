@@ -12,7 +12,7 @@ public class PasswordStrengthConfig {
         return status;
     }
 
-    public  void setStatus(boolean status) {
+    public void setStatus(boolean status) {
         this.status = status;
     }
 }

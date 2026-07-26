@@ -17,9 +17,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
-@Validated
-@RequestMapping("/api/auth")
 @RestController
+@RequestMapping("/api/auth")
+@Validated
 public class AuthController {
     @Value("${test.registerCodeCheck.status:true}")
     private boolean registerCodeCheckStatus;
@@ -46,8 +46,8 @@ public class AuthController {
     public Result<?> login(@RequestParam String username,
                            @RequestParam String password) {
         // 输入清洗：去掉首尾空格和危险字符
-        username = SanitizeUtil.Sanitize(username);
-        password = SanitizeUtil.Sanitize(password);
+        username = SanitizeUtil.sanitize(username);
+        password = SanitizeUtil.sanitize(password);
 
         User user = userService.findUsernameforlogin(username);
 
@@ -73,12 +73,12 @@ public class AuthController {
                               @RequestParam String email,
                               @RequestParam String code) {
         // 输入清洗
-        username = SanitizeUtil.Sanitize(username);
-        password = SanitizeUtil.Sanitize(password);
-        password_exam = SanitizeUtil.Sanitize(password_exam);
-        nickname = SanitizeUtil.Sanitize(nickname);
-        email = SanitizeUtil.Sanitize(email);
-        code = SanitizeUtil.Sanitize(code);
+        username = SanitizeUtil.sanitize(username);
+        password = SanitizeUtil.sanitize(password);
+        password_exam = SanitizeUtil.sanitize(password_exam);
+        nickname = SanitizeUtil.sanitize(nickname);
+        email = SanitizeUtil.sanitize(email);
+        code = SanitizeUtil.sanitize(code);
 
         if (userService.findUsername(username) != null) {
             return Result.error(400, "用户名已存在");

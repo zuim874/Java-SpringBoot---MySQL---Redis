@@ -35,9 +35,6 @@ public class UserService {
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         //wrapper.eq("数据表字段名",传入参数);用条件构造器判断值是否相等
         wrapper.eq("username",username);
-        //检验是否删除,筛选出未删除的（使用Mybatis的自动过滤，此处可省略）
-//        wrapper.eq("is_deleted",0);
-        //导入mapper层（user）查询方法，selectone匹配一个符合条件的值，结合上一行使匹配username
         User user = userMapper.selectOne(wrapper);
 
         // 第 3 步：查到了就写入 Redis（10 分钟过期，避免数据长期不一致）

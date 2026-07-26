@@ -4,7 +4,7 @@ public class SanitizeUtil {
     /**
      * 清洗输入：去除危险字符，防止 XSS 和 SQL 注入
      */
-    public static String Sanitize(String input) {
+    public static String sanitize(String input) {
         if (input == null) return null;
         // 去掉首尾空格
         input = input.trim();

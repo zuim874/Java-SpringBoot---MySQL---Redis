@@ -94,7 +94,7 @@ public class UserController {
         }
     }
 
-    @PutMapping("recover_admin")
+    @PutMapping("/recover_admin")
     public Result<?> recoverUserByAdminParam(
             @RequestHeader("Authorization") String token,
             @Min(1) @RequestParam Long id
@@ -126,7 +126,7 @@ public class UserController {
         }
     }
 
-    @PutMapping("recover_user") // 当前逻辑异常：若要恢复说明已删除，已删除则不可登录（需引入新验证方式）
+    @PutMapping("/recover_user") // 当前逻辑异常：若要恢复说明已删除，已删除则不可登录（需引入新验证方式）
     public Result<?> recoverUserByUserParam(
             @RequestParam String username,
             @RequestParam String email,

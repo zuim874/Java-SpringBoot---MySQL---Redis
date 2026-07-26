@@ -14,15 +14,15 @@ public class User {
     private String nickname;
     private String avatar;
     private String email;
-    private Integer status;                 //0禁用，1启用
+    private Integer status;                 // 0禁用，1启用
     @TableField("user_role")
     private String userRole;
     @TableField("create_time")
-    private LocalDateTime createTime;      //创建账号时间
+    private LocalDateTime createTime;      // 创建账号时间
     @TableField("update_time")
-    private LocalDateTime updateTime;                 //上一次更新资料时间
+    private LocalDateTime updateTime;      // 上一次更新资料时间
     @TableField("last_login_time")
-    private LocalDateTime lastLoginTime;             //上一次登陆时间
+    private LocalDateTime lastLoginTime;   // 上一次登录时间
 
     // 逻辑删除（MyBatis-Plus 需要这个注解识别逻辑删除字段）
     @TableLogic

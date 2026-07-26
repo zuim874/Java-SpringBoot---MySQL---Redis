@@ -9,7 +9,7 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface UserMapper extends BaseMapper<User> {
-    //方法已经由basemapper自动生成
+    // 基础 CRUD 方法已由 BaseMapper 自动生成
 
     // 查所有（包括已删除），用于注册时判断
     @Select("SELECT * FROM sys_user WHERE username = #{username}")
@@ -23,12 +23,7 @@ public interface UserMapper extends BaseMapper<User> {
     @Update("UPDATE sys_user SET is_deleted = 0 WHERE id = #{id}")
     int recoverById(@Param("id") Long id);
 
-    // 查所有（包括已删除），用于注册时判断
+    // 查询已逻辑删除的用户（用于账号恢复时校验）
     @Select("SELECT * FROM sys_user WHERE username = #{username} AND is_deleted = 1")
     User findByUsernameDeleted(@Param("username") String username);
-
-
-//    // 检查用户权限
-//    @Select("SELECT * from sys_user WHERE username = #{username}")
-//    User checkRole(@Param("username") String username);
 }

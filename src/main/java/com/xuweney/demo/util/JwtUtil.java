@@ -22,11 +22,11 @@ public class JwtUtil {
         this.expirationMs = expirationMs;
     }
 
-    // ToKen格式：头部.荷载.签名 Header(Base64URL编码).Payload(Base64URL编码).Signature(防篡改核心)
+    // Token 格式：头部.荷载.签名 Header(Base64URL编码).Payload(Base64URL编码).Signature(防篡改核心)
     // 头部：声明加密算法
     // 荷载：核心业务数据，存放用户信息，过期时间
-    // 签名：检验ToKen是否被篡改
-    // 生成ToKen
+    // 签名：检验 Token 是否被篡改
+    // 生成 Token
     public String generateToken(String username) {
         return Jwts.builder()
                 .subject(username)      // 荷载 sub 字段：存入用户名
