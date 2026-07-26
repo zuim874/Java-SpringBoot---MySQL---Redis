@@ -13,8 +13,8 @@ import java.time.LocalDateTime;
 public class InitAdminRunner implements CommandLineRunner {
     @Value("${test.username.status:false}")
     private Boolean examStatus;
-//    @Value("${test.initEmailName}")
-//    private String testInitEmailName;
+    @Value("${test.initEmailName}")
+    private String testInitEmailName;
 
     @Autowired
     private UserService userService;
@@ -37,6 +37,7 @@ public class InitAdminRunner implements CommandLineRunner {
                 admin.setNickname("超级管理员");
                 admin.setStatus(1);
                 admin.setUserRole("ROLE_ADMIN");
+                admin.setEmail(testInitEmailName);
                 admin.setCreateTime(LocalDateTime.now());
                 userService.save(admin);
             }
