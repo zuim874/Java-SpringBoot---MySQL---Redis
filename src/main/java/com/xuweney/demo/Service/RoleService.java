@@ -13,9 +13,10 @@ import java.util.List;
  */
 @Service
 public class RoleService {
-
-    @Autowired
-    private RoleMapper roleMapper;
+    private final RoleMapper roleMapper;
+    public RoleService(RoleMapper roleMapper) {
+        this.roleMapper = roleMapper;
+    }
 
     /**
      * 根据角色编码查询

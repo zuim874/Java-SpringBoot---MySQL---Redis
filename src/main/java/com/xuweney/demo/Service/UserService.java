@@ -3,21 +3,21 @@ package com.xuweney.demo.Service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Mapper.UserMapper;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import com.xuweney.demo.util.redis.RedisUtil;
 
 @Service
 public class UserService {
-    @Autowired
-    private UserMapper userMapper;
-
-    // 注入 RedisTemplate，用于缓存用户数据
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private final UserMapper userMapper;
+    private final RedisUtil redisUtil;
+    public UserService(UserMapper userMapper,
+                       RedisUtil redisUtil) {
+        this.userMapper = userMapper;
+        this.redisUtil = redisUtil;
+    }
 
     //根据用户名查询用户（登录用，含 Redis 缓存）
     public User findUsernameforlogin(String username) {
@@ -25,7 +25,7 @@ public class UserService {
         String cacheKey = "demo:user:login:active:" + username;
 
         // 第 1 步：先从 Redis 查，有则直接返回
-        User cached = (User) redisTemplate.opsForValue().get(cacheKey);
+        User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
@@ -39,7 +39,7 @@ public class UserService {
 
         // 第 3 步：查到了就写入 Redis（10 分钟过期，避免数据长期不一致）
         if (user != null) {
-            redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
         }
 
         return user;
@@ -51,7 +51,7 @@ public class UserService {
         String cacheKey = "demo:user:login:all:" + username;
 
         // redis查询
-        User cached = (User) redisTemplate.opsForValue().get(cacheKey);
+        User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
@@ -61,7 +61,7 @@ public class UserService {
 
         // 写入redis(10分钟过期)
         if (user != null) {
-            redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
         }
         return user;
     }
@@ -71,7 +71,7 @@ public class UserService {
         String cacheKey = "demo:user:recover:" + username;
 
         // redis查询
-        User cached = (User) redisTemplate.opsForValue().get(cacheKey);
+        User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
@@ -81,7 +81,7 @@ public class UserService {
 
         // 写入redis(10分钟过期)
         if (user != null) {
-            redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
         }
         return user;
     }
@@ -92,7 +92,7 @@ public class UserService {
         String cacheKey = "demo:user:nickname:" + nickname;
 
         // 第 1 步：先从 Redis 查
-        List<User> cached = (List<User>) redisTemplate.opsForValue().get(cacheKey);
+        List<User> cached = (List<User>) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
@@ -104,7 +104,7 @@ public class UserService {
 
         // 第 3 步：写入 Redis（5 分钟过期，列表缓存允许短暂不一致）
         if (list != null && !list.isEmpty()) {
-            redisTemplate.opsForValue().set(cacheKey, list, 5, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, list, 5, TimeUnit.MINUTES);
         }
         return list;
     }
@@ -115,7 +115,7 @@ public class UserService {
         String cacheKey = "demo:user:status:" + status;
 
         // 第 1 步：先从 Redis 查
-        List<User> cached = (List<User>) redisTemplate.opsForValue().get(cacheKey);
+        List<User> cached = (List<User>) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
@@ -127,7 +127,7 @@ public class UserService {
 
         // 第 3 步：写入 Redis（5 分钟过期）
         if (list != null && !list.isEmpty()) {
-            redisTemplate.opsForValue().set(cacheKey, list, 5, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, list, 5, TimeUnit.MINUTES);
         }
         return list;
     }
@@ -138,7 +138,7 @@ public class UserService {
         String cacheKey = "demo:user:id:" + id;
 
         // 第 1 步：先从 Redis 查
-        User cached = (User) redisTemplate.opsForValue().get(cacheKey);
+        User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
@@ -150,7 +150,7 @@ public class UserService {
 
         // 第 3 步：查到了就写入 Redis（10 分钟过期）
         if (user != null) {
-            redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
         }
         return user;
     }
@@ -160,7 +160,7 @@ public class UserService {
         String cacheKey = "demo:user:email:" + email;
 
         // 第 1 步：先从 Redis 查
-        User cached = (User) redisTemplate.opsForValue().get(cacheKey);
+        User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return true;
         }
@@ -170,7 +170,7 @@ public class UserService {
 
         // 第 3 步：存在则写入 Redis（10 分钟过期）
         if (user != null) {
-            redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
             return true;
         }
         return false;
@@ -183,7 +183,7 @@ public class UserService {
         String cacheKey = "demo:user:login:active:" + username;
         boolean result = userMapper.insert(user) > 0;
 
-        redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+        redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
 
         return result;
     }
@@ -197,12 +197,12 @@ public class UserService {
         if (result && user != null) {
             String username = user.getUsername();
             // 清除该用户关联的所有缓存
-            redisTemplate.delete("demo:user:login:active:" + username);
-            redisTemplate.delete("demo:user:login:all:" + username);
-            redisTemplate.delete("demo:user:recover:" + username);
-            redisTemplate.delete("demo:user:id:" + id);
+            redisUtil.delete("demo:user:login:active:" + username);
+            redisUtil.delete("demo:user:login:all:" + username);
+            redisUtil.delete("demo:user:recover:" + username);
+            redisUtil.delete("demo:user:id:" + id);
             if (user.getEmail() != null) {
-                redisTemplate.delete("demo:user:email:" + user.getEmail());
+                redisUtil.delete("demo:user:email:" + user.getEmail());
             }
         }
         return result;
@@ -216,13 +216,13 @@ public class UserService {
             if (user != null) {
                 String username = user.getUsername();
                 // 清除旧的关联缓存（recover 和 all 中的数据已过时）
-                redisTemplate.delete("demo:user:recover:" + username);
-                redisTemplate.delete("demo:user:login:all:" + username);
-                redisTemplate.delete("demo:user:id:" + id);
+                redisUtil.delete("demo:user:recover:" + username);
+                redisUtil.delete("demo:user:login:all:" + username);
+                redisUtil.delete("demo:user:id:" + id);
 
                 // 恢复后重新写入 active 缓存（用户已可登录）
                 String cacheKey = "demo:user:login:active:" + username;
-                redisTemplate.opsForValue().set(cacheKey, user, 10, TimeUnit.MINUTES);
+                redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
             }
         }
         return result;

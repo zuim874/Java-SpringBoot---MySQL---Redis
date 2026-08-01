@@ -4,7 +4,6 @@ import com.xuweney.demo.Service.UserService;
 import com.xuweney.demo.common.Result;
 import com.xuweney.demo.util.auth.JwtUtil;
 import jakarta.validation.constraints.Min;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,12 +14,14 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/user")
 @Validated
 public class AdminUserController {
+    private final UserService userService;
+    private final JwtUtil jwtUtil;
 
-    @Autowired
-    private UserService userService;
-
-    @Autowired
-    private JwtUtil jwtUtil;
+    public AdminUserController(UserService userService,
+                          JwtUtil jwtUtil) {
+        this.userService = userService;
+        this.jwtUtil = jwtUtil;
+    }
 
     /**
      * 管理员删除用户（逻辑删除）

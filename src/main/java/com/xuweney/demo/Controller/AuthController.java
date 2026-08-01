@@ -2,6 +2,7 @@ package com.xuweney.demo.Controller;
 
 import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Service.UserService;
+import com.xuweney.demo.annotation.RateLimit;
 import com.xuweney.demo.common.Result;
 import com.xuweney.demo.dto.response.LoginResponse;
 import com.xuweney.demo.util.auth.JwtUtil;
@@ -42,6 +43,7 @@ public class AuthController {
         this.emailUtil = emailUtil;
     }
 
+    @RateLimit(window = 60, maxRequests = 3, message = "登录尝试过多，请稍后再试")
     @PostMapping("/login")
     public Result<?> login(@RequestParam String username,
                            @RequestParam String password) {

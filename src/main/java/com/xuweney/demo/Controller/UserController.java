@@ -21,18 +21,19 @@ import java.util.concurrent.TimeUnit;
 @RequestMapping("/api/user")
 @Validated
 public class UserController {
-
-    @Autowired
-    private UserService userService;
-
-    @Autowired
-    private JwtUtil jwtUtil;
-
-    @Autowired
-    private RedisUtil redisUtil;
-
-    @Autowired
-    private EmailUtil emailUtil;
+    private final UserService userService;
+    private final JwtUtil jwtUtil;
+    private final RedisUtil redisUtil;
+    private final EmailUtil emailUtil;
+    public UserController(UserService userService,
+                          JwtUtil jwtUtil,
+                          RedisUtil redisUtil,
+                          EmailUtil emailUtil) {
+        this.userService = userService;
+        this.jwtUtil = jwtUtil;
+        this.redisUtil = redisUtil;
+        this.emailUtil = emailUtil;
+    }
 
     @Value("${test.recoverCodeCheck.status:false}")
     private boolean recoverCodeCheckStatus;
