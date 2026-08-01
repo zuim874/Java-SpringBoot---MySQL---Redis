@@ -3,17 +3,17 @@ package com.xuweney.demo.Controller;
 import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Service.UserService;
 import com.xuweney.demo.common.Result;
-import com.xuweney.demo.util.JwtUtil;
-import com.xuweney.demo.util.PasswordStrengthUtils;
-import com.xuweney.demo.util.SanitizeUtil;
-import com.xuweney.demo.util.EmailUtil;
-import com.xuweney.demo.util.RedisUtil;
+import com.xuweney.demo.dto.response.LoginResponse;
+import com.xuweney.demo.util.auth.JwtUtil;
+import com.xuweney.demo.util.auth.PasswordStrengthUtils;
+import com.xuweney.demo.util.oi.SanitizeUtil;
+import com.xuweney.demo.util.email.EmailUtil;
+import com.xuweney.demo.util.redis.RedisUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -59,10 +59,7 @@ public class AuthController {
         }
 
         String token = jwtUtil.generateToken(username);
-        return Result.ok(Map.of(
-                "token", token,
-                "nickname", user.getNickname()
-        ));
+        return Result.ok(new LoginResponse(token, user.getNickname()));
     }
 
     @PostMapping("/register")

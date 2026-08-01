@@ -1,6 +1,7 @@
 package com.xuweney.demo.Entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -12,10 +13,19 @@ import java.time.LocalDateTime;
 public class Role {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String role_code;
-    private String role_name;
+
+    @TableField("role_code")
+    private String roleCode;
+
+    @TableField("role_name")
+    private String roleName;
+
     private String description;
     private Integer status;
-    private LocalDateTime create_time;
-    private LocalDateTime update_time;
+
+    @TableField("create_time")
+    private LocalDateTime createTime;
+
+    @TableField("update_time")
+    private LocalDateTime updateTime;
 }

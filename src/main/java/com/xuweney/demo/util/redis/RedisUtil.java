@@ -1,4 +1,4 @@
-package com.xuweney.demo.util;
+package com.xuweney.demo.util.redis;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;

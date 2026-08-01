@@ -1,4 +1,4 @@
-package com.xuweney.demo.config;
+package com.xuweney.demo.config.init;
 
 import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Service.UserService;

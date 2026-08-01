@@ -1,4 +1,4 @@
-package com.xuweney.demo.config;
+package com.xuweney.demo.util.redis;
 
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;

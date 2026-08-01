@@ -1,6 +1,6 @@
-package com.xuweney.demo.util;
+package com.xuweney.demo.util.auth;
 
-import com.xuweney.demo.config.PasswordStrengthConfig;
+import com.xuweney.demo.config.security.PasswordStrengthConfig;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;

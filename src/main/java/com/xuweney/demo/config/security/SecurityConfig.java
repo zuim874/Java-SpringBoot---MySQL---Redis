@@ -1,4 +1,4 @@
-package com.xuweney.demo.config;
+package com.xuweney.demo.config.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

@@ -310,7 +310,7 @@ public class JwtUtil {
 ```java
 package com.xuweney.demo.config;
 
-import com.xuweney.demo.util.JwtUtil;
+import com.xuweney.demo.util.auth.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -346,7 +346,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             try {
                 username = jwtUtil.parseUsername(token);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             if (username != null
                     && SecurityContextHolder.getContext().getAuthentication() == null
@@ -517,6 +518,7 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 ```java
 package com.xuweney.demo.config;
 
+import com.xuweney.demo.config.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -553,17 +555,17 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .exceptionHandling(e -> e.authenticationEntryPoint(jwtAuthenticationEntryPoint))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/login", "/auth/register").permitAll()
-                .anyRequest().authenticated()
-            )
-            .httpBasic(b -> b.disable())
-            .formLogin(f -> f.disable())
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(e -> e.authenticationEntryPoint(jwtAuthenticationEntryPoint))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/auth/login", "/auth/register").permitAll()
+                        .anyRequest().authenticated()
+                )
+                .httpBasic(b -> b.disable())
+                .formLogin(f -> f.disable())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -604,7 +606,7 @@ package com.xuweney.demo.Controller;
 import com.xuweney.demo.Entity.User;
 import com.xuweney.demo.Service.UserService;
 import com.xuweney.demo.common.Result;
-import com.xuweney.demo.util.JwtUtil;
+import com.xuweney.demo.util.auth.JwtUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -643,8 +645,8 @@ public class AuthController {
 
         String token = jwtUtil.generateToken(username);
         return Result.ok(Map.of(
-            "token", token,
-            "nickname", user.getNickname()
+                "token", token,
+                "nickname", user.getNickname()
         ));
     }
 
@@ -664,8 +666,8 @@ public class AuthController {
         user.setCreateTime(java.time.LocalDateTime.now());
 
         return userService.save(user)
-            ? Result.ok("注册成功")
-            : Result.error(500, "注册失败");
+                ? Result.ok("注册成功")
+                : Result.error(500, "注册失败");
     }
 }
 ```

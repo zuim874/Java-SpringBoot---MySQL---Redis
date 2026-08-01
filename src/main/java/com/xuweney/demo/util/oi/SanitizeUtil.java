@@ -1,4 +1,4 @@
-package com.xuweney.demo.util;
+package com.xuweney.demo.util.oi;
 
 public class SanitizeUtil {
     /**

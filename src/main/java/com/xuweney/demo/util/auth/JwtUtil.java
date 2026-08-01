@@ -1,4 +1,4 @@
-package com.xuweney.demo.util;
+package com.xuweney.demo.util.auth;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

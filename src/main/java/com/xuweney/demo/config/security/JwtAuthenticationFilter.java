@@ -1,6 +1,6 @@
-package com.xuweney.demo.config;
+package com.xuweney.demo.config.security;
 
-import com.xuweney.demo.util.JwtUtil;
+import com.xuweney.demo.util.auth.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

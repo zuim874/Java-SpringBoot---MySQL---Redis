@@ -1,4 +1,4 @@
-package com.xuweney.demo.util;
+package com.xuweney.demo.util.email;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
