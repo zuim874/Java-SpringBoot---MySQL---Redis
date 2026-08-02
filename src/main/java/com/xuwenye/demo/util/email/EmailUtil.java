@@ -10,11 +10,21 @@ import org.springframework.stereotype.Component;
 @Component
 public class EmailUtil {
 
+    /** 邮箱格式正则（简单校验） */
+    private static final String EMAIL_REGEX = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$";
+
     @Autowired
     private JavaMailSender mailSender;
 
     @Value("${spring.mail.username}")
     private String fromEmail;
+
+    /**
+     * 校验邮箱格式是否合法
+     */
+    public static boolean isValidEmail(String email) {
+        return email != null && email.matches(EMAIL_REGEX);
+    }
 
     /**
      * 异步发送验证码邮件

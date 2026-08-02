@@ -19,7 +19,7 @@ public class AdminUserController {
     private final JwtUtil jwtUtil;
 
     public AdminUserController(UserService userService,
-                          JwtUtil jwtUtil) {
+                               JwtUtil jwtUtil) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
     }
@@ -86,8 +86,8 @@ public class AdminUserController {
         if (!userService.isAdmin(loginUsername)) {
             return false;
         }
-        // 管理员权限码确认
-        if (!adminCode.equals(adminCheckCode)) {
+        // 管理员权限码确认（先判空，避免 null.equals 抛 NPE）
+        if (adminCode == null || !adminCode.equals(adminCheckCode)) {
             return false;
         }
 

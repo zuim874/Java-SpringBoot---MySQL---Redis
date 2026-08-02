@@ -1,15 +1,20 @@
 <template>
-  <div class="home-page">
+  <div class="store-page">
     <!-- ===== 毛玻璃导航 ===== -->
     <nav class="nav" :class="{ scrolled: scrolled }">
-      <div class="nav-logo">XuWenYeTech</div>
+      <div class="nav-logo">XuWenYeShop</div>
       <ul class="nav-links" :class="{ open: menuOpen }">
-        <li><a href="#intro" @click="closeMenu">关于</a></li>
-        <li><a href="#services" @click="closeMenu">业务</a></li>
-        <li><a href="#showcase" @click="closeMenu">案例</a></li>
-        <li><a href="#contact" @click="closeMenu">联系</a></li>
+        <li><a href="#hero" @click="closeMenu">首页</a></li>
+        <li><a href="#products" @click="closeMenu">商品</a></li>
+        <li><a href="#categories" @click="closeMenu">分类</a></li>
         <li class="nav-user">
+          <button class="nav-cart-btn" @click="showCart = true" aria-label="购物车">
+            <span class="cart-icon">🛒</span>
+            <span class="cart-badge" v-if="cart.length > 0">{{ cart.length }}</span>
+          </button>
           <span class="nav-nickname">{{ nickname }}</span>
+          <button class="nav-profile-btn" @click="goProfile">个人中心</button>
+          <button class="nav-profile-btn" @click="goAdmin">管理</button>
           <button class="nav-logout" @click="handleLogout">退出</button>
         </li>
       </ul>
@@ -26,12 +31,12 @@
       </div>
       <div class="hero-overlay"></div>
       <div class="hero-content">
-        <div class="hero-badge">✦ 2026 年度创新企业</div>
-        <h1 class="hero-title">以科技之力<br>重塑数字未来</h1>
-        <p class="hero-sub">我们融合前沿人工智能、云计算与数据智能，为企业打造面向未来的数字化解决方案。</p>
+        <div class="hero-badge">✦ 春季新品首发</div>
+        <h1 class="hero-title">科技好物<br>触手可及</h1>
+        <p class="hero-sub">精选全球优质科技产品，从数码配件到智能家居，一站式购齐。</p>
         <div class="hero-actions">
-          <button class="btn-primary" @click="scrollTo('#services')">探索更多</button>
-          <button class="btn-outline" @click="scrollTo('#showcase')">观看案例</button>
+          <button class="btn-primary" @click="scrollTo('#products')">立即选购</button>
+          <button class="btn-outline" @click="scrollTo('#categories')">浏览分类</button>
         </div>
       </div>
       <div class="carousel-dots">
@@ -39,114 +44,124 @@
                 class="carousel-dot" :class="{ active: currentSlide === idx }"
                 @click="goToSlide(idx)" :aria-label="'Slide ' + (idx+1)"></button>
       </div>
-      <div class="scroll-indicator">
-        <span>滚动</span>
-        <div class="line"></div>
+    </section>
+
+    <!-- ===== 分类导航 ===== -->
+    <section class="section categories" id="categories">
+      <div class="container">
+        <div class="section-header" ref="catHeader">
+          <span class="section-tag">商品分类</span>
+          <h2 class="section-title">一站式<span class="highlight">科技购物</span></h2>
+          <p class="section-desc">覆盖数码配件、智能家居、办公设备等热门品类，满足你的所有需求。</p>
+        </div>
+        <div class="cats-grid">
+          <div v-for="(cat, idx) in categories" :key="idx"
+               class="cat-card" :ref="el => { if(el) catRefs[idx] = el }"
+               @click="filterByCategory(cat.name)">
+            <div class="cat-icon" v-html="cat.icon"></div>
+            <h3 class="cat-name">{{ cat.name }}</h3>
+            <span class="cat-count">{{ cat.count }} 件商品</span>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- ===== 关于我们 ===== -->
-    <section class="section intro" id="intro">
+    <!-- ===== 商品列表 ===== -->
+    <section class="section products" id="products">
       <div class="container">
-        <div class="section-header" ref="introHeader">
-          <span class="section-tag">关于我们</span>
-          <h2 class="section-title">以创新驱动<span class="highlight">价值增长</span></h2>
-          <p class="section-desc">我们是一支由工程师、设计师和战略家组成的团队，致力于将复杂技术转化为可落地的商业解决方案。</p>
+        <div class="section-header" ref="prodHeader">
+          <span class="section-tag">精选商品</span>
+          <h2 class="section-title">热门<span class="highlight">推荐</span></h2>
+          <p class="section-desc">{{ activeCategory === '全部' ? '所有商品' : activeCategory }} · 共 {{ filteredProducts.length }} 件</p>
         </div>
-        <div class="intro-grid">
-          <div class="intro-image" ref="introImage">
-            <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&q=85" alt="Team collaboration" loading="lazy">
-          </div>
-          <div class="intro-text" ref="introText">
-            <h3>十年深耕<br>赋能千家企业数字化转型</h3>
-            <p>从初创公司到世界500强，我们帮助客户在人工智能、云计算、大数据分析等领域实现突破性进展。</p>
-            <div class="intro-stats">
-              <div><div class="stat-num">500+</div><div class="stat-label">服务企业</div></div>
-              <div><div class="stat-num">98%</div><div class="stat-label">客户满意度</div></div>
-              <div><div class="stat-num">12 年</div><div class="stat-label">行业经验</div></div>
+        <div class="filter-tabs">
+          <button v-for="cat in ['全部', ...categories.map(c => c.name)]" :key="cat"
+                  class="filter-tab" :class="{ active: activeCategory === cat }"
+                  @click="filterByCategory(cat)">{{ cat }}</button>
+        </div>
+        <div class="products-grid">
+          <div v-for="(prod, idx) in filteredProducts" :key="prod.id"
+               class="product-card" :ref="el => { if(el) prodRefs[idx] = el }"
+               :style="{ transitionDelay: (idx % 4) * 0.08 + 's' }">
+            <div class="product-image">
+              <img :src="prod.image" :alt="prod.name" loading="lazy">
+              <div class="product-tag" v-if="prod.tag">{{ prod.tag }}</div>
+            </div>
+            <div class="product-info">
+              <h3 class="product-name">{{ prod.name }}</h3>
+              <p class="product-desc">{{ prod.desc }}</p>
+              <div class="product-bottom">
+                <span class="product-price">¥{{ prod.price.toFixed(2) }}</span>
+                <button class="add-cart-btn" @click.stop="addToCart(prod)">加入购物车</button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ===== 核心业务 ===== -->
-    <section class="section services" id="services">
-      <div class="container">
-        <div class="section-header" ref="servicesHeader">
-          <span class="section-tag">核心业务</span>
-          <h2 class="section-title">全栈数字<span class="highlight">解决方案</span></h2>
-          <p class="section-desc">覆盖从战略咨询到技术实施的全链路服务，助力企业在数字时代保持领先。</p>
-        </div>
-        <div class="cards-grid">
-          <div v-for="(card, idx) in services" :key="idx"
-               class="service-card" :ref="el => { if(el) cardRefs[idx] = el }">
-            <div class="card-icon" v-html="card.icon"></div>
-            <h3 class="card-title">{{ card.title }}</h3>
-            <p class="card-desc">{{ card.desc }}</p>
-            <span class="card-link">了解详情 →</span>
+    <!-- ===== 购物车侧边栏 ===== -->
+    <div class="cart-overlay" :class="{ open: showCart }" @click="showCart = false"></div>
+    <div class="cart-sidebar" :class="{ open: showCart }">
+      <div class="cart-header">
+        <h3>购物车</h3>
+        <button class="cart-close" @click="showCart = false">✕</button>
+      </div>
+      <div class="cart-body" v-if="cart.length > 0">
+        <div v-for="(item, idx) in cart" :key="idx" class="cart-item">
+          <img :src="item.image" :alt="item.name" class="cart-item-img">
+          <div class="cart-item-info">
+            <h4>{{ item.name }}</h4>
+            <p class="cart-item-price">¥{{ item.price.toFixed(2) }}</p>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== 精选案例 ===== -->
-    <section class="section showcase" id="showcase">
-      <div class="container">
-        <div class="section-header" ref="showcaseHeader">
-          <span class="section-tag">精选案例</span>
-          <h2 class="section-title">用作品<span class="highlight">说话</span></h2>
-          <p class="section-desc">每一个项目都是我们与客户共同打磨的精品，以下展示部分代表性案例。</p>
-        </div>
-        <div class="showcase-grid">
-          <div v-for="(item, idx) in showcases" :key="idx"
-               class="showcase-item" :ref="el => { if(el) showcaseRefs[idx] = el }">
-            <img :src="item.image" :alt="item.title" loading="lazy">
-            <div class="showcase-overlay">
-              <h4>{{ item.title }}</h4>
-              <p>{{ item.subtitle }}</p>
-            </div>
+          <div class="cart-item-qty">
+            <button @click="decreaseQty(idx)" :disabled="item.qty <= 1">−</button>
+            <span>{{ item.qty }}</span>
+            <button @click="increaseQty(idx)">+</button>
           </div>
+          <button class="cart-item-remove" @click="removeFromCart(idx)">✕</button>
         </div>
       </div>
-    </section>
-
-    <!-- ===== 联系 CTA ===== -->
-    <section class="section cta-section" id="contact">
-      <div class="container">
-        <div class="cta-content" ref="ctaContent">
-          <span class="section-tag">联系我们</span>
-          <h2 class="section-title">准备好开启<br>下一个项目了吗？</h2>
-          <p class="section-desc">无论您是在构思新产品，还是希望优化现有系统，我们都愿意倾听并为您提供专业建议。</p>
-          <button class="cta-btn">预约免费咨询</button>
-        </div>
+      <div class="cart-empty" v-else>
+        <span class="cart-empty-icon">🛒</span>
+        <p>购物车是空的</p>
+        <p class="cart-empty-hint">去逛逛吧</p>
       </div>
-    </section>
+      <div class="cart-footer" v-if="cart.length > 0">
+        <div class="cart-total">
+          <span>合计</span>
+          <span class="cart-total-price">¥{{ cartTotal.toFixed(2) }}</span>
+        </div>
+        <button class="checkout-btn">去结算</button>
+      </div>
+    </div>
 
     <!-- ===== 底部版权栏 ===== -->
     <footer class="footer">
       <div class="footer-inner">
-        <div class="footer-logo">XuWenYeTech</div>
+        <div class="footer-logo">XuWenYeShop</div>
         <div class="footer-links">
-          <a href="#intro">关于</a>
-          <a href="#services">业务</a>
-          <a href="#showcase">案例</a>
-          <a href="#contact">联系</a>
+          <a href="#hero">首页</a>
+          <a href="#products">商品</a>
+          <a href="#categories">分类</a>
+          <a href="javascript:void(0)" @click="goProfile">我的</a>
         </div>
-        <div class="footer-copy">© 2026 XuWenYeTech. All rights reserved.</div>
+        <div class="footer-copy">© 2026 XuWenYeShop. All rights reserved.</div>
       </div>
     </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const nickname = ref(localStorage.getItem('nickname') || '用户')
 const scrolled = ref(false)
 const menuOpen = ref(false)
+const showCart = ref(false)
+const activeCategory = ref('全部')
 
 // ===== 退出登录 =====
 function handleLogout() {
@@ -154,54 +169,108 @@ function handleLogout() {
   localStorage.removeItem('nickname')
   router.push('/login')
 }
-
 function closeMenu() { menuOpen.value = false }
+function goProfile() { router.push('/profile') }
+function goAdmin() { router.push('/admin/users') }
 
 // ===== 轮播数据 =====
 const slides = [
-  { image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1920&q=85', alt: 'Digital Innovation' },
-  { image: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1920&q=85', alt: 'Technology' },
-  { image: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=1920&q=85', alt: 'Innovation' }
+  { image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&q=85', alt: 'Tech Shopping' },
+  { image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=1920&q=85', alt: 'Shopping Mall' },
+  { image: 'https://images.unsplash.com/photo-1556742111-a301076d9d18?w=1920&q=85', alt: 'Digital Products' }
 ]
 const currentSlide = ref(0)
 let carouselTimer = null
-
 function goToSlide(idx) { currentSlide.value = idx; resetCarousel() }
 function nextSlide() { currentSlide.value = (currentSlide.value + 1) % slides.length }
 function resetCarousel() { clearInterval(carouselTimer); carouselTimer = setInterval(nextSlide, 5000) }
 
-// ===== 业务卡片数据 =====
-const services = [
-  { icon: '🧠', title: '人工智能', desc: '基于大模型与机器学习，构建智能决策系统，实现业务流程自动化与智能化升级。' },
-  { icon: '☁️', title: '云计算', desc: '提供多云架构设计、容器化部署与Serverless解决方案，弹性支撑业务高速增长。' },
-  { icon: '📊', title: '数据智能', desc: '构建企业级数据中台，打通数据孤岛，以可视化洞察驱动精准商业决策。' },
-  { icon: '🎨', title: '体验设计', desc: '以用户为中心的产品设计与交互创新，打造令人难忘的品牌数字体验。' }
+// ===== 分类数据 =====
+const categories = [
+  { icon: '📱', name: '手机配件', count: 24 },
+  { icon: '💻', name: '电脑外设', count: 18 },
+  { icon: '🎧', name: '音频设备', count: 15 },
+  { icon: '🏠', name: '智能家居', count: 12 },
+  { icon: '⌚', name: '穿戴设备', count: 9 },
+  { icon: '📷', name: '摄影器材', count: 7 }
 ]
 
-// ===== 案例数据 =====
-const showcases = [
-  { image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&q=80', title: '智能数据平台', subtitle: '为某金融集团构建实时数据分析引擎' },
-  { image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&q=80', title: '全渠道数字化', subtitle: '助力零售品牌完成线上线下融合转型' },
-  { image: 'https://images.unsplash.com/photo-1555421689-491a97ff2040?w=600&q=80', title: 'AI 客服系统', subtitle: '基于大语言模型的智能对话解决方案' }
+// ===== 商品数据（模拟） =====
+const products = [
+  { id: 1, name: '极速无线充电器', desc: '15W 快充 · 兼容 iPhone/Android', price: 129.00, image: 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=400&q=80', category: '手机配件', tag: '热卖' },
+  { id: 2, name: '机械键盘 K8 Pro', desc: '87键 · 青轴 · RGB背光', price: 399.00, image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=400&q=80', category: '电脑外设', tag: '新品' },
+  { id: 3, name: '降噪耳机 AirSound', desc: '主动降噪 · 40h续航 · 蓝牙5.3', price: 599.00, image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&q=80', category: '音频设备', tag: '推荐' },
+  { id: 4, name: '智能台灯 Lumina', desc: '无级调光 · 色温调节 · 护眼', price: 249.00, image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80', category: '智能家居', tag: '' },
+  { id: 5, name: '运动手环 FitBand', desc: '心率监测 · 睡眠分析 · IP68防水', price: 199.00, image: 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=400&q=80', category: '穿戴设备', tag: '特价' },
+  { id: 6, name: '便携三脚架 ProPod', desc: '碳纤维 · 1.5kg承重 · 折叠便携', price: 159.00, image: 'https://images.unsplash.com/photo-1586101447506-1e0b6b312f63?w=400&q=80', category: '摄影器材', tag: '' },
+  { id: 7, name: '手机壳 防摔系列', desc: '军工级防摔 · 磁吸兼容 · 多色可选', price: 49.00, image: 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=400&q=80', category: '手机配件', tag: '爆款' },
+  { id: 8, name: '显示器支架 ArmOne', desc: '气动悬臂 · 17-32寸 · 理线设计', price: 299.00, image: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400&q=80', category: '电脑外设', tag: '' },
+  { id: 9, name: '蓝牙音箱 MiniBeat', desc: '360°环绕声 · 12h续航 · 防水', price: 179.00, image: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=400&q=80', category: '音频设备', tag: '' },
+  { id: 10, name: '智能插座 SmartPlug', desc: '远程控制 · 电量统计 · 语音控制', price: 89.00, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=80', category: '智能家居', tag: '特价' },
+  { id: 11, name: '智能手表 WatchX', desc: 'AMOLED屏 · eSIM · 7天续航', price: 899.00, image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80', category: '穿戴设备', tag: '高端' },
+  { id: 12, name: 'USB-C 扩展坞 HubMax', desc: '12合1 · 4K60Hz · 100W PD', price: 259.00, image: 'https://images.unsplash.com/photo-1623869675781-80aa31029cb0?w=400&q=80', category: '电脑外设', tag: '推荐' }
 ]
 
-// ===== 滚动渐入动画 (IntersectionObserver) =====
-const introHeader = ref(null)
-const introImage = ref(null)
-const introText = ref(null)
-const servicesHeader = ref(null)
-const showcaseHeader = ref(null)
-const ctaContent = ref(null)
-const cardRefs = reactive({})
-const showcaseRefs = reactive({})
+const filteredProducts = computed(() => {
+  if (activeCategory.value === '全部') return products
+  return products.filter(p => p.category === activeCategory.value)
+})
+
+function filterByCategory(name) {
+  activeCategory.value = name
+  setTimeout(() => scrollTo('#products'), 100)
+}
+
+// ===== 购物车逻辑 =====
+const cart = ref(JSON.parse(localStorage.getItem('cart') || '[]'))
+
+const cartTotal = computed(() => {
+  return cart.value.reduce((sum, item) => sum + item.price * item.qty, 0)
+})
+
+function addToCart(prod) {
+  const existing = cart.value.find(item => item.id === prod.id)
+  if (existing) {
+    existing.qty++
+  } else {
+    cart.value.push({ ...prod, qty: 1 })
+  }
+  saveCart()
+  showCart.value = true
+}
+
+function increaseQty(idx) {
+  cart.value[idx].qty++
+  saveCart()
+}
+
+function decreaseQty(idx) {
+  if (cart.value[idx].qty > 1) {
+    cart.value[idx].qty--
+    saveCart()
+  }
+}
+
+function removeFromCart(idx) {
+  cart.value.splice(idx, 1)
+  saveCart()
+}
+
+function saveCart() {
+  localStorage.setItem('cart', JSON.stringify(cart.value))
+}
+
+// ===== 滚动动画 =====
+const catHeader = ref(null)
+const prodHeader = ref(null)
+const catRefs = reactive({})
+const prodRefs = reactive({})
 let observer = null
 
 onMounted(() => {
-  // 导航滚动效果
   window.addEventListener('scroll', onScroll)
-  // 轮播启动
   carouselTimer = setInterval(nextSlide, 5000)
-  // 滚动渐入
+
   observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -212,9 +281,8 @@ onMounted(() => {
   }, { threshold: 0.10, rootMargin: '0px 0px -60px 0px' })
 
   const targets = [
-    introHeader.value, introImage.value, introText.value,
-    servicesHeader.value, showcaseHeader.value, ctaContent.value,
-    ...Object.values(cardRefs), ...Object.values(showcaseRefs)
+    catHeader.value, prodHeader.value,
+    ...Object.values(catRefs), ...Object.values(prodRefs)
   ].filter(Boolean)
   targets.forEach(el => observer.observe(el))
 })
@@ -225,10 +293,7 @@ onUnmounted(() => {
   if (observer) observer.disconnect()
 })
 
-function onScroll() {
-  scrolled.value = window.scrollY > 60
-}
-
+function onScroll() { scrolled.value = window.scrollY > 60 }
 function scrollTo(selector) {
   const el = document.querySelector(selector)
   if (el) el.scrollIntoView({ behavior: 'smooth' })
@@ -237,7 +302,7 @@ function scrollTo(selector) {
 
 <style scoped>
 /* ===== Reset & Base ===== */
-.home-page {
+.store-page {
   font-family: 'DM Sans', -apple-system, sans-serif;
   color: #212529;
   background: #ffffff;
@@ -245,26 +310,16 @@ function scrollTo(selector) {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
-
 img { max-width: 100%; height: auto; display: block; }
 a { text-decoration: none; color: inherit; }
-.section { padding: 120px 0; }
-
-.container {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 0 40px;
-}
+.section { padding: 100px 0; }
+.container { max-width: 1240px; margin: 0 auto; padding: 0 40px; }
 
 /* ===== Glass Navigation ===== */
 .nav {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 80px;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 80px; z-index: 1000;
+  display: flex; align-items: center; justify-content: space-between;
   padding: 0 56px;
   background: rgba(255,255,255,0.60);
   backdrop-filter: blur(20px) saturate(1.8);
@@ -273,500 +328,309 @@ a { text-decoration: none; color: inherit; }
   transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .nav.scrolled { background: rgba(255,255,255,0.85); box-shadow: 0 1px 40px rgba(0,0,0,0.06); }
-
 .nav-logo {
   font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: 1.6rem; font-weight: 700;
   background: linear-gradient(135deg, #2b6cb0 0%, #4a9eff 50%, #7c3aed 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   letter-spacing: -0.03em;
 }
-
-.nav-links { display: flex; align-items: center; gap: 40px; list-style: none; margin: 0; padding: 0; }
+.nav-links { display: flex; align-items: center; gap: 32px; list-style: none; margin: 0; padding: 0; }
 .nav-links a {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #868e96;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  position: relative;
-  transition: color 0.3s;
-  padding: 4px 0;
+  font-size: 0.875rem; font-weight: 500; color: #868e96;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  position: relative; transition: color 0.3s; padding: 4px 0;
 }
 .nav-links a::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0;
+  content: ''; position: absolute; bottom: 0; left: 0;
   width: 0; height: 2px;
   background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
   transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .nav-links a:hover { color: #212529; }
 .nav-links a:hover::after { width: 100%; }
-
-.nav-user { display: flex; align-items: center; gap: 16px; }
-.nav-nickname {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #2b6cb0;
+.nav-user { display: flex; align-items: center; gap: 12px; }
+.nav-nickname { font-size: 0.85rem; font-weight: 500; color: #2b6cb0; }
+.nav-cart-btn {
+  position: relative; background: none; border: none; cursor: pointer;
+  font-size: 1.3rem; padding: 4px; transition: transform 0.3s;
 }
+.nav-cart-btn:hover { transform: scale(1.1); }
+.cart-badge {
+  position: absolute; top: -4px; right: -6px;
+  min-width: 18px; height: 18px; border-radius: 9px;
+  background: linear-gradient(135deg, #e03131, #c92a2a);
+  color: white; font-size: 0.65rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1; padding: 0 4px;
+}
+.nav-profile-btn, .nav-logout {
+  padding: 6px 16px; border-radius: 50px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.75rem; font-weight: 500;
+  cursor: pointer; transition: all 0.3s;
+}
+.nav-profile-btn {
+  border: 1px solid #dee2e6; background: transparent; color: #2b6cb0;
+}
+.nav-profile-btn:hover { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
 .nav-logout {
-  padding: 6px 18px;
-  border: 1px solid #dee2e6;
-  border-radius: 50px;
-  background: transparent;
-  color: #868e96;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.75rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s;
+  border: 1px solid #dee2e6; background: transparent; color: #868e96;
 }
 .nav-logout:hover { border-color: #dc3545; color: #dc3545; }
-
 .nav-toggle { display: none; flex-direction: column; gap: 5px; cursor: pointer; background: none; border: none; padding: 4px; }
 .nav-toggle span { display: block; width: 24px; height: 2px; background: #212529; border-radius: 2px; transition: all 0.3s; }
 
-/* ===== Hero / Carousel ===== */
+/* ===== Hero ===== */
 .hero {
-  position: relative;
-  height: 100vh;
-  min-height: 700px;
-  overflow: hidden;
+  position: relative; height: 100vh; min-height: 700px; overflow: hidden;
 }
 .hero-slide {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .hero-slide.active { opacity: 1; }
 .hero-slide img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(2px) saturate(1.05);
-  transform: scale(1.05);
-  transition: transform 8s ease;
+  width: 100%; height: 100%; object-fit: cover;
+  filter: blur(2px) saturate(1.05); transform: scale(1.05); transition: transform 8s ease;
 }
 .hero-slide.active img { transform: scale(1.0); }
-
 .hero-overlay {
-  position: absolute;
-  inset: 0;
+  position: absolute; inset: 0;
   background: linear-gradient(135deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.20) 40%, rgba(0,0,0,0.05) 60%, rgba(0,0,0,0.30) 100%);
 }
-
 .hero-content {
-  position: absolute;
-  bottom: 15%;
-  left: 0;
-  right: 0;
-  padding: 0 56px;
-  max-width: 1240px;
-  margin: 0 auto;
-  z-index: 2;
+  position: absolute; bottom: 15%; left: 0; right: 0;
+  padding: 0 56px; max-width: 1240px; margin: 0 auto; z-index: 2;
 }
 .hero-badge {
-  display: inline-block;
-  padding: 8px 20px;
-  background: rgba(255,255,255,0.12);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 50px;
-  color: rgba(255,255,255,0.85);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-bottom: 24px;
+  display: inline-block; padding: 8px 20px;
+  background: rgba(255,255,255,0.12); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 50px;
+  color: rgba(255,255,255,0.85); font-size: 0.75rem; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 24px;
   animation: fadeUp 0.8s 0.3s both;
 }
 .hero-title {
   font-family: 'Playfair Display', Georgia, serif;
-  font-size: clamp(3rem, 8vw, 6.5rem);
-  font-weight: 700;
-  color: white;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
-  max-width: 800px;
+  font-size: clamp(3rem, 8vw, 6.5rem); font-weight: 700; color: white;
+  line-height: 1.08; letter-spacing: -0.03em; max-width: 800px;
   animation: fadeUp 0.8s 0.5s both;
 }
 .hero-sub {
-  font-size: clamp(1rem, 2vw, 1.25rem);
-  font-weight: 300;
-  color: rgba(255,255,255,0.75);
-  max-width: 540px;
-  margin-top: 20px;
-  line-height: 1.7;
+  font-size: clamp(1rem, 2vw, 1.25rem); font-weight: 300;
+  color: rgba(255,255,255,0.75); max-width: 540px; margin-top: 20px; line-height: 1.7;
   animation: fadeUp 0.8s 0.7s both;
 }
-.hero-actions {
-  display: flex; gap: 16px; margin-top: 36px;
-  animation: fadeUp 0.8s 0.9s both;
+.hero-actions { display: flex; gap: 16px; margin-top: 36px; animation: fadeUp 0.8s 0.9s both; }
+.btn-primary, .btn-outline {
+  padding: 16px 40px; border-radius: 50px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer;
+  transition: all 0.3s;
 }
 .btn-primary {
-  padding: 16px 40px;
   border: none;
-  border-radius: 50px;
   background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
   color: white;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s;
 }
 .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(43,108,176,0.40); }
 .btn-outline {
-  padding: 16px 40px;
-  border: 1px solid rgba(255,255,255,0.30);
-  border-radius: 50px;
-  background: transparent;
-  color: white;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.3s;
+  border: 1px solid rgba(255,255,255,0.30); background: transparent; color: white;
 }
 .btn-outline:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.50); }
-
 .carousel-dots {
-  position: absolute;
-  bottom: 8%;
-  left: 56px;
-  display: flex;
-  gap: 12px;
-  z-index: 2;
+  position: absolute; bottom: 8%; left: 56px; display: flex; gap: 12px; z-index: 2;
 }
 .carousel-dot {
-  width: 40px; height: 3px;
-  background: rgba(255,255,255,0.25);
-  border-radius: 2px;
-  cursor: pointer;
-  transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  border: none;
+  width: 40px; height: 3px; background: rgba(255,255,255,0.25);
+  border-radius: 2px; cursor: pointer; transition: all 0.5s; border: none;
 }
 .carousel-dot.active { background: rgba(255,255,255,0.85); width: 60px; }
 
-.scroll-indicator {
-  position: absolute;
-  bottom: 40px;
-  right: 56px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: rgba(255,255,255,0.40);
-  font-size: 0.65rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  animation: float 2s ease-in-out infinite;
-}
-.scroll-indicator .line {
-  width: 1px; height: 40px;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.40), transparent);
-}
-
 /* ===== Section Header ===== */
 .section-header {
-  text-align: center;
-  max-width: 680px;
-  margin: 0 auto 72px;
-  opacity: 0;
-  transform: translateY(40px);
+  text-align: center; max-width: 680px; margin: 0 auto 56px;
+  opacity: 0; transform: translateY(40px);
   transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .section-header.visible { opacity: 1; transform: translateY(0); }
-
 .section-tag {
-  display: inline-block;
-  padding: 6px 16px;
-  background: #f1f3f5;
-  border-radius: 50px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #868e96;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-bottom: 16px;
+  display: inline-block; padding: 6px 16px; background: #f1f3f5; border-radius: 50px;
+  font-size: 0.7rem; font-weight: 600; color: #868e96;
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px;
 }
 .section-title {
   font-family: 'Playfair Display', Georgia, serif;
-  font-size: clamp(2rem, 4vw, 3.2rem);
-  font-weight: 700;
-  color: #212529;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 700; color: #212529;
+  line-height: 1.2; letter-spacing: -0.02em;
 }
 .section-title .highlight {
   background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.section-desc {
-  font-size: 1.05rem;
-  color: #868e96;
-  margin-top: 16px;
-  line-height: 1.7;
-}
+.section-desc { font-size: 1.05rem; color: #868e96; margin-top: 16px; line-height: 1.7; }
 
-/* ===== Intro / About ===== */
-.intro { background: #f8f9fa; }
-.intro-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 80px;
-  align-items: center;
+/* ===== Categories ===== */
+.categories { background: #f8f9fa; }
+.cats-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px;
 }
-.intro-image {
-  position: relative;
-  border-radius: 24px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.08);
-  opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.intro-image.visible { opacity: 1; transform: translateY(0); }
-.intro-image img {
-  width: 100%;
-  height: 500px;
-  object-fit: cover;
-  filter: blur(1px) saturate(1.08);
-  transition: transform 0.6s;
-}
-.intro-image:hover img { transform: scale(1.02); }
-
-.intro-text {
-  opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.15s;
-}
-.intro-text.visible { opacity: 1; transform: translateY(0); }
-.intro-text h3 {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 2rem;
-  color: #212529;
-  line-height: 1.3;
-  margin-bottom: 20px;
-}
-.intro-text p { color: #868e96; line-height: 1.8; font-size: 0.95rem; }
-
-.intro-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 32px;
-  margin-top: 40px;
-  padding-top: 40px;
-  border-top: 1px solid #dee2e6;
-}
-.stat-num {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 2.4rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.stat-label { font-size: 0.8rem; color: #868e96; margin-top: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
-
-/* ===== Services Cards ===== */
-.services { background: #ffffff; }
-.cards-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-}
-.service-card {
-  background: #ffffff;
-  border: 1px solid #dee2e6;
-  border-radius: 24px;
-  padding: 40px 32px;
+.cat-card {
+  background: #ffffff; border: 1px solid #dee2e6; border-radius: 20px;
+  padding: 32px 20px; text-align: center; cursor: pointer;
   transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  position: relative;
-  overflow: hidden;
-  cursor: default;
-  opacity: 0;
-  transform: translateY(40px);
+  opacity: 0; transform: translateY(40px);
 }
-.service-card.visible { opacity: 1; transform: translateY(0); }
-.service-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+.cat-card.visible { opacity: 1; transform: translateY(0); }
+.cat-card:hover {
+  transform: translateY(-6px); box-shadow: 0 16px 48px rgba(0,0,0,0.08);
+  border-color: transparent;
+  background: linear-gradient(135deg, #f8f9ff, #ffffff);
 }
-.service-card:hover { transform: translateY(-8px); box-shadow: 0 20px 60px rgba(0,0,0,0.08); border-color: transparent; }
-.service-card:hover::before { transform: scaleX(1); }
-.service-card.visible:hover { transform: translateY(-8px); }
+.cat-card.visible:hover { transform: translateY(-6px); }
+.cat-icon { font-size: 2.4rem; margin-bottom: 12px; }
+.cat-name { font-size: 0.9rem; font-weight: 600; color: #212529; margin-bottom: 4px; }
+.cat-count { font-size: 0.75rem; color: #adb5bd; }
 
-.card-icon {
-  width: 56px; height: 56px;
-  border-radius: 16px;
-  background: #f1f3f5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 24px;
-  font-size: 1.5rem;
-  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+/* ===== Products ===== */
+.products { background: #ffffff; }
+.filter-tabs {
+  display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 40px;
 }
-.service-card:hover .card-icon {
+.filter-tab {
+  padding: 8px 20px; border: 1px solid #dee2e6; border-radius: 50px;
+  background: transparent; color: #868e96; font-size: 0.8rem; font-weight: 500;
+  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+}
+.filter-tab:hover { border-color: #4a9eff; color: #4a9eff; }
+.filter-tab.active {
   background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: white;
-  box-shadow: 0 8px 24px rgba(43,108,176,0.25);
+  border-color: transparent; color: white;
 }
-.card-title {
+.products-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
+}
+.product-card {
+  background: #ffffff; border: 1px solid #dee2e6; border-radius: 20px;
+  overflow: hidden; transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  opacity: 0; transform: translateY(40px);
+}
+.product-card.visible { opacity: 1; transform: translateY(0); }
+.product-card:hover {
+  transform: translateY(-8px); box-shadow: 0 20px 60px rgba(0,0,0,0.08);
+  border-color: transparent;
+}
+.product-card.visible:hover { transform: translateY(-8px); }
+.product-image {
+  position: relative; aspect-ratio: 1; overflow: hidden;
+  background: #f8f9fa;
+}
+.product-image img {
+  width: 100%; height: 100%; object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.product-card:hover .product-image img { transform: scale(1.06); }
+.product-tag {
+  position: absolute; top: 12px; left: 12px;
+  padding: 4px 12px; border-radius: 50px;
+  background: linear-gradient(135deg, #e03131, #c92a2a);
+  color: white; font-size: 0.7rem; font-weight: 600;
+}
+.product-info { padding: 20px; }
+.product-name {
   font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin-bottom: 12px;
-  color: #212529;
+  font-size: 1rem; font-weight: 600; color: #212529; margin-bottom: 6px;
 }
-.card-desc { font-size: 0.875rem; color: #868e96; line-height: 1.7; }
-.card-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #2b6cb0;
-  transition: gap 0.3s;
-}
-.service-card:hover .card-link { gap: 12px; }
-
-/* ===== Showcase ===== */
-.showcase { background: #f8f9fa; }
-.showcase-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-}
-.showcase-item {
-  border-radius: 24px;
-  overflow: hidden;
-  position: relative;
-  aspect-ratio: 4/3;
-  cursor: pointer;
-  opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.showcase-item.visible { opacity: 1; transform: translateY(0); }
-.showcase-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(1px) saturate(1.05);
-  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.showcase-item:hover img { transform: scale(1.06); filter: blur(0) saturate(1.1); }
-
-.showcase-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.60) 0%, transparent 50%);
-  opacity: 0;
-  transition: opacity 0.4s;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding: 32px;
-}
-.showcase-item:hover .showcase-overlay { opacity: 1; }
-.showcase-overlay h4 { color: white; font-family: 'Playfair Display', Georgia, serif; font-size: 1.2rem; margin-bottom: 4px; }
-.showcase-overlay p { color: rgba(255,255,255,0.60); font-size: 0.8rem; }
-
-/* ===== CTA ===== */
-.cta-section {
-  background: #212529;
-  position: relative;
-  overflow: hidden;
-}
-.cta-section::before {
-  content: '';
-  position: absolute;
-  top: -50%; right: -20%;
-  width: 600px; height: 600px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(74,158,255,0.08), transparent 70%);
-}
-.cta-section::after {
-  content: '';
-  position: absolute;
-  bottom: -30%; left: -10%;
-  width: 400px; height: 400px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(124,58,237,0.06), transparent 70%);
-}
-.cta-content {
-  position: relative;
-  z-index: 1;
-  text-align: center;
-  max-width: 640px;
-  margin: 0 auto;
-  opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.cta-content.visible { opacity: 1; transform: translateY(0); }
-.cta-content .section-tag { background: rgba(255,255,255,0.06); color: #adb5bd; border: 1px solid rgba(255,255,255,0.06); }
-.cta-content .section-title { color: white; }
-.cta-content .section-desc { color: #adb5bd; }
-
-.cta-btn {
-  display: inline-block;
-  margin-top: 36px;
-  padding: 18px 52px;
-  border: none;
-  border-radius: 50px;
+.product-desc { font-size: 0.8rem; color: #868e96; line-height: 1.5; margin-bottom: 16px; }
+.product-bottom { display: flex; align-items: center; justify-content: space-between; }
+.product-price { font-size: 1.15rem; font-weight: 700; color: #2b6cb0; }
+.add-cart-btn {
+  padding: 8px 16px; border: none; border-radius: 50px;
   background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: white;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  color: white; font-family: 'DM Sans', sans-serif;
+  font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  transition: all 0.3s;
 }
-.cta-btn:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(43,108,176,0.35); }
+.add-cart-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(43,108,176,0.30); }
+
+/* ===== Cart Sidebar ===== */
+.cart-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.30); opacity: 0; pointer-events: none;
+  transition: opacity 0.4s;
+}
+.cart-overlay.open { opacity: 1; pointer-events: auto; }
+.cart-sidebar {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 400px; max-width: 90vw;
+  z-index: 2001; background: white;
+  transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  display: flex; flex-direction: column;
+  box-shadow: -8px 0 40px rgba(0,0,0,0.08);
+}
+.cart-sidebar.open { transform: translateX(0); }
+.cart-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24px; border-bottom: 1px solid #dee2e6;
+}
+.cart-header h3 { font-family: 'Playfair Display', Georgia, serif; font-size: 1.3rem; color: #212529; }
+.cart-close { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #868e96; transition: color 0.3s; }
+.cart-close:hover { color: #212529; }
+.cart-body { flex: 1; overflow-y: auto; padding: 16px 24px; }
+.cart-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 0; border-bottom: 1px solid #f1f3f5;
+}
+.cart-item-img { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; background: #f8f9fa; }
+.cart-item-info { flex: 1; min-width: 0; }
+.cart-item-info h4 { font-size: 0.85rem; font-weight: 600; color: #212529; margin-bottom: 4px; }
+.cart-item-price { font-size: 0.85rem; font-weight: 700; color: #2b6cb0; }
+.cart-item-qty { display: flex; align-items: center; gap: 8px; }
+.cart-item-qty button {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid #dee2e6; background: transparent;
+  font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+}
+.cart-item-qty button:hover:not(:disabled) { border-color: #4a9eff; color: #4a9eff; }
+.cart-item-qty button:disabled { opacity: 0.3; cursor: not-allowed; }
+.cart-item-qty span { font-size: 0.85rem; font-weight: 600; min-width: 20px; text-align: center; }
+.cart-item-remove {
+  background: none; border: none; color: #adb5bd; font-size: 0.85rem;
+  cursor: pointer; transition: color 0.3s; padding: 4px;
+}
+.cart-item-remove:hover { color: #dc3545; }
+.cart-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; color: #adb5bd; gap: 8px;
+}
+.cart-empty-icon { font-size: 3rem; }
+.cart-empty-hint { font-size: 0.85rem; }
+.cart-footer {
+  padding: 20px 24px; border-top: 1px solid #dee2e6;
+}
+.cart-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.cart-total span { font-size: 0.9rem; color: #868e96; }
+.cart-total-price { font-size: 1.3rem; font-weight: 700; color: #212529; }
+.checkout-btn {
+  width: 100%; padding: 16px; border: none; border-radius: 12px;
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
+  color: white; font-family: 'DM Sans', sans-serif; font-size: 0.9rem;
+  font-weight: 600; cursor: pointer; transition: all 0.3s;
+}
+.checkout-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(43,108,176,0.30); }
 
 /* ===== Footer ===== */
 .footer {
-  background: #212529;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  background: #212529; border-top: 1px solid rgba(255,255,255,0.06);
   padding: 48px 56px;
 }
 .footer-inner {
-  max-width: 1240px;
-  margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  max-width: 1240px; margin: 0 auto;
+  display: flex; justify-content: space-between; align-items: center;
 }
 .footer-logo {
   font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: rgba(255,255,255,0.60);
+  font-size: 1.1rem; font-weight: 700; color: rgba(255,255,255,0.60);
   letter-spacing: -0.02em;
 }
 .footer-links { display: flex; gap: 32px; }
@@ -776,45 +640,33 @@ a { text-decoration: none; color: inherit; }
 
 /* ===== Keyframes ===== */
 @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
 
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
-  .cards-grid { grid-template-columns: repeat(2, 1fr); }
-  .showcase-grid { grid-template-columns: repeat(2, 1fr); }
-  .intro-grid { gap: 48px; }
+  .cats-grid { grid-template-columns: repeat(3, 1fr); }
+  .products-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
   .nav { padding: 0 24px; }
   .nav-links {
-    display: none;
-    flex-direction: column;
-    position: absolute;
-    top: 80px; left: 0; right: 0;
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(20px);
-    padding: 24px 32px;
-    gap: 20px;
+    display: none; flex-direction: column;
+    position: absolute; top: 80px; left: 0; right: 0;
+    background: rgba(255,255,255,0.92); backdrop-filter: blur(20px);
+    padding: 24px 32px; gap: 20px;
     border-bottom: 1px solid #dee2e6;
   }
   .nav-links.open { display: flex; }
   .nav-toggle { display: flex; }
-  .nav-user { margin-top: 8px; padding-top: 16px; border-top: 1px solid #dee2e6; width: 100%; justify-content: space-between; }
+  .nav-user { margin-top: 8px; padding-top: 16px; border-top: 1px solid #dee2e6; width: 100%; justify-content: space-between; flex-wrap: wrap; }
   .hero-content { padding: 0 24px; bottom: 20%; }
   .hero-actions { flex-direction: column; gap: 12px; }
   .section { padding: 80px 0; }
   .container { padding: 0 24px; }
-  .intro-grid { grid-template-columns: 1fr; gap: 40px; }
-  .intro-image img { height: 300px; }
-  .cards-grid { grid-template-columns: 1fr; }
-  .showcase-grid { grid-template-columns: 1fr; }
+  .cats-grid { grid-template-columns: repeat(2, 1fr); }
+  .products-grid { grid-template-columns: 1fr; }
   .carousel-dots { left: 24px; }
-  .scroll-indicator { right: 24px; bottom: 24px; }
   .footer { padding: 40px 24px; }
   .footer-inner { flex-direction: column; gap: 24px; text-align: center; }
   .footer-links { flex-wrap: wrap; justify-content: center; gap: 20px; }
-}
-@media (max-width: 480px) {
-  .intro-stats { grid-template-columns: 1fr; gap: 20px; }
 }
 </style>

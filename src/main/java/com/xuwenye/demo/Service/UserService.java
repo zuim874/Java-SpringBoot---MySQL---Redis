@@ -176,15 +176,17 @@ public class UserService {
         return false;
     }
 
-    //保存用户
+    //保存用户（插入成功后才写入缓存）
     public boolean save(User user) {
         String username = user.getUsername();
         // Redis key 命名规则：项目名:模块:业务标识
         String cacheKey = "demo:user:login:active:" + username;
         boolean result = userMapper.insert(user) > 0;
 
-        redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
-
+        // 插入成功才写缓存，避免无效数据进入 Redis
+        if (result) {
+            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+        }
         return result;
     }
 
@@ -223,6 +225,26 @@ public class UserService {
                 // 恢复后重新写入 active 缓存（用户已可登录）
                 String cacheKey = "demo:user:login:active:" + username;
                 redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+            }
+        }
+        return result;
+    }
+
+    //更新用户头像（更新数据库并清理关联缓存，下次查询重新加载）
+    public boolean updateAvatar(Long id, String avatarUrl) {
+        User update = new User();
+        update.setId(id);
+        update.setAvatar(avatarUrl);
+        boolean result = userMapper.updateById(update) > 0;
+
+        if (result) {
+            // 清理该用户所有维度缓存，保证下次查询拿到最新头像
+            User user = userMapper.selectById(id);
+            if (user != null) {
+                String username = user.getUsername();
+                redisUtil.delete("demo:user:login:active:" + username);
+                redisUtil.delete("demo:user:login:all:" + username);
+                redisUtil.delete("demo:user:id:" + id);
             }
         }
         return result;

@@ -25,8 +25,8 @@ import java.util.concurrent.TimeUnit;
 public class AuthController {
     @Value("${test.registerCodeCheck.status:false}")
     private boolean registerCodeCheckStatus;
-    @Value("${test.registermailcheck.status:false}")
-    private boolean registermailCheckStatus;
+    @Value("${test.registerEmailcheck.status:false}")
+    private boolean registerEmailCheckStatus;
 
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
@@ -59,9 +59,9 @@ public class AuthController {
     @PostMapping("/login")
     public Result<?> login(@RequestParam String username,
                            @RequestParam String password) {
-        // 输入清洗：去掉首尾空格和危险字符
+        // 输入清洗：去掉首尾空格（用户名防注入清洗；密码是敏感数据只 trim，不做字符替换以免篡改用户密码）
         username = sanitizeUtil.sanitize(username);
-        password = sanitizeUtil.sanitize(password);
+        password = password.trim();
 
         User user = userService.findUsernameforlogin(username);
 
@@ -84,13 +84,18 @@ public class AuthController {
                               @RequestParam String nickname,
                               @RequestParam String email,
                               @RequestParam String code) {
-        // 输入清洗
+        // 输入清洗：用户名/昵称/邮箱防注入清洗；密码与验证码只 trim 不做字符替换
         username = sanitizeUtil.sanitize(username);
-        password = sanitizeUtil.sanitize(password);
-        password_exam = sanitizeUtil.sanitize(password_exam);
+        password = password.trim();
+        password_exam = password_exam.trim();
         nickname = sanitizeUtil.sanitize(nickname);
         email = sanitizeUtil.sanitize(email);
-        code = sanitizeUtil.sanitize(code);
+        code = code.trim();
+
+        // 邮箱格式校验
+        if (!EmailUtil.isValidEmail(email)) {
+            return Result.error(400, "邮箱格式不正确");
+        }
 
         if (userService.findUsername(username) != null) {
             return Result.error(400, "用户名已存在");
@@ -149,8 +154,12 @@ public class AuthController {
 
     @PostMapping("/send-registercode")
     public Result<?> sendVerificationCode(@RequestParam String email) {
-        if (registermailCheckStatus) {
+        if (registerEmailCheckStatus) {
             try {
+                // 0. 邮箱格式校验
+                if (!EmailUtil.isValidEmail(email)) {
+                    return Result.error(400, "邮箱格式不正确");
+                }
                 // 1. 检查邮箱是否已注册（业务校验前置，避免无效请求占用限流窗口）
                 if (userService.isEmailExist(email)) {
                     return Result.error(400, "该邮箱已被注册");

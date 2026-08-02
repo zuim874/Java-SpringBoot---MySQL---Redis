@@ -1,6 +1,7 @@
 package com.xuwenye.demo.Controller;
 
 import com.xuwenye.demo.Entity.User;
+import com.xuwenye.demo.Service.FileStorageService;
 import com.xuwenye.demo.Service.UserService;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.common.Result;
@@ -11,6 +12,7 @@ import com.xuwenye.demo.util.redis.RedisUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.concurrent.TimeUnit;
 
@@ -26,22 +28,29 @@ public class UserController {
     private final RedisUtil redisUtil;
     private final EmailUtil emailUtil;
     private final GenerateVerificationCode generateVerificationCode;
+    private final FileStorageService fileStorageService;
     public UserController(UserService userService,
                           JwtUtil jwtUtil,
                           RedisUtil redisUtil,
                           EmailUtil emailUtil,
-                          GenerateVerificationCode generateVerificationCode) {
+                          GenerateVerificationCode generateVerificationCode,
+                          FileStorageService fileStorageService) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.redisUtil = redisUtil;
         this.emailUtil = emailUtil;
         this.generateVerificationCode = generateVerificationCode;
+        this.fileStorageService = fileStorageService;
     }
 
     @Value("${test.recoverCodeCheck.status:false}")
     private boolean recoverCodeCheckStatus;
+    @Value("${test.recoverEmailCheck.status:false}")
+    private boolean recoverEmailCheckStatus;
     @Value("${test.deleteCodeCheck.status:false}")
     private boolean deleteCodeCheckStatus;
+    @Value("${test.deleteEmailCheck.status:false}")
+    private boolean deleteEmailCheckStatus;
 
     /**
      * 用户注销自己的账号（逻辑删除）
@@ -141,21 +150,26 @@ public class UserController {
     }
 
     /**
-     * 发送账号恢复验证码到邮箱
+     * 发送账号删除验证码到邮箱
      */
+    @RateLimit(window = 60, maxRequests = 3, message = "注销邮箱发送过多，请稍后再试")
     @PostMapping("/send-deletecode")
     public Result<?> sendDeleteCode(@RequestParam String email) {
-        if (deleteCodeCheckStatus) {
+        if (deleteEmailCheckStatus) {
             try {
+                // 0. 邮箱格式校验
+                if (!EmailUtil.isValidEmail(email)) {
+                    return Result.error(400, "邮箱格式不正确");
+                }
                 // 1. 检查邮箱是否已注册
                 if (!userService.isEmailExist(email)) {
                     return Result.error(400, "该邮箱未绑定账号");
                 }
 
-                // 2. 检查是否频繁发送（防刷）
+                // 2. 原子防刷：首次设置限流 key 成功才放行（60 秒内重复请求被拦截）
                 String sendLimitKey = "verify_deleteCode_limit:" + email;
-                Boolean success = redisUtil.setIfAbsent(sendLimitKey, "1", 60, TimeUnit.SECONDS);
-                if (!Boolean.FALSE.equals(success)) {
+                Boolean firstRequest = redisUtil.setIfAbsent(sendLimitKey, "1", 60, TimeUnit.SECONDS);
+                if (Boolean.FALSE.equals(firstRequest)) {
                     long ttl = redisUtil.getExpire(sendLimitKey, TimeUnit.SECONDS);
                     return Result.error(400, "请等待 " + ttl + " 秒后再试");
                 }
@@ -187,8 +201,12 @@ public class UserController {
     @RateLimit(window = 60, maxRequests = 3, message = "恢复邮箱发送过多，请稍后再试")
     @PostMapping("/send-recovercode")
     public Result<?> sendRecoverCode(@RequestParam String email) {
-        if (recoverCodeCheckStatus) {
+        if (recoverEmailCheckStatus) {
             try {
+                // 0. 邮箱格式校验
+                if (!EmailUtil.isValidEmail(email)) {
+                    return Result.error(400, "邮箱格式不正确");
+                }
                 // 1. 检查邮箱是否已注册
                 if (!userService.isEmailExist(email)) {
                     return Result.error(400, "该邮箱未绑定账号");
@@ -221,5 +239,74 @@ public class UserController {
         } else {
             return Result.ok("已跳过账号恢复邮箱验证");
         }
+    }
+
+    /**
+     * 获取当前登录用户信息（含头像、邮箱等）
+     */
+    @GetMapping("/me")
+    public Result<?> getCurrentUser(@RequestHeader("Authorization") String token) {
+        // 1. 校验 token
+        if (token == null || !token.startsWith("Bearer ")) {
+            return Result.error(401, "未登录，请先登录");
+        }
+        String realToken = token.substring(7);
+        if (!jwtUtil.validate(realToken)) {
+            return Result.error(401, "令牌失效，请重新登录");
+        }
+
+        // 2. 查询当前用户
+        String loginUsername = jwtUtil.parseUsername(realToken);
+        User user = userService.findUsernameforlogin(loginUsername);
+        if (user == null) {
+            return Result.error(400, "用户不存在");
+        }
+
+        // 3. 清空敏感字段再返回（密码、逻辑删除标记不外泄）
+        user.setPassword(null);
+        user.setIsDeleted(null);
+        return Result.ok(user);
+    }
+
+    /**
+     * 上传/更新头像（multipart/form-data，字段名 file）
+     */
+    @RateLimit(window = 60, maxRequests = 5, message = "头像上传过于频繁，请稍后再试")
+    @PostMapping("/avatar")
+    public Result<?> uploadAvatar(@RequestHeader("Authorization") String token,
+                                  @RequestParam("file") MultipartFile file) {
+        // 1. 校验 token
+        if (token == null || !token.startsWith("Bearer ")) {
+            return Result.error(401, "未登录，请先登录");
+        }
+        String realToken = token.substring(7);
+        if (!jwtUtil.validate(realToken)) {
+            return Result.error(401, "令牌失效，请重新登录");
+        }
+
+        // 2. 查询当前用户
+        String loginUsername = jwtUtil.parseUsername(realToken);
+        User currentUser = userService.findUsernameforlogin(loginUsername);
+        if (currentUser == null) {
+            return Result.error(400, "用户不存在");
+        }
+
+        // 3. 保存文件（类型/大小校验在 FileStorageService 内完成）
+        String avatarUrl;
+        try {
+            avatarUrl = fileStorageService.storeAvatar(file);
+        } catch (IllegalArgumentException e) {
+            return Result.error(400, e.getMessage());
+        } catch (RuntimeException e) {
+            return Result.error(500, e.getMessage());
+        }
+
+        // 4. 更新数据库并清理缓存
+        boolean updated = userService.updateAvatar(currentUser.getId(), avatarUrl);
+        if (!updated) {
+            return Result.error(500, "头像保存失败，请稍后重试");
+        }
+
+        return Result.ok(avatarUrl);
     }
 }

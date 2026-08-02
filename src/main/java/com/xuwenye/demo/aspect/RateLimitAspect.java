@@ -40,15 +40,12 @@ public class RateLimitAspect {
         // 2. 生成 Key
         String key = getKey(joinPoint);
 
-        // 3. 限流检查
+        // 3. 限流检查（Lua 原子操作：自增 + 首次设置过期时间，避免 key 永久残留）
         String redisKey = PREFIX + key;
-        Long count = redisUtil.increment(redisKey, 1);
+        Long count = redisUtil.incrementAndExpire(redisKey, rateLimit.window(), TimeUnit.SECONDS);
 
-        if (count == 1) {
-            redisUtil.expire(redisKey, rateLimit.window(), TimeUnit.SECONDS);
-        }
-
-        if (count > rateLimit.maxRequests()) {
+        // Redis 异常时 count 为 null，放行（限流降级，保证业务可用性）
+        if (count != null && count > rateLimit.maxRequests()) {
             return Result.error(429, rateLimit.message());
         }
 
@@ -66,8 +63,8 @@ public class RateLimitAspect {
             ip = request.getRemoteAddr();
         }
 
-        // 获取类名和方法名
-        String className = joinPoint.getTarget().getClass().getName();
+        // 获取类名和方法名（用接口声明的类型名，避免代理类名变化导致 key 漂移）
+        String className = joinPoint.getSignature().getDeclaringTypeName();
         String methodName = joinPoint.getSignature().getName();
 
         return ip + ":" + className + ":" + methodName;

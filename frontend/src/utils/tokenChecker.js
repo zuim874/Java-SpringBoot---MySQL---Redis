@@ -37,7 +37,7 @@ export function stopTokenCheck() {
 }
 
 /**
- * 检查ToKen状态
+ * 检查 Token 状态
  */
 function checkToken(onExpired) {
     const token = localStorage.getItem('token')

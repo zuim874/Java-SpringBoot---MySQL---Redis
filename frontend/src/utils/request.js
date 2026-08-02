@@ -28,20 +28,25 @@ export async function request(url, options = {}) {
         },
     }
 
+    // 合并 headers：先复制默认 headers，再叠加自定义 headers，避免自定义 headers 覆盖掉 Authorization
+    const headers = { ...defaultOptions.headers, ...(options.headers || {}) }
+
     // 如果有 Token，添加到请求头
     // 请求头新增字段Authorization，后端JWT鉴权标准约定头
     if (token) {
-        defaultOptions.headers['Authorization'] = `Bearer ${token}`
+        headers['Authorization'] = `Bearer ${token}`
     }
 
-    // 合并配置（如有重复，后者覆盖前者）
-    // ...对象：将所有键值对展开   {...xxx, ...xxx}:合并对象
-    const mergedOptions = { ...defaultOptions, ...options }
-
+    // 如果是 FormData（文件上传），删除 Content-Type，让浏览器自动设置 multipart boundary
+    if (options.body instanceof FormData) {
+        delete headers['Content-Type']
+    }
     // 如果是表单格式（URLSearchParams），修改 Content-Type
-    if (options.body instanceof URLSearchParams) {
-        mergedOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded'
+    else if (options.body instanceof URLSearchParams) {
+        headers['Content-Type'] = 'application/x-www-form-urlencoded'
     }
+
+    const mergedOptions = { ...defaultOptions, ...options, headers }
 
     try {
         // 发送请求

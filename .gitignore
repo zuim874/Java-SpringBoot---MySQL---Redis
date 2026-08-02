@@ -23,6 +23,9 @@ application-local.properties
 target/
 !.mvn/wrapper/maven-wrapper.jar
 
+# 用户上传文件（头像等）
+uploads/
+
 # reasonix
 .reasonix/
 

@@ -3,6 +3,7 @@ package com.xuwenye.demo.common;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -27,9 +28,15 @@ public class GlobalExceptionHandler {
         return Result.error(400, msg);
     }
 
+    // 参数非法拦截（如文件类型/大小校验失败，抛出业务错误信息）
+    @ExceptionHandler(IllegalArgumentException.class)
+    public Result<?> handleIllegalArgument(IllegalArgumentException e) {
+        return Result.error(400, e.getMessage());
+    }
+
     // SQL 语法异常（疑似注入攻击）
-    @ExceptionHandler(org.springframework.jdbc.BadSqlGrammarException.class)
-    public Result<?> handleSqlErr(Exception e) {
+    @ExceptionHandler(BadSqlGrammarException.class)
+    public Result<?> handleSqlErr(BadSqlGrammarException e) {
         log.error("疑似 SQL 注入攻击，SQL 语法异常", e);
         return Result.error(400, "参数非法，操作已拦截");
     }
