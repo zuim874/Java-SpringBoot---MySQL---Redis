@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-hello"# ǿ�Ƹ��£����������ļ���ʷ" 
-=======
-# Java SpringBoot + MySQL + Redis
+﻿# Java SpringBoot + MySQL + Redis
 
 一个基于 **Spring Boot 3.2.4** 的后端项目，整合 MySQL 数据库和 Redis 缓存，集成 JWT 认证、邮箱验证码、密码强度检测、安全过滤等通用功能。
 
