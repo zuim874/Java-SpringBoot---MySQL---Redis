@@ -12,14 +12,9 @@ import java.util.regex.Pattern;
  */
 @Component
 public class PasswordStrengthUtils {
-    private static PasswordStrengthConfig config;  // 静态引用
-
-    @Autowired
-    private PasswordStrengthConfig strengthConfig;
-
-    @PostConstruct
-    public void init() {
-        config = this.strengthConfig;
+    private final PasswordStrengthConfig passwordStrengthConfig;
+    public PasswordStrengthUtils(PasswordStrengthConfig passwordStrengthConfig) {
+        this.passwordStrengthConfig = passwordStrengthConfig;
     }
 
     /**
@@ -51,7 +46,7 @@ public class PasswordStrengthUtils {
     /**
      * 密码强度检验结果
      */
-    public static class StrengthResult {
+    public class StrengthResult {
         private final StrengthLevel level;
         private final String message;
         private final boolean valid;
@@ -78,9 +73,9 @@ public class PasswordStrengthUtils {
     /**
      * 检验密码强度（推荐使用）
      */
-    public static StrengthResult checkStrength(String password) {
+    public StrengthResult checkStrength(String password) {
         // 使用静态配置(test.passwordstrength.status为false时跳过密码校验)
-        if (config == null || !config.isStatus()) {
+        if (passwordStrengthConfig == null || !passwordStrengthConfig.isStatus()) {
             if (password == null || password.isEmpty()) {
                 return new StrengthResult(StrengthLevel.WEAK, "密码不能为空", false);
             }
@@ -148,14 +143,14 @@ public class PasswordStrengthUtils {
     /**
      * 快速校验（只返回是否通过）
      */
-    public static boolean isValid(String password) {
+    public boolean isValid(String password) {
         return checkStrength(password).isValid();
     }
 
     /**
      * 获取密码强度等级（只返回等级）
      */
-    public static StrengthLevel getLevel(String password) {
+    public StrengthLevel getLevel(String password) {
         return checkStrength(password).getLevel();
     }
 }

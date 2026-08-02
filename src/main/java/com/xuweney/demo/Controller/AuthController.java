@@ -29,19 +29,22 @@ public class AuthController {
     private final RedisUtil redisUtil;
     private final EmailUtil emailUtil;
     private final GenerateVerificationCode generateVerificationCode;
+    private final PasswordStrengthUtils passwordStrengthUtils;
 
     public AuthController(UserService userService,
                           PasswordEncoder passwordEncoder,
                           JwtUtil jwtUtil,
                           RedisUtil redisUtil,
                           EmailUtil emailUtil,
-                          GenerateVerificationCode generateVerificationCode) {
+                          GenerateVerificationCode generateVerificationCode,
+                          PasswordStrengthUtils passwordStrengthUtils) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.redisUtil = redisUtil;
         this.emailUtil = emailUtil;
         this.generateVerificationCode = generateVerificationCode;
+        this.passwordStrengthUtils = passwordStrengthUtils;
     }
 
     @RateLimit(window = 60, maxRequests = 3, message = "登录尝试过多，请稍后再试")
@@ -92,7 +95,7 @@ public class AuthController {
         }
         // 4. 密码强度检验（替换原来的简单长度校验）
         PasswordStrengthUtils.StrengthResult strengthResult =
-                PasswordStrengthUtils.checkStrength(password);
+                passwordStrengthUtils.checkStrength(password);
 
         if (!strengthResult.isValid()) {
             return Result.error(400, strengthResult.getMessage());

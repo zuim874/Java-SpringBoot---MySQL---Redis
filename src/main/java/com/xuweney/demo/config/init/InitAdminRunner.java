@@ -16,11 +16,13 @@ public class InitAdminRunner implements CommandLineRunner {
     @Value("${test.initEmailName}")
     private String testInitEmailName;
 
-    @Autowired
-    private UserService userService;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    private final UserService userService;
+    private final PasswordEncoder passwordEncoder;
+    public InitAdminRunner(UserService userService,
+                           PasswordEncoder passwordEncoder) {
+        this.userService = userService;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Override
     public void run(String... args) {

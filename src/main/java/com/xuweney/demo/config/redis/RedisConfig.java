@@ -29,13 +29,10 @@ public class RedisConfig {
     // ========== Redis 连接配置（从 application.properties 读取） ==========
     @Value("${spring.data.redis.host:localhost}")
     private String redisHost;
-
     @Value("${spring.data.redis.port:6379}")
     private int redisPort;
-
     @Value("${spring.data.redis.password:}")
     private String redisPassword;
-
     @Value("${spring.data.redis.database:0}")
     private int redisDatabase;
 
