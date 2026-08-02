@@ -223,7 +223,7 @@ jwt.expiration-ms=86400000
 
 ### 4.3 创建 JWT 工具类（精简版）
 
-**新建文件：** `src/main/java/com/xuweney/demo/util/JwtUtil.java`
+**新建文件：** `../src/main/java/com/xuwenye/demo/util/JwtUtil.java`
 
 **完整代码：**
 
@@ -303,14 +303,14 @@ public class JwtUtil {
 
 ### 4.4 创建 JWT 过滤器（精简版）
 
-**新建文件：** `src/main/java/com/xuweney/demo/config/JwtAuthenticationFilter.java`
+**新建文件：** `../src/main/java/com/xuwenye/demo/config/JwtAuthenticationFilter.java`
 
 **完整代码：**
 
 ```java
 package com.xuweney.demo.config;
 
-import com.xuweney.demo.util.auth.JwtUtil;
+import auth.util.com.xuwenye.demo.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -384,7 +384,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 > 这一步虽然不是 JWT 必须的，但可以让代码更规范，前后端对接更舒服。
 
-**新建文件：** `src/main/java/com/xuweney/demo/common/Result.java`
+**新建文件：** `../src/main/java/com/xuwenye/demo/common/Result.java`
 
 **完整代码：**
 
@@ -431,13 +431,14 @@ public class Result<T> {
 
 > 让业务异常返回统一 JSON 格式。
 
-**新建文件：** `src/main/java/com/xuweney/demo/common/GlobalExceptionHandler.java`
+**新建文件：** `../src/main/java/com/xuwenye/demo/common/GlobalExceptionHandler.java`
 
 **完整代码：**
 
 ```java
 package com.xuweney.demo.common;
 
+import com.xuwenye.demo.common.Result;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -464,7 +465,7 @@ public class GlobalExceptionHandler {
 > Token 过期时，Spring Security 默认返回 HTML 错误页面（不是 JSON），前端无法判断。
 > 所以我们要自定义一个处理器，认证失败时返回 JSON 格式的 401。
 
-**新建文件：** `src/main/java/com/xuweney/demo/config/JwtAuthenticationEntryPoint.java`
+**新建文件：** `../src/main/java/com/xuwenye/demo/config/JwtAuthenticationEntryPoint.java`
 
 **完整代码：**
 
@@ -472,7 +473,7 @@ public class GlobalExceptionHandler {
 package com.xuweney.demo.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xuweney.demo.common.Result;
+import common.com.xuwenye.demo.Result;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.AuthenticationException;
@@ -511,14 +512,14 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
 ### 4.7 修改 SecurityConfig 配置
 
-**文件：** `src/main/java/com/xuweney/demo/config/SecurityConfig.java`
+**文件：** `../src/main/java/com/xuwenye/demo/config/SecurityConfig.java`
 
 **修改后的完整代码：**
 
 ```java
 package com.xuweney.demo.config;
 
-import com.xuweney.demo.config.security.JwtAuthenticationFilter;
+import security.config.com.xuwenye.demo.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -596,17 +597,17 @@ public class SecurityConfig {
 
 ### 4.8 修改 AuthController 登录接口
 
-**文件：** `src/main/java/com/xuweney/demo/Controller/AuthController.java`
+**文件：** `../src/main/java/com/xuwenye/demo/Controller/AuthController.java`
 
 **修改后的完整代码：**
 
 ```java
 package com.xuweney.demo.Controller;
 
-import com.xuweney.demo.Entity.User;
-import com.xuweney.demo.Service.UserService;
-import com.xuweney.demo.common.Result;
-import com.xuweney.demo.util.auth.JwtUtil;
+import Entity.com.xuwenye.demo.User;
+import Service.com.xuwenye.demo.UserService;
+import common.com.xuwenye.demo.Result;
+import auth.util.com.xuwenye.demo.JwtUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -683,14 +684,14 @@ public class AuthController {
 
 ### 4.9 新增测试接口（验证 Token 是否生效）
 
-**文件：** `src/main/java/com/xuweney/demo/Controller/TestController.java`
+**文件：** `../src/main/java/com/xuwenye/demo/Controller/TestController.java`
 
 **修改后的代码：**
 
 ```java
 package com.xuweney.demo.Controller;
 
-import com.xuweney.demo.common.Result;
+import common.com.xuwenye.demo.Result;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;

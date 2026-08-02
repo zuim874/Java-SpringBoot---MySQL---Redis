@@ -42,7 +42,7 @@ is_deleted字段控制用户软删除 0存在 1删除
 
 {
     "code": 500,
-    "mes": "服务器异常：\r\n### Error updating database.  Cause: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'admin' for key 'sys_user.username'\r\n### The error may exist in com/xuweney/demo/Mapper/UserMapper.java (best guess)\r\n### The error may involve com.xuweney.demo.Mapper.UserMapper.insert-Inline\r\n### The error occurred while setting parameters\r\n### SQL: INSERT INTO sys_user  ( username, password, nickname,   status, create_time )  VALUES (  ?, ?, ?,   ?, ?  )\r\n### Cause: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'admin' for key 'sys_user.username'\n; Duplicate entry 'admin' for key 'sys_user.username'",
+    "mes": "服务器异常：\r\n### Error updating database.  Cause: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'admin' for key 'sys_user.username'\r\n### The error may exist in com/xuweney/demo/Mapper/UserMapper.java (best guess)\r\n### The error may involve Mapper.com.xuwenye.demo.UserMapper.insert-Inline\r\n### The error occurred while setting parameters\r\n### SQL: INSERT INTO sys_user  ( username, password, nickname,   status, create_time )  VALUES (  ?, ?, ?,   ?, ?  )\r\n### Cause: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'admin' for key 'sys_user.username'\n; Duplicate entry 'admin' for key 'sys_user.username'",
     "data": null
 }
 但是绕过了400，注册遇到唯一主键数据库报错，返回500
