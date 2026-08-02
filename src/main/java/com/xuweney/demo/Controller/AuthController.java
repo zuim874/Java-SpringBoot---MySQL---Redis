@@ -10,13 +10,11 @@ import com.xuweney.demo.util.auth.PasswordStrengthUtils;
 import com.xuweney.demo.util.oi.SanitizeUtil;
 import com.xuweney.demo.util.email.EmailUtil;
 import com.xuweney.demo.util.redis.RedisUtil;
+import com.xuweney.demo.util.codeGenerator.GenerateVerificationCode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -30,17 +28,20 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RedisUtil redisUtil;
     private final EmailUtil emailUtil;
+    private final GenerateVerificationCode generateVerificationCode;
 
     public AuthController(UserService userService,
                           PasswordEncoder passwordEncoder,
                           JwtUtil jwtUtil,
                           RedisUtil redisUtil,
-                          EmailUtil emailUtil) {
+                          EmailUtil emailUtil,
+                          GenerateVerificationCode generateVerificationCode) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.redisUtil = redisUtil;
         this.emailUtil = emailUtil;
+        this.generateVerificationCode = generateVerificationCode;
     }
 
     @RateLimit(window = 60, maxRequests = 3, message = "登录尝试过多，请稍后再试")
@@ -64,6 +65,7 @@ public class AuthController {
         return Result.ok(new LoginResponse(token, user.getNickname()));
     }
 
+    @RateLimit(window = 60, maxRequests = 3, message = "注册尝试过多，请稍后再试")
     @PostMapping("/register")
     public Result<?> register(@RequestParam String username,
                               @RequestParam String password,
@@ -129,6 +131,7 @@ public class AuthController {
         return Result.error(500, "注册失败");
     }
 
+    @RateLimit(window = 60, maxRequests = 3, message = "注册邮箱发送过多，请稍后再试")
     @PostMapping("/send-registercode")
     public Result<?> sendVerificationCode(@RequestParam String email) {
         if (registerCodeCheckStatus) {
@@ -138,25 +141,10 @@ public class AuthController {
                     return Result.error(400, "该邮箱已被注册");
                 }
 
-                // 2. 检查是否频繁发送（防刷）
-                String redisKey = "verify_registerCode:" + email;
-                String sendLimitKey = "verify_registerCode_limit:" + email;
+                // 2. 生成6位随机验证码
+                String code = generateVerificationCode.generateVerificationCode();
 
-                // 检查是否在60秒内重复发送
-                if (redisUtil.hasKey(sendLimitKey)) {
-                    long ttl = redisUtil.getExpire(sendLimitKey, TimeUnit.SECONDS);
-                    return Result.error(400,"请等待 " + ttl + " 秒后再试");
-                }
-
-                // 3. 生成6位随机验证码
-                String code = generateVerificationCode();
-
-                // 4. 存入 Redis（设置过期时间 5分钟）
-                redisUtil.set(redisKey, code, 5, TimeUnit.MINUTES);
-                // 发送限制标记（60秒过期）
-                redisUtil.set(sendLimitKey, "1", 60, TimeUnit.SECONDS);
-
-                // 5. 发送邮件（异步发送）
+                // 3. 发送邮件（异步发送）
                 emailUtil.sendRegisterVerificationCode(email, code);
 
                 return Result.ok("注册验证码已发送到您的邮箱，请注意查收");
@@ -169,17 +157,5 @@ public class AuthController {
         else {
             return Result.ok("已跳过注册邮箱验证");
         }
-    }
-
-    /**
-     * 生成6位数字验证码
-     */
-    private String generateVerificationCode() {
-        Random random = new Random();
-        StringBuilder code = new StringBuilder();
-        for (int i = 0; i < 6; i++) {
-            code.append(random.nextInt(10));
-        }
-        return code.toString();
     }
 }

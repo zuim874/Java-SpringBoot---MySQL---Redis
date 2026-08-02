@@ -4,6 +4,7 @@ import com.xuweney.demo.Service.UserService;
 import com.xuweney.demo.common.Result;
 import com.xuweney.demo.util.auth.JwtUtil;
 import jakarta.validation.constraints.Min;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,27 +24,20 @@ public class AdminUserController {
         this.jwtUtil = jwtUtil;
     }
 
+    @Value("${test.adminCheckCode}")
+    private String adminCheckCode;
+
     /**
      * 管理员删除用户（逻辑删除）
      */
     @DeleteMapping("/delete_admin")
     public Result<?> deleteUserByAdmin(
             @RequestHeader("Authorization") String token,
-            @Min(1) @RequestParam Long id
+            @Min(1) @RequestParam Long id,
+            @RequestParam String adminCode
     ) {
-        // 校验 token
-        if (token == null || !token.startsWith("Bearer ")) {
-            return Result.error(401, "未登录，请先登录");
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return Result.error(401, "令牌失效，请重新登录");
-        }
-
-        // 权限校验：仅管理员可删除
-        String loginUsername = jwtUtil.parseUsername(realToken);
-        if (!userService.isAdmin(loginUsername)) {
-            return Result.error(403, "权限不足，仅管理员可删除用户");
+        if (!adminCheck(token,adminCode)) {
+            return Result.error(403, "权限不足或管理员权限操作码错误");
         }
 
         // 执行删除
@@ -61,26 +55,11 @@ public class AdminUserController {
     @PutMapping("/recover_admin")
     public Result<?> recoverUserByAdmin(
             @RequestHeader("Authorization") String token,
-            @Min(1) @RequestParam Long id
+            @Min(1) @RequestParam Long id,
+            @RequestParam String adminCode
     ) {
-        // 校验用户是否真的需要恢复
-        if (userService.getById(id) != null) {
-            return Result.error(400, "当前用户无需恢复");
-        }
-
-        // 校验 token
-        if (token == null || !token.startsWith("Bearer ")) {
-            return Result.error(401, "未登录，请先登录");
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return Result.error(401, "令牌失效，请重新登录");
-        }
-
-        // 权限校验：仅管理员可恢复
-        String loginUsername = jwtUtil.parseUsername(realToken);
-        if (!userService.isAdmin(loginUsername)) {
-            return Result.error(403, "权限不足，仅管理员可恢复用户");
+        if (!adminCheck(token,adminCode)) {
+            return Result.error(403, "权限不足或管理员权限操作码错误");
         }
 
         // 执行恢复
@@ -90,5 +69,28 @@ public class AdminUserController {
         } else {
             return Result.error(400, "恢复失败，该用户不存在");
         }
+    }
+
+    private boolean adminCheck(String token,
+                               String adminCode) {
+        // 校验 token
+        if (token == null || !token.startsWith("Bearer ")) {
+            return false;
+        }
+        String realToken = token.substring(7);
+        if (!jwtUtil.validate(realToken)) {
+            return false;
+        }
+        // 权限校验：仅管理员可删除
+        String loginUsername = jwtUtil.parseUsername(realToken);
+        if (!userService.isAdmin(loginUsername)) {
+            return false;
+        }
+        // 管理员权限码确认
+        if (!adminCode.equals(adminCheckCode)) {
+            return false;
+        }
+
+        return true;
     }
 }

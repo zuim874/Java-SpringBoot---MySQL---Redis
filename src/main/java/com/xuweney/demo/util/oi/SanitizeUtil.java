@@ -1,5 +1,8 @@
 package com.xuweney.demo.util.oi;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public class SanitizeUtil {
     /**
      * 清洗输入：去除危险字符，防止 XSS 和 SQL 注入
