@@ -31,14 +31,6 @@ uploads/
 
 # IDE 文件
 .idea/
-<<<<<<< HEAD
-
-target/
-*.class
-
-*.iml
-=======
 *.iml
 *.xml
 .vscode/
->>>>>>> xuwenye/register+Token
