@@ -7,9 +7,38 @@
 /dataSources/
 /dataSources.local.xml
 
+*.class
+
+# properties 多环境配置
+application-dev.properties
+application-prod.properties
+application-test.properties
+application-local.properties
+
+# 环境变量文件
+.env
+.env.local
+
+# 编译产物
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# 用户上传文件（头像等）
+uploads/
+
+# reasonix
+.reasonix/
+
+# IDE 文件
 .idea/
+<<<<<<< HEAD
 
 target/
 *.class
 
 *.iml
+=======
+*.iml
+*.xml
+.vscode/
+>>>>>>> xuwenye/register+Token

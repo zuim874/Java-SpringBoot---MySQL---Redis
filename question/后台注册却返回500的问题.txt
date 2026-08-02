@@ -1,0 +1,3 @@
+GenericJackson2JsonRedisSerializer 序列化 User 到 Redis 时，
+遇到 create_time （ LocalDateTime 类型），
+但默认的 Jackson 没有注册 JSR310 时间模块
