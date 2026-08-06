@@ -2,12 +2,15 @@ package com.xuwenye.demo.Controller;
 
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.FileStorageService;
+import com.xuwenye.demo.Service.MQProducer;
 import com.xuwenye.demo.Service.UserService;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.common.Result;
 import com.xuwenye.demo.util.auth.JwtUtil;
 import com.xuwenye.demo.util.codeGenerator.GenerateVerificationCode;
+import com.xuwenye.demo.util.email.EmailType;
 import com.xuwenye.demo.util.email.EmailUtil;
+import com.xuwenye.demo.util.oi.SanitizeUtil;
 import com.xuwenye.demo.util.redis.RedisUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
@@ -29,18 +32,24 @@ public class UserController {
     private final EmailUtil emailUtil;
     private final GenerateVerificationCode generateVerificationCode;
     private final FileStorageService fileStorageService;
+    private final SanitizeUtil sanitizeUtil;
+    private final MQProducer mqProducer;
     public UserController(UserService userService,
                           JwtUtil jwtUtil,
                           RedisUtil redisUtil,
                           EmailUtil emailUtil,
                           GenerateVerificationCode generateVerificationCode,
-                          FileStorageService fileStorageService) {
+                          FileStorageService fileStorageService,
+                          SanitizeUtil sanitizeUtil,
+                          MQProducer mqProducer) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.redisUtil = redisUtil;
         this.emailUtil = emailUtil;
         this.generateVerificationCode = generateVerificationCode;
         this.fileStorageService = fileStorageService;
+        this.sanitizeUtil = sanitizeUtil;
+        this.mqProducer = mqProducer;
     }
 
     @Value("${test.recoverCodeCheck.status:false}")
@@ -151,6 +160,8 @@ public class UserController {
 
     /**
      * 发送账号删除验证码到邮箱
+     * @param email
+     * @return Result<?>
      */
     @RateLimit(window = 60, maxRequests = 3, message = "注销邮箱发送过多，请稍后再试")
     @PostMapping("/send-deletecode")
@@ -161,31 +172,22 @@ public class UserController {
                 if (!EmailUtil.isValidEmail(email)) {
                     return Result.error(400, "邮箱格式不正确");
                 }
+                String realEmail = sanitizeUtil.dealEmail(email);
                 // 1. 检查邮箱是否已注册
                 if (!userService.isEmailExist(email)) {
                     return Result.error(400, "该邮箱未绑定账号");
                 }
-
                 // 2. 原子防刷：首次设置限流 key 成功才放行（60 秒内重复请求被拦截）
-                String sendLimitKey = "verify_deleteCode_limit:" + email;
-                Boolean firstRequest = redisUtil.setIfAbsent(sendLimitKey, "1", 60, TimeUnit.SECONDS);
+                String sendLimitKey = "verify_deleteCode_limit:" + realEmail;
+                Boolean firstRequest = redisUtil.setIfAbsent(sendLimitKey, "1");
                 if (Boolean.FALSE.equals(firstRequest)) {
                     long ttl = redisUtil.getExpire(sendLimitKey, TimeUnit.SECONDS);
                     return Result.error(400, "请等待 " + ttl + " 秒后再试");
                 }
-
-                // 3. 生成6位随机验证码
-                String code = generateVerificationCode.generateVerificationCode();
-
-                // 4. 存入 Redis（5分钟过期）
-                String redisKey = "verify_deleteCode:" + email;
-                redisUtil.set(redisKey, code, 5, TimeUnit.MINUTES);
-
-                // 5. 发送邮件（异步发送）
-                emailUtil.sendDeleteAccountCode(email, code);
-
+                // 3. 发送邮件（消息队列）
+//                emailUtil.sendVerificationCode(email, 2);
+                mqProducer.sendEmailTask(email, 2);
                 return Result.ok("账号注销验证码已发送到您的邮箱，请注意查收");
-
             } catch (Exception e) {
                 e.printStackTrace();
                 return Result.error(400, "发送验证码失败：" + e.getMessage());
@@ -207,31 +209,22 @@ public class UserController {
                 if (!EmailUtil.isValidEmail(email)) {
                     return Result.error(400, "邮箱格式不正确");
                 }
+                String realEmail = sanitizeUtil.dealEmail(email);
                 // 1. 检查邮箱是否已注册
                 if (!userService.isEmailExist(email)) {
                     return Result.error(400, "该邮箱未绑定账号");
                 }
-
                 // 2. 原子操作
-                String sendLimitKey = "verify_recoverCode_limit:" + email;
-                Boolean success = redisUtil.setIfAbsent(sendLimitKey, "1", 60, TimeUnit.SECONDS);
+                String sendLimitKey = "verify_recoverCode_limit:" + realEmail;
+                Boolean success = redisUtil.setIfAbsent(sendLimitKey, "1");
                 if (Boolean.FALSE.equals(success)) {
                     long ttl = redisUtil.getExpire(sendLimitKey, TimeUnit.SECONDS);
                     return Result.error(400, "请等待 " + ttl + " 秒后再试");
                 }
-
-                // 3. 生成6位随机验证码
-                String code = generateVerificationCode.generateVerificationCode();
-
-                // 4. 存入 Redis（5分钟过期）
-                String redisKey = "verify_recoverCode:" + email;
-                redisUtil.set(redisKey, code, 5, TimeUnit.MINUTES);
-
                 // 5. 发送邮件（异步发送）
-                emailUtil.sendRecoverAccountCode(email, code);
-
+//                emailUtil.sendVerificationCode(email, 1);
+                mqProducer.sendEmailTask(email, 1);
                 return Result.ok("账号恢复验证码已发送到您的邮箱，请注意查收");
-
             } catch (Exception e) {
                 e.printStackTrace();
                 return Result.error(400, "发送验证码失败：" + e.getMessage());
@@ -254,14 +247,13 @@ public class UserController {
         if (!jwtUtil.validate(realToken)) {
             return Result.error(401, "令牌失效，请重新登录");
         }
-
         // 2. 查询当前用户
         String loginUsername = jwtUtil.parseUsername(realToken);
+
         User user = userService.findUsernameforlogin(loginUsername);
         if (user == null) {
             return Result.error(400, "用户不存在");
         }
-
         // 3. 清空敏感字段再返回（密码、逻辑删除标记不外泄）
         user.setPassword(null);
         user.setIsDeleted(null);

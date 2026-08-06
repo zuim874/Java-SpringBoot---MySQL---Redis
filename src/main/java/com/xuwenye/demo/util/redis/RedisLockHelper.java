@@ -9,20 +9,20 @@ import java.util.concurrent.TimeUnit;
 /**
  * Redis 分布式锁工具类
  *
- * @author xuwenye
+ * @author ZuiM
  * @date 2026-07-20
  */
 @Component
 public class RedisLockHelper {
-
     private final RedissonClient redissonClient;
-
     public RedisLockHelper(RedissonClient redissonClient) {
         this.redissonClient = redissonClient;
     }
 
     /**
      * 加锁（默认锁超时 30 秒）
+     *
+     * @param key
      */
     public RLock lock(String key) {
         RLock lock = redissonClient.getLock(key);

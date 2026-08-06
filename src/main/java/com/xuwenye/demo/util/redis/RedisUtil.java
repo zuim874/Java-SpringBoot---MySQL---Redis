@@ -1,6 +1,6 @@
 package com.xuwenye.demo.util.redis;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
@@ -10,9 +10,15 @@ import java.util.concurrent.TimeUnit;
 
 @Component
 public class RedisUtil {
+    @Value("${test.redisTimeOut:1}")
+    private long redisTimeOut;
+    @Value("${test.redisCodeTimeOut:1}")
+    private long redisCodeTimeOut;
 
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
+    public RedisUtil(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     /**
      * 原子「自增 + 首次设置过期时间」Lua 脚本：
@@ -30,8 +36,8 @@ public class RedisUtil {
     /**
      * 设置缓存（带过期时间）
      */
-    public void set(String key, Object value, long timeout, TimeUnit unit) {
-        redisTemplate.opsForValue().set(key, value, timeout, unit);
+    public void set(String key, Object value) {
+        redisTemplate.opsForValue().set(key, value, redisTimeOut, TimeUnit.MINUTES);
     }
 
     /**
@@ -91,8 +97,8 @@ public class RedisUtil {
         redisTemplate.expire(key, timeout, unit);
     }
 
-    public Boolean setIfAbsent(String key, String value, long timeout, TimeUnit unit) {
+    public Boolean setIfAbsent(String key, String value) {
         return redisTemplate.opsForValue()
-                .setIfAbsent(key, value, timeout, unit);
+                .setIfAbsent(key, value, redisCodeTimeOut, TimeUnit.MINUTES);
     }
 }

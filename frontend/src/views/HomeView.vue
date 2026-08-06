@@ -2,7 +2,7 @@
   <div class="store-page">
     <!-- ===== 毛玻璃导航 ===== -->
     <nav class="nav" :class="{ scrolled: scrolled }">
-      <div class="nav-logo">XuWenYeShop</div>
+      <div class="nav-logo">ZuiMShop</div>
       <ul class="nav-links" :class="{ open: menuOpen }">
         <li><a href="#hero" @click="closeMenu">首页</a></li>
         <li><a href="#products" @click="closeMenu">商品</a></li>
@@ -139,14 +139,14 @@
     <!-- ===== 底部版权栏 ===== -->
     <footer class="footer">
       <div class="footer-inner">
-        <div class="footer-logo">XuWenYeShop</div>
+        <div class="footer-logo">ZuiMShop</div>
         <div class="footer-links">
           <a href="#hero">首页</a>
           <a href="#products">商品</a>
           <a href="#categories">分类</a>
           <a href="javascript:void(0)" @click="goProfile">我的</a>
         </div>
-        <div class="footer-copy">© 2026 XuWenYeShop. All rights reserved.</div>
+        <div class="footer-copy">© 2026 ZuiMShop. All rights reserved.</div>
       </div>
     </footer>
   </div>

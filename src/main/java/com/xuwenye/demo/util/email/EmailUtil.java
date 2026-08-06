@@ -1,6 +1,7 @@
 package com.xuwenye.demo.util.email;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import com.xuwenye.demo.util.codeGenerator.GenerateVerificationCode;
+import com.xuwenye.demo.util.redis.RedisUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -13,87 +14,71 @@ public class EmailUtil {
     /** 邮箱格式正则（简单校验） */
     private static final String EMAIL_REGEX = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$";
 
-    @Autowired
-    private JavaMailSender mailSender;
+    private final JavaMailSender mailSender;
+    private final GenerateVerificationCode generateVerificationCode;
+    private final RedisUtil redisUtil;
 
+    public EmailUtil(JavaMailSender mailSender,
+                     GenerateVerificationCode generateVerificationCode,
+                     RedisUtil redisUtil) {
+        this.mailSender = mailSender;
+        this.generateVerificationCode = generateVerificationCode;
+        this.redisUtil = redisUtil;
+    }
+
+    // 发信人邮箱
     @Value("${spring.mail.username}")
     private String fromEmail;
+    // 过期时长
+    @Value("${test.redisTimeOut}")
+    private String redisTimeOut;
 
     /**
-     * 校验邮箱格式是否合法
+     * @param email 待检测格式是否合法的邮箱
      */
     public static boolean isValidEmail(String email) {
         return email != null && email.matches(EMAIL_REGEX);
     }
 
     /**
-     * 异步发送验证码邮件
+     * @param toEmail 收信人邮箱
+     * @param emailTypeCode 邮件类型编码
      */
     @Async
-    public void sendRegisterVerificationCode(String toEmail, String code) {
+    public void sendVerificationCode(String toEmail, Integer emailTypeCode) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(toEmail);
-            message.setSubject("【XuWenYeTech】邮箱验证码");
-            message.setText(
-                    "您好！\n\n" +
-                            "您正在进行账号注册，验证码为：\n\n" +
-                            "    " + code + "\n\n" +
-                            "该验证码 5 分钟内有效，请勿泄露给他人。\n\n" +
-                            "如果不是您本人操作，请忽略此邮件。\n\n" +
-                            "—— XuWenYeTech 团队"
-            );
-            mailSender.send(message);
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("邮件发送失败：" + e.getMessage());
-        }
-    }
 
-    /**
-     * 异步发送注销账号邮件
-     */
-    @Async
-    public void sendDeleteAccountCode(String toEmail, String code) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(toEmail);
-            message.setSubject("【XuWenYeTech】账号注销验证码");
-            message.setText(
-                    "您好！\n\n" +
-                            "您正在进行账号注销，验证码为：\n\n" +
-                            "    " + code + "\n\n" +
-                            "该验证码 5 分钟内有效，请勿泄露给他人。\n\n" +
-                            "如果不是您本人操作，请忽略此邮件。\n\n" +
-                            "—— XuWenYeTech 团队"
-            );
-            mailSender.send(message);
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("邮件发送失败：" + e.getMessage());
-        }
-    }
+            EmailType type = EmailType.getByCode(emailTypeCode);    // 邮箱实例
+            String title = type.getTitle();   // 获取邮件标题
+            String description = type.getDescription(); // 获取邮件描述
+            message.setSubject("【XuWenYeTech】" + title + "验证码");
 
-    /**
-     * 异步发送恢复账号邮件
-     */
-    @Async
-    public void sendRecoverAccountCode(String toEmail, String code) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(toEmail);
-            message.setSubject("【XuWenYeTech】账号恢复验证码");
-            message.setText(
-                    "您好！\n\n" +
-                            "您正在进行账号恢复，验证码为：\n\n" +
-                            "    " + code + "\n\n" +
-                            "该验证码 5 分钟内有效，请勿泄露给他人。\n\n" +
-                            "如果不是您本人操作，请忽略此邮件。\n\n" +
-                            "—— XuWenYeTech 团队"
-            );
+            Boolean needCode = type.getNeedVerify();    // 邮箱是否需要验证码
+            if (needCode) {
+                String code = generateVerificationCode.generateVerificationCode();  // 生成六位数验证码
+                String redisKey = "verify_" + "Code:" + toEmail;
+                redisUtil.set(redisKey, code);
+
+                message.setText(
+                        "您好！\n\n" +
+                                "您正在进行 " + description + " ，验证码为：\n\n" +
+                                "    " + code + "\n\n" +
+                                "该验证码 " + redisTimeOut + " 分钟内有效，请勿泄露给他人。\n\n" +
+                                "如果不是您本人操作，请忽略此邮件。\n\n" +
+                                "—— XuWenYeTech 团队"
+                );
+            }
+            else {
+                message.setText(
+                        "您好！\n\n" +
+                                description + " \n\n" +
+                                "—— XuWenYeTech 团队"
+                );
+            }
+
             mailSender.send(message);
         } catch (Exception e) {
             e.printStackTrace();

@@ -1,0 +1,21 @@
+2026.8.5
+1.ActiveMQConfig 消息转换器 需要import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;处理时间
+
+2.手机端和电脑端打开注册页，输入同一邮箱并点发送验证码，后台真的发送了两条邮件：
+    原因：邮箱本身是不区分大小写的，但是在写入redis的过程中，redis会区分大小写，产生了以为不是同一邮箱的误判
+    解决方法：
+            /**
+             * @author ZuiM
+             * @param email
+             * @return String：非gmail邮箱转小写
+             */
+            public String dealEmail(String email) {
+                if (!email.contains("@gmail.com")) {
+                    return email.toLowerCase(Locale.ROOT);
+                }
+                else {
+                    return email;
+                }
+            }
+
+3.

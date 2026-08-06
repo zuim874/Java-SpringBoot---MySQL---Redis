@@ -9,7 +9,7 @@
 
     <!-- 导航条（保持风格一致） -->
     <nav class="nav">
-      <div class="nav-logo">XuWenYeTech</div>
+      <div class="nav-logo">ZuiMShop</div>
       <div class="nav-slogan">定义数字未来</div>
     </nav>
 
@@ -70,7 +70,7 @@
 
     <!-- 底部版权 -->
     <div class="login-footer">
-      <span>© 2026 XuWenYeTech. All rights reserved.</span>
+      <span>© 2026 ZuiMShop. All rights reserved.</span>
     </div>
   </div>
 </template>

@@ -9,7 +9,7 @@
 
     <!-- 导航条 -->
     <nav class="nav">
-      <div class="nav-logo">XuWenYeShop</div>
+      <div class="nav-logo">ZuiMShop</div>
       <div class="nav-actions">
         <button class="nav-btn" @click="goBackToShop">
           <span class="nav-btn-icon">🏪</span>
@@ -90,7 +90,7 @@
 
     <!-- 底部版权 -->
     <div class="profile-footer">
-      <span>© 2026 XuWenYeShop. All rights reserved.</span>
+      <span>© 2026 ZuiMShop. All rights reserved.</span>
     </div>
   </div>
 </template>

@@ -39,7 +39,9 @@ public class UserService {
 
         // 第 3 步：查到了就写入 Redis（10 分钟过期，避免数据长期不一致）
         if (user != null) {
-            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user);
+            // 缓存击穿测试用
+//            redisUtil.set(cacheKey, user, 2, TimeUnit.SECONDS);
         }
 
         return user;
@@ -61,7 +63,7 @@ public class UserService {
 
         // 写入redis(10分钟过期)
         if (user != null) {
-            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user);
         }
         return user;
     }
@@ -81,7 +83,7 @@ public class UserService {
 
         // 写入redis(10分钟过期)
         if (user != null) {
-            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user);
         }
         return user;
     }
@@ -104,7 +106,7 @@ public class UserService {
 
         // 第 3 步：写入 Redis（5 分钟过期，列表缓存允许短暂不一致）
         if (list != null && !list.isEmpty()) {
-            redisUtil.set(cacheKey, list, 5, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, list);
         }
         return list;
     }
@@ -127,7 +129,7 @@ public class UserService {
 
         // 第 3 步：写入 Redis（5 分钟过期）
         if (list != null && !list.isEmpty()) {
-            redisUtil.set(cacheKey, list, 5, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, list);
         }
         return list;
     }
@@ -150,7 +152,7 @@ public class UserService {
 
         // 第 3 步：查到了就写入 Redis（10 分钟过期）
         if (user != null) {
-            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user);
         }
         return user;
     }
@@ -170,7 +172,7 @@ public class UserService {
 
         // 第 3 步：存在则写入 Redis（10 分钟过期）
         if (user != null) {
-            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user);
             return true;
         }
         return false;
@@ -185,7 +187,7 @@ public class UserService {
 
         // 插入成功才写缓存，避免无效数据进入 Redis
         if (result) {
-            redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+            redisUtil.set(cacheKey, user);
         }
         return result;
     }
@@ -224,7 +226,7 @@ public class UserService {
 
                 // 恢复后重新写入 active 缓存（用户已可登录）
                 String cacheKey = "demo:user:login:active:" + username;
-                redisUtil.set(cacheKey, user, 10, TimeUnit.MINUTES);
+                redisUtil.set(cacheKey, user);
             }
         }
         return result;

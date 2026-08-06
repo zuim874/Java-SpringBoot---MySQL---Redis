@@ -9,7 +9,7 @@
 
     <!-- 导航条 -->
     <nav class="nav">
-      <div class="nav-logo">XuWenYeShop</div>
+      <div class="nav-logo">ZuiMShop</div>
       <div class="nav-slogan">恢复账号</div>
     </nav>
 
@@ -91,7 +91,7 @@
 
     <!-- 底部版权 -->
     <div class="recover-footer">
-      <span>© 2026 XuWenYeShop. All rights reserved.</span>
+      <span>© 2026 ZuiMShop. All rights reserved.</span>
     </div>
   </div>
 </template>

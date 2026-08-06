@@ -9,7 +9,7 @@
 
     <!-- 导航条 -->
     <nav class="nav">
-      <div class="nav-logo">XuWenYeShop</div>
+      <div class="nav-logo">ZuiMShop</div>
       <div class="nav-actions">
         <button class="nav-btn" @click="goHome">返回商城</button>
         <button class="nav-btn nav-btn--logout" @click="handleLogout">退出</button>
@@ -102,7 +102,7 @@
 
     <!-- 底部版权 -->
     <div class="admin-footer">
-      <span>© 2026 XuWenYeShop. All rights reserved.</span>
+      <span>© 2026ZuiMShop. All rights reserved.</span>
     </div>
   </div>
 </template>
