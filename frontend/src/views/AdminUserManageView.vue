@@ -157,13 +157,13 @@ async function handleDeleteUser() {
   loading.value = true
   message.value = ''
   try {
+    const params = new URLSearchParams()
+    params.append('id', Number(targetUserId.value))
+    params.append('adminCode', adminCode.value)
+
     const data = await request('/user/delete_admin', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: Number(targetUserId.value),
-        adminCode: adminCode.value
-      })
+      body: params
     })
     if (data.code === 200) {
       msgSuccess.value = true
@@ -185,13 +185,13 @@ async function handleRecoverUser() {
   loading.value = true
   message.value = ''
   try {
+    const params = new URLSearchParams()
+    params.append('id', Number(targetUserId.value))
+    params.append('adminCode', adminCode.value)
+
     const data = await request('/user/recover_admin', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: Number(targetUserId.value),
-        adminCode: adminCode.value
-      })
+      body: params
     })
     if (data.code === 200) {
       msgSuccess.value = true

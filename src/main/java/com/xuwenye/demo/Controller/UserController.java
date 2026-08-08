@@ -7,11 +7,14 @@ import com.xuwenye.demo.Service.UserService;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.common.Result;
 import com.xuwenye.demo.util.auth.JwtUtil;
+import com.xuwenye.demo.util.auth.PasswordStrengthUtils;
 import com.xuwenye.demo.util.email.EmailType;
 import com.xuwenye.demo.util.email.EmailUtil;
 import com.xuwenye.demo.util.oi.SanitizeUtil;
 import com.xuwenye.demo.util.redis.RedisUtil;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,18 +35,24 @@ public class UserController {
     private final FileStorageService fileStorageService;
     private final SanitizeUtil sanitizeUtil;
     private final MQProducer mqProducer;
+    private final PasswordEncoder passwordEncoder;
+    private final PasswordStrengthUtils passwordStrengthUtils;
     public UserController(UserService userService,
                           JwtUtil jwtUtil,
                           RedisUtil redisUtil,
                           FileStorageService fileStorageService,
                           SanitizeUtil sanitizeUtil,
-                          MQProducer mqProducer) {
+                          MQProducer mqProducer,
+                          PasswordEncoder passwordEncoder,
+                          PasswordStrengthUtils passwordStrengthUtils) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.redisUtil = redisUtil;
         this.fileStorageService = fileStorageService;
         this.sanitizeUtil = sanitizeUtil;
         this.mqProducer = mqProducer;
+        this.passwordEncoder = passwordEncoder;
+        this.passwordStrengthUtils = passwordStrengthUtils;
     }
 
     /** 账号恢复验证码校验开关 */
@@ -279,6 +288,7 @@ public class UserController {
      * @param token 登录令牌（Bearer xxx）
      * @return Result<?> 200/400/401：成功/失败
      */
+    @RateLimit(window = 60, maxRequests = 5, message = "用户资料刷新过于频繁，请稍后再试")
     @GetMapping("/me")
     public Result<?> getCurrentUser(@RequestHeader("Authorization") String token) {
         // 1. 校验 token
@@ -579,12 +589,73 @@ public class UserController {
         return Result.ok("换绑邮箱验证码已发送到您的邮箱，请注意查收");
     }
 
+    /**
+     * 用户修改密码
+     * 1.校验token
+     * 2.获取当前用户名
+     * 3.清洗、校验密码
+     * 4.密码强度校验
+     * 5.修改密码
+     * <p>
+     * @author ZuiM
+     * @param token token验证
+     * @param oldPassword 旧密码
+     * @param newPassword 新密码
+     * @param newPassword_check 确认新密码
+     * @return 400/401/500/200 身份验证失败/用户不存在/修改失败/修改成功
+     */
     @RateLimit(window = 60, maxRequests = 5, message = "更改密码过于频繁，请稍后重试！")
     @PostMapping("/change_password")
     public Result<?> changePassword(@RequestHeader("Authorization") String token,
                                     @RequestParam String oldPassword,
                                     @RequestParam String newPassword,
                                     @RequestParam String newPassword_check) {
+        // 1.校验token
+        if (token == null || !token.startsWith("Bearer ")) {
+            return Result.error(401, "当前未登录，请先登录！");
+        }
+        String realToken = token.substring(7);
+        if (!jwtUtil.validate(realToken)) {
+            return Result.error(401, "登录状态已过期，请重新登录！");
+        }
+        // 2.获取当前用户名
+        String loginUsername = jwtUtil.parseUsername(realToken);
+        User currentUser = userService.findUsernameforlogin(loginUsername);
+        if (currentUser == null) {
+            return Result.error(400, "用户不存在");
+        }
+
+        // 3.校验密码,输入清洗
+        oldPassword = oldPassword.trim();
+        if (!passwordEncoder.matches(oldPassword, currentUser.getPassword())) {
+            return Result.error(400, "密码错误");
+        }
+        newPassword = newPassword.trim();
+        newPassword_check = newPassword_check.trim();
+        if (!newPassword.equals(newPassword_check)) {
+            return Result.error(401, "两次密码不一致");
+        }
+        // 4.密码强度检验（替换原来的简单长度校验）
+        PasswordStrengthUtils.StrengthResult strengthResult =
+                passwordStrengthUtils.checkStrength(newPassword);
+
+        if (!strengthResult.isValid()) {
+            return Result.error(400, strengthResult.getMessage());
+        }
+
+        // 5.更改密码
+        User user = new User();
+        user.setPassword(passwordEncoder.encode(newPassword));
+
+        try {
+            boolean updated = userService.save(user);
+            if (updated) {
+                return Result.ok("密码修改成功");
+            }
+        } catch (DuplicateKeyException e) {
+            return Result.error(500, "密码修改失败");
+        }
+
         return Result.ok("密码修改成功");
     }
 }

@@ -45,18 +45,34 @@
           <div class="info-divider"></div>
           <div class="info-row">
             <div class="info-label">昵称</div>
-            <div class="info-value">{{ nickname }}</div>
+            <div class="info-value">
+              {{ nickname }}
+              <button class="info-edit-btn" @click="openEditNickname" title="编辑昵称">✏️</button>
+            </div>
           </div>
           <div class="info-divider"></div>
           <div class="info-row">
             <div class="info-label">邮箱</div>
-            <div class="info-value">{{ email || '未绑定' }}</div>
+            <div class="info-value">
+              {{ email || '未绑定' }}
+              <button class="info-edit-btn" @click="openChangeEmail" title="换绑邮箱">✏️</button>
+            </div>
           </div>
         </div>
 
         <!-- 账号操作区 -->
         <div class="profile-actions">
           <h3 class="actions-title">账号操作</h3>
+          <div class="action-btns">
+            <button class="edit-profile-btn" @click="openEditNickname">
+              <span class="edit-profile-btn-icon">✏️</span>
+              <span>编辑昵称</span>
+            </button>
+            <button class="edit-profile-btn" @click="openChangeEmail">
+              <span class="edit-profile-btn-icon">📧</span>
+              <span>换绑邮箱</span>
+            </button>
+          </div>
           <button class="delete-btn" @click="confirmDelete">
             <span class="delete-btn-icon">⚠️</span>
             <span>注销账号</span>
@@ -70,18 +86,103 @@
       </div>
     </div>
 
-    <!-- 确认弹窗 -->
+    <!-- 确认注销弹窗 -->
     <Teleport to="body">
       <div v-if="showConfirm" class="modal-overlay" @click.self="showConfirm = false">
         <div class="modal-card">
           <div class="modal-icon">⚠️</div>
           <h3 class="modal-title">确认注销账号</h3>
-          <p class="modal-desc">此操作将停用您的账号，确定要注销吗？</p>
+          <p class="modal-desc">将向您的绑定邮箱发送验证码，输入验证码后确认注销</p>
+          <div class="modal-field">
+            <input v-model="deleteCode" type="text" placeholder="请输入邮箱验证码" maxlength="6" />
+            <button class="modal-send-btn" :disabled="deleteCodeSending || deleteCountdown > 0" @click="sendDeleteCode">
+              <span v-if="deleteCodeSending" class="btn-loading"></span>
+              <span v-else-if="deleteCountdown > 0">{{ deleteCountdown }}s</span>
+              <span v-else>发送验证码</span>
+            </button>
+          </div>
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showConfirm = false">取消</button>
             <button class="modal-btn modal-btn--confirm" @click="handleDelete" :disabled="deleting">
               <span v-if="deleting" class="btn-loading"></span>
               <span v-else>确认注销</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 编辑昵称弹窗 -->
+    <Teleport to="body">
+      <div v-if="showEditNickname" class="modal-overlay" @click.self="showEditNickname = false">
+        <div class="modal-card">
+          <div class="modal-icon">✏️</div>
+          <h3 class="modal-title">编辑昵称</h3>
+          <p class="modal-desc">修改后将在个人中心展示新昵称</p>
+          <div class="modal-field">
+            <input v-model="editNickname" type="text" placeholder="请输入新昵称（1-20个字符）" maxlength="20" />
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn modal-btn--cancel" @click="showEditNickname = false">取消</button>
+            <button class="modal-btn modal-btn--confirm modal-btn--blue" @click="submitEditNickname" :disabled="editingNickname">
+              <span v-if="editingNickname" class="btn-loading"></span>
+              <span v-else>保存</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 换绑邮箱弹窗 -->
+    <Teleport to="body">
+      <div v-if="showChangeEmail" class="modal-overlay" @click.self="showChangeEmail = false">
+        <div class="modal-card modal-card--wide">
+          <div class="modal-icon">📧</div>
+          <h3 class="modal-title">换绑邮箱</h3>
+          <p class="modal-desc">需分别验证旧邮箱与新邮箱，请先发送验证码</p>
+
+          <div class="modal-form">
+            <div class="modal-field-row">
+              <label>旧邮箱</label>
+              <div class="modal-field">
+                <input v-model="oldEmail" type="email" placeholder="当前绑定邮箱" disabled />
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>旧邮箱验证码</label>
+              <div class="modal-field">
+                <input v-model="oldEmailCode" type="text" placeholder="6位验证码" maxlength="6" />
+                <button class="modal-send-btn" :disabled="oldCodeSending || oldCodeCountdown > 0" @click="sendOldEmailCode">
+                  <span v-if="oldCodeSending" class="btn-loading"></span>
+                  <span v-else-if="oldCodeCountdown > 0">{{ oldCodeCountdown }}s</span>
+                  <span v-else>发送</span>
+                </button>
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>新邮箱</label>
+              <div class="modal-field">
+                <input v-model="newEmail" type="email" placeholder="请输入新邮箱" />
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>新邮箱验证码</label>
+              <div class="modal-field">
+                <input v-model="newEmailCode" type="text" placeholder="6位验证码" maxlength="6" />
+                <button class="modal-send-btn" :disabled="newCodeSending || newCodeCountdown > 0 || !newEmailValid" @click="sendNewEmailCode">
+                  <span v-if="newCodeSending" class="btn-loading"></span>
+                  <span v-else-if="newCodeCountdown > 0">{{ newCodeCountdown }}s</span>
+                  <span v-else>发送</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="modal-btn modal-btn--cancel" @click="showChangeEmail = false">取消</button>
+            <button class="modal-btn modal-btn--confirm modal-btn--blue" @click="submitChangeEmail" :disabled="changingEmail">
+              <span v-if="changingEmail" class="btn-loading"></span>
+              <span v-else>确认换绑</span>
             </button>
           </div>
         </div>
@@ -96,7 +197,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
 
@@ -113,8 +214,39 @@ const deleting = ref(false)
 const uploading = ref(false)
 const fileInput = ref(null)
 
+// 编辑昵称
+const showEditNickname = ref(false)
+const editNickname = ref('')
+const editingNickname = ref(false)
+
+// 换绑邮箱
+const showChangeEmail = ref(false)
+const oldEmail = ref('')
+const oldEmailCode = ref('')
+const newEmail = ref('')
+const newEmailCode = ref('')
+const oldCodeSending = ref(false)
+const oldCodeCountdown = ref(0)
+const newCodeSending = ref(false)
+const newCodeCountdown = ref(0)
+const changingEmail = ref(false)
+
+// 注销验证码
+const deleteCode = ref('')
+const deleteCodeSending = ref(false)
+const deleteCountdown = ref(0)
+
+// 倒计时定时器（统一清理）
+let countdownTimer = null
+
 const userInitial = computed(() => {
   return nickname.value ? nickname.value.charAt(0).toUpperCase() : '?'
+})
+
+// 新邮箱格式校验
+const newEmailValid = computed(() => {
+  const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+  return re.test(newEmail.value)
 })
 
 // 页面加载时从后端拉取最新用户信息（含头像、邮箱）
@@ -125,11 +257,21 @@ onMounted(async () => {
       const u = data.data
       if (u.username) username.value = u.username
       if (u.nickname) nickname.value = u.nickname
+      if (u.avatar) avatar.value = u.avatar
       email.value = u.email || ''
+      avatar.value = u.avatar || ''
       avatar.value = u.avatar || ''
     }
   } catch (err) {
     // 拉取失败时保留 localStorage 中的缓存信息
+  }
+})
+
+// 组件卸载时清理倒计时定时器
+onBeforeUnmount(() => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
   }
 })
 
@@ -143,6 +285,191 @@ function handleLogout() {
   router.push('/login')
 }
 
+// ==================== 编辑昵称 ====================
+function openEditNickname() {
+  editNickname.value = nickname.value
+  showEditNickname.value = true
+  message.value = ''
+}
+
+async function submitEditNickname() {
+  if (!editNickname.value || !editNickname.value.trim()) {
+    message.value = '昵称不能为空'
+    success.value = false
+    return
+  }
+  const realNickname = editNickname.value.trim()
+  if (realNickname.length > 20) {
+    message.value = '昵称长度不能超过 20 个字符'
+    success.value = false
+    return
+  }
+
+  editingNickname.value = true
+  message.value = ''
+  try {
+    const params = new URLSearchParams()
+    params.append('nickname', realNickname)
+    const data = await request('/user/update_profile', {
+      method: 'PUT',
+      body: params
+    })
+    if (data.code === 200) {
+      nickname.value = realNickname
+      localStorage.setItem('nickname', realNickname)
+      success.value = true
+      message.value = '昵称更新成功'
+      showEditNickname.value = false
+    } else {
+      success.value = false
+      message.value = data.mes || '昵称更新失败'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = '网络错误，请检查后端服务是否启动'
+  } finally {
+    editingNickname.value = false
+  }
+}
+
+// ==================== 换绑邮箱 ====================
+function openChangeEmail() {
+  oldEmail.value = email.value || ''
+  oldEmailCode.value = ''
+  newEmail.value = ''
+  newEmailCode.value = ''
+  oldCodeCountdown.value = 0
+  newCodeCountdown.value = 0
+  showChangeEmail.value = true
+  message.value = ''
+}
+
+function startCountdown(targetRef, seconds = 60) {
+  targetRef.value = seconds
+  if (countdownTimer) clearInterval(countdownTimer)
+  countdownTimer = setInterval(() => {
+    let done = true
+    if (oldCodeCountdown.value > 0) oldCodeCountdown.value--
+    if (newCodeCountdown.value > 0) newCodeCountdown.value--
+    if (deleteCountdown.value > 0) deleteCountdown.value--
+    if (oldCodeCountdown.value > 0 || newCodeCountdown.value > 0 || deleteCountdown.value > 0) done = false
+    if (done) {
+      clearInterval(countdownTimer)
+      countdownTimer = null
+    }
+  }, 1000)
+}
+
+// 发送旧邮箱验证码（type=3）
+async function sendOldEmailCode() {
+  if (!oldEmail.value) {
+    message.value = '旧邮箱为空，无法发送验证码'
+    success.value = false
+    return
+  }
+  oldCodeSending.value = true
+  message.value = ''
+  try {
+    const params = new URLSearchParams()
+    params.append('email', oldEmail.value)
+    params.append('type', '3')
+    const data = await request('/user/send-changeEmail', {
+      method: 'POST',
+      body: params
+    })
+    if (data.code === 200) {
+      success.value = true
+      message.value = data.mes || '旧邮箱验证码已发送'
+      startCountdown()
+    } else {
+      success.value = false
+      message.value = data.mes || '发送失败'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = '网络错误，请检查后端服务是否启动'
+  } finally {
+    oldCodeSending.value = false
+  }
+}
+
+// 发送新邮箱验证码（type=4）
+async function sendNewEmailCode() {
+  if (!newEmailValid.value) {
+    message.value = '新邮箱格式不正确'
+    success.value = false
+    return
+  }
+  newCodeSending.value = true
+  message.value = ''
+  try {
+    const params = new URLSearchParams()
+    params.append('email', newEmail.value)
+    params.append('type', '4')
+    const data = await request('/user/send-changeEmail', {
+      method: 'POST',
+      body: params
+    })
+    if (data.code === 200) {
+      success.value = true
+      message.value = data.mes || '新邮箱验证码已发送'
+      startCountdown()
+    } else {
+      success.value = false
+      message.value = data.mes || '发送失败'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = '网络错误，请检查后端服务是否启动'
+  } finally {
+    newCodeSending.value = false
+  }
+}
+
+// 提交换绑邮箱
+async function submitChangeEmail() {
+  if (!newEmailValid.value) {
+    message.value = '新邮箱格式不正确'
+    success.value = false
+    return
+  }
+  if (!oldEmailCode.value || !newEmailCode.value) {
+    message.value = '请填写新旧邮箱验证码'
+    success.value = false
+    return
+  }
+
+  changingEmail.value = true
+  message.value = ''
+  try {
+    const params = new URLSearchParams()
+    params.append('oldEmail', oldEmail.value)
+    params.append('oldEmail_code', oldEmailCode.value)
+    params.append('newEmail', newEmail.value)
+    params.append('newEmail_code', newEmailCode.value)
+    const data = await request('/user/change_email', {
+      method: 'PUT',
+      body: params
+    })
+    if (data.code === 200) {
+      email.value = newEmail.value
+      localStorage.setItem('email', newEmail.value)
+      success.value = true
+      message.value = '邮箱更换成功'
+      showChangeEmail.value = false
+    } else {
+      success.value = false
+      message.value = data.mes || '换绑失败'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = '网络错误，请检查后端服务是否启动'
+  } finally {
+    changingEmail.value = false
+  }
+}
+
+// ==================== 头像上传 ====================
 // 点击头像触发文件选择
 function triggerFileSelect() {
   if (!uploading.value) {
@@ -197,17 +524,57 @@ async function handleFileChange(event) {
   }
 }
 
+// ==================== 注销账号 ====================
 function confirmDelete() {
+  deleteCode.value = ''
   showConfirm.value = true
+  message.value = ''
+}
+
+// 发送注销验证码（type=2）
+async function sendDeleteCode() {
+  if (!email.value) {
+    message.value = '邮箱为空，无法发送验证码'
+    success.value = false
+    return
+  }
+  deleteCodeSending.value = true
+  message.value = ''
+  try {
+    const params = new URLSearchParams()
+    params.append('email', email.value)
+    const data = await request('/user/send-deletecode', {
+      method: 'POST',
+      body: params
+    })
+    if (data.code === 200) {
+      success.value = true
+      message.value = data.mes || '注销验证码已发送'
+      startCountdown()
+    } else {
+      success.value = false
+      message.value = data.mes || '发送验证码失败'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = '网络错误，请检查后端服务是否启动'
+  } finally {
+    deleteCodeSending.value = false
+  }
 }
 
 async function handleDelete() {
+  if (!deleteCode.value) {
+    message.value = '请先获取并输入邮箱验证码'
+    success.value = false
+    return
+  }
   deleting.value = true
   message.value = ''
   try {
     const params = new URLSearchParams()
     params.append('email', email.value || '')
-    params.append('code', '000000')
+    params.append('code', deleteCode.value)
 
     const data = await request('/user/delete_user', {
       method: 'DELETE',
@@ -487,6 +854,23 @@ async function handleDelete() {
   font-weight: 500;
   color: #212529;
   font-family: 'DM Sans', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.info-edit-btn {
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: all 0.3s;
+  padding: 2px;
+  line-height: 1;
+}
+.info-edit-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
 }
 .info-divider {
   height: 1px;
@@ -505,6 +889,37 @@ async function handleDelete() {
   font-weight: 700;
   color: #212529;
   margin-bottom: 16px;
+}
+.action-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.edit-profile-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: 1px solid rgba(43,108,176,0.20);
+  border-radius: 12px;
+  background: rgba(43,108,176,0.04);
+  color: #2b6cb0;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.edit-profile-btn:hover {
+  background: rgba(43,108,176,0.10);
+  border-color: rgba(43,108,176,0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(43,108,176,0.12);
+}
+.edit-profile-btn-icon {
+  font-size: 0.9rem;
 }
 .delete-btn {
   display: inline-flex;
@@ -588,6 +1003,86 @@ async function handleDelete() {
   text-align: center;
   animation: modalIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+.modal-card--wide {
+  width: 440px;
+}
+/* ===== 弹窗表单 ===== */
+.modal-form {
+  text-align: left;
+  margin-bottom: 20px;
+}
+.modal-field-row {
+  margin-bottom: 14px;
+}
+.modal-field-row label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.modal-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.60);
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.modal-field:focus-within {
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 3px rgba(74,158,255,0.12);
+  background: white;
+}
+.modal-field input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 12px 0;
+  font-size: 0.88rem;
+  font-family: 'DM Sans', sans-serif;
+  color: #212529;
+  outline: none;
+  min-width: 0;
+}
+.modal-field input::placeholder {
+  color: #adb5bd;
+  font-weight: 400;
+}
+.modal-field input:disabled {
+  background: rgba(0,0,0,0.02);
+  color: #868e96;
+}
+.modal-send-btn {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
+  color: white;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+}
+.modal-send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(43,108,176,0.30);
+}
+.modal-send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 @keyframes modalIn {
   from { opacity: 0; transform: translateY(16px) scale(0.96); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -634,6 +1129,14 @@ async function handleDelete() {
 .modal-btn--confirm {
   background: linear-gradient(135deg, #c92a2a, #e03131);
   color: white;
+}
+.modal-btn--blue {
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
+  color: white;
+}
+.modal-btn--blue:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(43,108,176,0.25);
 }
 .modal-btn--confirm:hover:not(:disabled) {
   transform: translateY(-1px);

@@ -136,7 +136,7 @@ async function sendCode() {
   try {
     const params = new URLSearchParams()
     params.append('email', email.value)
-    const data = await request('/api/user/send-recovercode', {
+    const data = await request('/user/send-recovercode', {
       method: 'POST',
       body: params
     })
@@ -164,7 +164,7 @@ async function handleRecover() {
     params.append('username', username.value)
     params.append('email', email.value)
     params.append('code', code.value)
-    const data = await request('/api/user/recover_user', {
+    const data = await request('/user/recover_user', {
       method: 'PUT',
       body: params
     })

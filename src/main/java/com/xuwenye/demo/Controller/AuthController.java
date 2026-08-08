@@ -169,6 +169,8 @@ public class AuthController {
         user.setPassword(passwordEncoder.encode(password));
         user.setNickname(nickname);
         user.setStatus(1);
+        // 保存小写（@gmail除外）
+        email = sanitizeUtil.dealEmail(email);
         user.setEmail(email);
         user.setCreateTime(java.time.LocalDateTime.now());
 

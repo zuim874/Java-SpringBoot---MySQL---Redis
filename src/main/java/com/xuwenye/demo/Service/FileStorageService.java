@@ -24,8 +24,8 @@ public class FileStorageService {
     /** 允许的图片扩展名白名单 */
     private static final List<String> ALLOWED_IMAGE_EXT = List.of("jpg", "jpeg", "png", "gif", "webp");
 
-    /** 头像最大体积：2MB */
-    private static final long MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+    /** 头像最大体积：10MB */
+    private static final long MAX_AVATAR_SIZE = 10 * 1024 * 1024;
 
     /** 头像子目录（相对 upload 根目录） */
     private static final String AVATAR_SUB_DIR = "avatars";

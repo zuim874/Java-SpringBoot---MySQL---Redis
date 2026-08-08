@@ -12,6 +12,7 @@ export default defineConfig({
         target: 'http://localhost:8081',
         changeOrigin: true
       },
+      // 头像等上传文件的访问也代理到后端（由后端 /uploads/** 静态映射提供）
       '/uploads': {
         target: 'http://localhost:8081',
         changeOrigin: true
