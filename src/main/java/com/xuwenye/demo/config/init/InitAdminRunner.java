@@ -8,6 +8,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 
+/**
+ * 启动时初始化管理员与测试账号
+ * 1.读取配置开关 examStatus
+ * 2.若开启：创建管理员 admin / 123456
+ * 3.批量创建 1000 个测试账号 tester_1 ~ tester_1000
+ * <p>
+ * @author ZuiM
+ */
 @Component      // 标记为组件，Spring启动时会自动执行
 public class InitAdminRunner implements CommandLineRunner {
     @Value("${test.username.status:false}")
@@ -23,6 +31,15 @@ public class InitAdminRunner implements CommandLineRunner {
         this.passwordEncoder = passwordEncoder;
     }
 
+    /**
+     * 项目启动后执行初始化（CommandLineRunner 回调）
+     * 1.打印配置开关状态
+     * 2.创建管理员账号（不存在时）
+     * 3.批量创建测试账号（不存在时，防止重启重复创建）
+     * <p>
+     * @author ZuiM
+     * @param args 启动参数
+     */
     @Override
     public void run(String... args) {
         System.out.println("【调试】examStatus = " + examStatus);

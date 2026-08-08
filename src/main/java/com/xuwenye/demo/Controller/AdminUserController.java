@@ -10,6 +10,10 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * 管理员用户管理接口（仅管理员可操作）
+ * 1.删除用户（逻辑删除，需管理员权限码）
+ * 2.恢复用户（逻辑删除恢复，需管理员权限码）
+ * <p>
+ * @author ZuiM
  */
 @RestController
 @RequestMapping("/api/user")
@@ -31,6 +35,14 @@ public class AdminUserController {
 
     /**
      * 管理员删除用户（逻辑删除）
+     * 1.校验管理员身份与权限码
+     * 2.执行逻辑删除（清理缓存）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌（Bearer xxx）
+     * @param id 目标用户 ID
+     * @param adminCode 管理员权限操作码
+     * @return Result 200 删除成功；400 用户不存在；403 权限不足
      */
     @DeleteMapping("/delete_admin")
     public Result<?> deleteUserByAdmin(
@@ -53,6 +65,14 @@ public class AdminUserController {
 
     /**
      * 管理员恢复用户（逻辑删除恢复）
+     * 1.校验管理员身份与权限码
+     * 2.执行恢复（刷新缓存）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌（Bearer xxx）
+     * @param id 目标用户 ID
+     * @param adminCode 管理员权限操作码
+     * @return Result 200 恢复成功；400 用户不存在；403 权限不足
      */
     @PutMapping("/recover_admin")
     public Result<?> recoverUserByAdmin(
@@ -73,6 +93,17 @@ public class AdminUserController {
         }
     }
 
+    /**
+     * 管理员权限校验
+     * 1.校验 token 有效性
+     * 2.校验用户角色为 ROLE_ADMIN
+     * 3.校验管理员权限操作码（先判空，避免 null.equals 抛 NPE）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌（Bearer xxx）
+     * @param adminCode 管理员权限操作码
+     * @return boolean true=通过校验
+     */
     private boolean adminCheck(String token,
                                String adminCode) {
         // 校验 token

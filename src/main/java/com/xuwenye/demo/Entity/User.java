@@ -4,6 +4,14 @@ import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 import java.time.LocalDateTime;
 
+/**
+ * 用户实体（对应 sys_user 表）
+ * 1.主键自增（IdType.AUTO）
+ * 2.Java 字段用驼峰命名，@TableField 映射数据库蛇形列名
+ * 3.逻辑删除字段 is_deleted（配合 @TableLogic）
+ * <p>
+ * @author ZuiM
+ */
 @Data                           // Lombok自动生成getter/setter/toString
 @TableName("sys_user")         // 对应数据库表名（如果表名和类名一致可以不写）
 public class User {

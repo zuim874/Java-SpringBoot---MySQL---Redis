@@ -7,6 +7,12 @@ import java.util.regex.Pattern;
 
 /**
  * 密码强度检验工具类
+ * 1.StrengthLevel：强度等级枚举（弱/中/强/非常强）
+ * 2.StrengthResult：检验结果（等级 + 提示 + 是否通过）
+ * 3.checkStrength：按长度与字符类型计分判定强度
+ * 4.isValid / getLevel：快捷校验
+ * <p>
+ * @author ZuiM
  */
 @Component
 public class PasswordStrengthUtils {
@@ -17,6 +23,8 @@ public class PasswordStrengthUtils {
 
     /**
      * 密码强度等级枚举
+     * <p>
+     * @author ZuiM
      */
     public enum StrengthLevel {
         WEAK("弱", 1),
@@ -32,10 +40,22 @@ public class PasswordStrengthUtils {
             this.level = level;
         }
 
+        /**
+         * 获取等级描述
+         * <p>
+         * @author ZuiM
+         * @return String 描述
+         */
         public String getDescription() {
             return description;
         }
 
+        /**
+         * 获取等级数值
+         * <p>
+         * @author ZuiM
+         * @return int 等级
+         */
         public int getLevel() {
             return level;
         }
@@ -43,26 +63,54 @@ public class PasswordStrengthUtils {
 
     /**
      * 密码强度检验结果
+     * <p>
+     * @author ZuiM
      */
     public class StrengthResult {
         private final StrengthLevel level;
         private final String message;
         private final boolean valid;
 
+        /**
+         * 构造检验结果
+         * <p>
+         * @author ZuiM
+         * @param level 强度等级
+         * @param message 提示信息
+         * @param valid 是否通过
+         */
         public StrengthResult(StrengthLevel level, String message, boolean valid) {
             this.level = level;
             this.message = message;
             this.valid = valid;
         }
 
+        /**
+         * 获取强度等级
+         * <p>
+         * @author ZuiM
+         * @return StrengthLevel 等级
+         */
         public StrengthLevel getLevel() {
             return level;
         }
 
+        /**
+         * 获取提示信息
+         * <p>
+         * @author ZuiM
+         * @return String 提示
+         */
         public String getMessage() {
             return message;
         }
 
+        /**
+         * 是否通过校验
+         * <p>
+         * @author ZuiM
+         * @return boolean true=通过
+         */
         public boolean isValid() {
             return valid;
         }
@@ -70,6 +118,13 @@ public class PasswordStrengthUtils {
 
     /**
      * 检验密码强度（推荐使用）
+     * 1.配置未开启时仅校验非空（直接放行）
+     * 2.开启时按长度与字符类型计分
+     * 3.按得分判定等级与是否通过
+     * <p>
+     * @author ZuiM
+     * @param password 密码明文
+     * @return StrengthResult 检验结果
      */
     public StrengthResult checkStrength(String password) {
         // 使用静态配置(test.passwordstrength.status为false时跳过密码校验)
@@ -140,6 +195,10 @@ public class PasswordStrengthUtils {
 
     /**
      * 快速校验（只返回是否通过）
+     * <p>
+     * @author ZuiM
+     * @param password 密码明文
+     * @return boolean true=通过
      */
     public boolean isValid(String password) {
         return checkStrength(password).isValid();
@@ -147,6 +206,10 @@ public class PasswordStrengthUtils {
 
     /**
      * 获取密码强度等级（只返回等级）
+     * <p>
+     * @author ZuiM
+     * @param password 密码明文
+     * @return StrengthLevel 强度等级
      */
     public StrengthLevel getLevel(String password) {
         return checkStrength(password).getLevel();

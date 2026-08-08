@@ -8,6 +8,13 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+/**
+ * 邮件发送工具
+ * 1.isValidEmail：静态校验邮箱格式
+ * 2.sendVerificationCode：异步发送验证码邮件（生成验证码 + 存 Redis + 发邮件）
+ * <p>
+ * @author ZuiM
+ */
 @Component
 public class EmailUtil {
 
@@ -34,15 +41,25 @@ public class EmailUtil {
     private String redisTimeOut;
 
     /**
+     * 校验邮箱格式是否合法
+     * <p>
+     * @author ZuiM
      * @param email 待检测格式是否合法的邮箱
+     * @return boolean true=格式合法
      */
     public static boolean isValidEmail(String email) {
         return email != null && email.matches(EMAIL_REGEX);
     }
 
     /**
+     * 异步发送验证码邮件
+     * 1.根据 emailTypeCode 获取邮件类型枚举
+     * 2.需要验证码时：生成 6 位验证码并存入 Redis（key 规则 verify_{template}Code:{邮箱}）
+     * 3.拼接邮件正文并发送
+     * <p>
+     * @author ZuiM
      * @param toEmail 收信人邮箱
-     * @param emailTypeCode 邮件类型编码
+     * @param emailTypeCode 邮件类型编码（见 EmailType）
      */
     @Async
     public void sendVerificationCode(String toEmail, Integer emailTypeCode) {
@@ -58,8 +75,9 @@ public class EmailUtil {
 
             Boolean needCode = type.getNeedVerify();    // 邮箱是否需要验证码
             if (needCode) {
+                String template = type.getTemplate();
                 String code = generateVerificationCode.generateVerificationCode();  // 生成六位数验证码
-                String redisKey = "verify_" + "Code:" + toEmail;
+                String redisKey = "verify_" + template + "Code:" + toEmail;
                 redisUtil.set(redisKey, code);
 
                 message.setText(

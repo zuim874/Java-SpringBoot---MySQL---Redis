@@ -13,6 +13,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * JWT 认证过滤器：从请求头解析并校验 Token，写入 Spring Security 上下文
+ * <p>
+ * @author ZuiM
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -22,6 +27,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.jwtUtil = jwtUtil;
     }
 
+    /**
+     * 过滤器核心逻辑
+     * 1.从 Authorization 头取出 Bearer Token
+     * 2.解析出用户名并校验 Token 有效性
+     * 3.通过后构造认证对象写入 SecurityContext
+     * 4.放行请求
+     * <p>
+     * @author ZuiM
+     * @param request HTTP 请求
+     * @param response HTTP 响应
+     * @param filterChain 过滤器链
+     * @throws ServletException 服务异常
+     * @throws IOException IO 异常
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,

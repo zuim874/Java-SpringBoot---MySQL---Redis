@@ -10,6 +10,13 @@ import java.util.UUID;
 
 /**
  * 文件存储服务：负责头像等上传文件的落盘保存与访问路径生成
+ * 1.非空校验
+ * 2.大小校验（≤2MB）
+ * 3.扩展名白名单校验（仅图片格式）
+ * 4.服务端生成 UUID 文件名（防路径穿越）
+ * 5.落盘保存并返回可访问 URL
+ * <p>
+ * @author ZuiM
  */
 @Service
 public class FileStorageService {
@@ -25,9 +32,16 @@ public class FileStorageService {
 
     /**
      * 保存头像文件，返回可访问的 URL 路径
-     *
+     * 1.非空校验
+     * 2.大小校验（2MB 上限）
+     * 3.扩展名白名单校验（防止上传非图片文件）
+     * 4.生成随机文件名（UUID，避免路径穿越）
+     * 5.创建目录并落盘
+     * 6.返回浏览器可访问的 URL
+     * <p>
+     * @author ZuiM
      * @param file 上传的图片文件
-     * @return 例如 /uploads/avatars/xxx.png
+     * @return String 例如 /uploads/avatars/xxx.png
      * @throws IllegalArgumentException 文件为空 / 类型不允许 / 超过大小限制
      */
     public String storeAvatar(MultipartFile file) {

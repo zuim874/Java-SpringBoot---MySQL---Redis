@@ -15,6 +15,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 接口限流切面：拦截标注 @RateLimit 的方法，基于 Redis 计数实现滑动窗口限流
+ * 1.获取注解配置（窗口/最大请求数/提示信息）
+ * 2.生成限流 key（IP + 类名 + 方法名）
+ * 3.调用 Redis 原子自增（Lua：自增 + 首次设置过期）
+ * 4.超过阈值返回 429，否则放行
+ * <p>
+ * @author ZuiM
+ */
 @Aspect
 @Component
 public class RateLimitAspect {
@@ -26,6 +35,18 @@ public class RateLimitAspect {
         this.redisUtil = redisUtil;
     }
 
+    /**
+     * 环绕通知：执行限流检查后放行原方法
+     * 1.获取注解
+     * 2.生成 Key
+     * 3.限流检查（Lua 原子操作：自增 + 首次设置过期时间，避免 key 永久残留）
+     * 4.执行原方法
+     * <p>
+     * @author ZuiM
+     * @param joinPoint 连接点
+     * @return Object 原方法返回值
+     * @throws Throwable 原方法异常
+     */
     @Around("@annotation(com.xuwenye.demo.annotation.RateLimit)")
     public Object rateLimit(ProceedingJoinPoint joinPoint) throws Throwable {
         // 1. 获取注解
@@ -53,6 +74,15 @@ public class RateLimitAspect {
         return joinPoint.proceed();
     }
 
+    /**
+     * 生成限流 Key：IP + 类名 + 方法名
+     * 1.从 RequestContextHolder 获取请求 IP
+     * 2.取接口声明类型名与方法名（避免代理类名变化导致 key 漂移）
+     * <p>
+     * @author ZuiM
+     * @param joinPoint 连接点
+     * @return String 限流 key（如 127.0.0.1:xxx.AuthController:login）
+     */
     private String getKey(ProceedingJoinPoint joinPoint) {
         // 获取 IP
         ServletRequestAttributes attributes =

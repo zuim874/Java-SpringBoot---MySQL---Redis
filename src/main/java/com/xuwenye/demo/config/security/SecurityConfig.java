@@ -15,6 +15,14 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+/**
+ * Spring Security 安全配置
+ * 1.配置 BCrypt 密码编码器
+ * 2.配置安全过滤链（无状态会话、放行公开接口、注册 JWT 过滤器）
+ * 3.配置 CORS 跨域
+ * <p>
+ * @author ZuiM
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -25,11 +33,29 @@ public class SecurityConfig {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
+    /**
+     * 密码编码器（BCrypt 加密）
+     * <p>
+     * @author ZuiM
+     * @return PasswordEncoder 密码编码器
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * 安全过滤链
+     * 1.开启 CORS、关闭 CSRF
+     * 2.设置无状态会话（STATELESS）
+     * 3.放行公开接口（登录/注册/发送验证码/静态资源 /uploads/**）
+     * 4.其余请求要求认证，并在 UsernamePasswordAuthenticationFilter 前注册 JWT 过滤器
+     * <p>
+     * @author ZuiM
+     * @param http HttpSecurity 安全构建器
+     * @return SecurityFilterChain 安全过滤链
+     * @throws Exception 配置异常
+     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -47,6 +73,15 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * CORS 跨域配置（允许所有来源、常用方法、携带凭证）
+     * 1.允许所有来源（AllowedOriginPatterns）
+     * 2.允许 GET/POST/PUT/DELETE/OPTIONS
+     * 3.允许携带凭证与自定义请求头
+     * <p>
+     * @author ZuiM
+     * @return CorsConfigurationSource 跨域配置源
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();

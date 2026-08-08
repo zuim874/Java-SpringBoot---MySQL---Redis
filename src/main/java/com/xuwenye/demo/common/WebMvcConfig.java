@@ -7,6 +7,13 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/**
+ * Web MVC 配置
+ * 1.静态资源映射：/uploads/** 指向本地上传目录
+ * 2.注册 SQL 注入安全拦截器（排除静态资源）
+ * <p>
+ * @author ZuiM
+ */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
@@ -16,6 +23,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     /**
      * 静态资源映射：/uploads/** 映射到本地上传目录，使上传的头像等文件可被浏览器直接访问
+     * <p>
+     * @author ZuiM
+     * @param registry 资源处理器注册器
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -23,6 +33,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addResourceLocations("file:" + uploadDir);
     }
 
+    /**
+     * 注册拦截器：SQL 注入安全拦截器拦截所有请求，静态资源除外
+     * <p>
+     * @author ZuiM
+     * @param registry 拦截器注册器
+     */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SqlInjectSafeInterceptor())

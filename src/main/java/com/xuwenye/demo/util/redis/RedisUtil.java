@@ -8,10 +8,22 @@ import org.springframework.stereotype.Component;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Redis 操作工具
+ * 1.set/get/delete：通用缓存读写
+ * 2.hasKey/getExpire：key 存在性与剩余过期时间
+ * 3.setIfAbsent：原子防刷（不存在才设置，验证码限流用）
+ * 4.incrementAndExpire：Lua 原子「自增 + 首次设置过期」（接口限流用）
+ * 5.expire/increment：辅助操作
+ * <p>
+ * @author ZuiM
+ */
 @Component
 public class RedisUtil {
+    /** 通用缓存过期时间（分钟，默认 1） */
     @Value("${test.redisTimeOut:1}")
     private long redisTimeOut;
+    /** 验证码相关过期时间（分钟，默认 1） */
     @Value("${test.redisCodeTimeOut:1}")
     private long redisCodeTimeOut;
 
@@ -34,7 +46,11 @@ public class RedisUtil {
     );
 
     /**
-     * 设置缓存（带过期时间）
+     * 设置缓存（使用默认过期时间 redisTimeOut 分钟）
+     * <p>
+     * @author ZuiM
+     * @param key 缓存 key
+     * @param value 缓存值
      */
     public void set(String key, Object value) {
         redisTemplate.opsForValue().set(key, value, redisTimeOut, TimeUnit.MINUTES);
@@ -42,6 +58,10 @@ public class RedisUtil {
 
     /**
      * 判断 key 是否存在
+     * <p>
+     * @author ZuiM
+     * @param key 缓存 key
+     * @return boolean true=存在
      */
     public boolean hasKey(String key) {
         return Boolean.TRUE.equals(redisTemplate.hasKey(key));
@@ -49,6 +69,11 @@ public class RedisUtil {
 
     /**
      * 获取 key 的剩余过期时间
+     * <p>
+     * @author ZuiM
+     * @param key 缓存 key
+     * @param unit 时间单位
+     * @return long 剩余时间（key 不存在返回 -1）
      */
     public long getExpire(String key, TimeUnit unit) {
         Long expire = redisTemplate.getExpire(key, unit);
@@ -57,6 +82,10 @@ public class RedisUtil {
 
     /**
      * 获取缓存值
+     * <p>
+     * @author ZuiM
+     * @param key 缓存 key
+     * @return Object 缓存值（不存在返回 null）
      */
     public Object get(String key) {
         return redisTemplate.opsForValue().get(key);
@@ -64,11 +93,23 @@ public class RedisUtil {
 
     /**
      * 删除缓存
+     * <p>
+     * @author ZuiM
+     * @param key 缓存 key
+     * @return boolean true=删除成功
      */
     public boolean delete(String key) {
         return Boolean.TRUE.equals(redisTemplate.delete(key));
     }
 
+    /**
+     * 自增（按指定步长）
+     * <p>
+     * @author ZuiM
+     * @param key 缓存 key
+     * @param delta 步长
+     * @return Long 自增后的值
+     */
     public Long increment(String key, long delta) {
         return redisTemplate.opsForValue().increment(key, delta);
     }
@@ -79,6 +120,7 @@ public class RedisUtil {
      * 场景：限流计数。第一次调用时创建 key 并设置 TTL，
      * 之后只自增。INCR 与 EXPIRE 在同一个 Lua 脚本内执行，天然原子。
      *
+     * @author ZuiM
      * @param key    限流 key
      * @param timeout 过期时间（从第一次调用开始计时）
      * @param unit    时间单位
@@ -93,10 +135,28 @@ public class RedisUtil {
         );
     }
 
+    /**
+     * 设置 key 过期时间
+     * <p>
+     * @author ZuiM
+     * @param key 缓存 key
+     * @param timeout 过期时长
+     * @param unit 时间单位
+     */
     public void expire(String key, long timeout, TimeUnit unit) {
         redisTemplate.expire(key, timeout, unit);
     }
 
+    /**
+     * 原子防刷：key 不存在才设置（SET NX），使用验证码过期时间 redisCodeTimeOut
+     * 1.返回 true 表示首次设置成功（放行）
+     * 2.返回 false 表示 key 已存在（限流窗口内重复请求）
+     * <p>
+     * @author ZuiM
+     * @param key 限流 key
+     * @param value 值（通常为 "1"）
+     * @return Boolean true=首次设置成功
+     */
     public Boolean setIfAbsent(String key, String value) {
         return redisTemplate.opsForValue()
                 .setIfAbsent(key, value, redisCodeTimeOut, TimeUnit.MINUTES);

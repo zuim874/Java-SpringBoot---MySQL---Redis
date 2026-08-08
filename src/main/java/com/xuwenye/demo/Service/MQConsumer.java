@@ -4,12 +4,19 @@ import com.xuwenye.demo.config.activeMQ.ActiveMQConfig;
 import com.xuwenye.demo.Entity.TaskMessage;
 import com.xuwenye.demo.util.email.EmailUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/**
+ * 消息队列消费者
+ * 1.监听各业务队列/主题，消费 TaskMessage
+ * 2.邮件任务：调用 EmailUtil 发送验证码邮件，失败进入重试逻辑
+ * 3.统计/文件/通知/广播/告警：预留 TODO 处理
+ * <p>
+ * @author ZuiM
+ */
 @Slf4j
 @Component
 public class MQConsumer {
@@ -19,6 +26,15 @@ public class MQConsumer {
     }
 
     // ========== 1. 消费邮件任务 ==========
+    /**
+     * 消费邮件任务
+     * 1.解析邮件数据（收件人 + 邮件类型编码）
+     * 2.调用 EmailUtil 发送验证码邮件
+     * 3.失败进入重试逻辑
+     * <p>
+     * @author ZuiM
+     * @param message 邮件任务消息
+     */
     @JmsListener(destination = ActiveMQConfig.QUEUE_EMAIL)
     public void handleEmail(TaskMessage message) {
         try {
@@ -95,6 +111,14 @@ public class MQConsumer {
 //    }
 
     // ========== 5. 消费统计任务 ==========
+    /**
+     * 消费统计任务
+     * 1.解析统计指标数据
+     * 2.记录指标（TODO：落库/聚合）
+     * <p>
+     * @author ZuiM
+     * @param message 统计任务消息
+     */
     @JmsListener(destination = ActiveMQConfig.QUEUE_STATISTICS)
     public void handleStatistics(TaskMessage message) {
         try {
@@ -111,6 +135,14 @@ public class MQConsumer {
     }
 
     // ========== 6. 消费文件任务 ==========
+    /**
+     * 消费文件任务
+     * 1.解析文件数据（fileId + operation）
+     * 2.处理文件（TODO）
+     * <p>
+     * @author ZuiM
+     * @param message 文件任务消息
+     */
     @JmsListener(destination = ActiveMQConfig.QUEUE_FILE)
     public void handleFile(TaskMessage message) {
         try {
@@ -126,6 +158,14 @@ public class MQConsumer {
     }
 
     // ========== 7. 消费通知任务 ==========
+    /**
+     * 消费通知任务
+     * 1.解析通知数据（userId + title + content）
+     * 2.发送推送通知（TODO）
+     * <p>
+     * @author ZuiM
+     * @param message 通知任务消息
+     */
     @JmsListener(destination = ActiveMQConfig.QUEUE_NOTIFICATION)
     public void handleNotification(TaskMessage message) {
         try {
@@ -142,6 +182,12 @@ public class MQConsumer {
     }
 
     // ========== 8. 消费广播消息 ==========
+    /**
+     * 消费广播消息（主题模式）
+     * <p>
+     * @author ZuiM
+     * @param message 广播消息
+     */
     @JmsListener(destination = ActiveMQConfig.TOPIC_BROADCAST, containerFactory = "topicListenerContainerFactory")
     public void handleBroadcast(TaskMessage message) {
         try {
@@ -153,6 +199,14 @@ public class MQConsumer {
     }
 
     // ========== 9. 消费告警消息 ==========
+    /**
+     * 消费告警消息（主题模式）
+     * 1.解析告警级别与内容
+     * 2.发送钉钉/企微通知（TODO）
+     * <p>
+     * @author ZuiM
+     * @param message 告警消息
+     */
     @JmsListener(destination = ActiveMQConfig.TOPIC_ALERT, containerFactory = "topicListenerContainerFactory")
     public void handleAlert(TaskMessage message) {
         try {
@@ -167,6 +221,14 @@ public class MQConsumer {
     }
 
     // ========== 重试逻辑 ==========
+    /**
+     * 消息重试逻辑（最多 3 次，生产环境建议死信队列）
+     * 1.重试次数 < 3：累加并重新发送（TODO）
+     * 2.超过最大次数：记录失败日志，人工处理
+     * <p>
+     * @author ZuiM
+     * @param message 待重试的消息
+     */
     private void handleRetry(TaskMessage message) {
         int retryCount = message.getRetryCount();
         if (retryCount < 3) {

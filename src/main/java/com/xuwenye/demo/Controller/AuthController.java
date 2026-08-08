@@ -19,12 +19,22 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 认证接口：登录、注册、发送注册验证码
+ * 1.登录：校验账号密码，签发 JWT Token
+ * 2.注册：校验参数/验证码/密码强度后创建用户
+ * 3.发送注册验证码：邮箱防刷限流后经消息队列发送
+ * <p>
+ * @author ZuiM
+ */
 @RestController
 @RequestMapping("/api/auth")
 @Validated
 public class AuthController {
+    /** 注册验证码校验开关 */
     @Value("${test.registerCodeCheck.status:false}")
     private boolean registerCodeCheckStatus;
+    /** 注册邮件校验开关 */
     @Value("${test.registerEmailcheck.status:false}")
     private boolean registerEmailCheckStatus;
 
@@ -52,7 +62,19 @@ public class AuthController {
         this.mqProducer = mqProducer;
     }
 
-    @RateLimit(window = 60, maxRequests = 3, message = "登录尝试过多，请稍后再试")
+    /**
+     * 用户登录
+     * 1.输入清洗（用户名防注入、密码仅 trim）
+     * 2.查询用户并校验密码（BCrypt 比对）
+     * 3.校验账号状态（禁用则拦截）
+     * 4.签发 JWT Token 并返回昵称
+     * <p>
+     * @author ZuiM
+     * @param username 用户名
+     * @param password 密码
+     * @return Result 200 返回 token + nickname；400 账号或密码错误；403 账号禁用
+     */
+    @RateLimit(window = 60, maxRequests = 5, message = "登录尝试过多，请稍后再试")
     @PostMapping("/login")
     public Result<?> login(@RequestParam String username,
                            @RequestParam String password) {
@@ -73,7 +95,24 @@ public class AuthController {
         return Result.ok(new LoginResponse(token, user.getNickname()));
     }
 
-    @RateLimit(window = 60, maxRequests = 3, message = "注册尝试过多，请稍后再试")
+    /**
+     * 用户注册
+     * 1.输入清洗与邮箱格式校验
+     * 2.检查用户名是否已存在、两次密码是否一致、长度是否合法
+     * 3.密码强度校验
+     * 4.校验注册验证码（开关开启时）
+     * 5.创建用户（BCrypt 加密密码）并清除验证码
+     * <p>
+     * @author ZuiM
+     * @param username 用户名（2-20 字符）
+     * @param password 密码
+     * @param password_exam 确认密码
+     * @param nickname 昵称
+     * @param email 邮箱
+     * @param code 注册验证码
+     * @return Result 200 注册成功；400 参数/验证码错误；500 注册失败
+     */
+    @RateLimit(window = 60, maxRequests = 5, message = "注册尝试过多，请稍后再试")
     @PostMapping("/register")
     public Result<?> register(@RequestParam String username,
                               @RequestParam String password,
@@ -148,9 +187,15 @@ public class AuthController {
     }
 
     /**
+     * 发送注册验证码到邮箱
+     * 0.邮箱格式校验
+     * 1.检查邮箱是否已注册（业务校验前置，避免无效请求占用限流窗口）
+     * 2.原子防刷（setIfAbsent，避免并发重复发送）
+     * 3.经消息队列发送注册验证码邮件（EmailType=0）
+     * <p>
      * @author ZuiM
      * @param email 邮箱
-     * @return Result<?> 处理发送注册邮件业务，返回状态值
+     * @return Result 200 发送成功/已跳过；400 校验/限流失败
      */
     @PostMapping("/send-registercode")
     public Result<?> sendVerificationCode(@RequestParam String email) {

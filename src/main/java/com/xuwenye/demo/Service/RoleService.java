@@ -9,6 +9,10 @@ import java.util.List;
 
 /**
  * 角色管理业务层
+ * 1.根据角色编码查询角色
+ * 2.查询所有启用状态的角色
+ * <p>
+ * @author ZuiM
  */
 @Service
 public class RoleService {
@@ -18,7 +22,13 @@ public class RoleService {
     }
 
     /**
-     * 根据角色编码查询
+     * 根据角色编码查询角色
+     * 1.构造查询条件（role_code）
+     * 2.查询单条记录
+     * <p>
+     * @author ZuiM
+     * @param roleCode 角色编码
+     * @return Role 角色（可能为 null）
      */
     public Role findByCode(String roleCode) {
         QueryWrapper<Role> wrapper = new QueryWrapper<>();
@@ -27,7 +37,12 @@ public class RoleService {
     }
 
     /**
-     * 查询所有可用角色
+     * 查询所有启用角色
+     * 1.构造查询条件（status=1）
+     * 2.查询列表
+     * <p>
+     * @author ZuiM
+     * @return List&lt;Role&gt; 启用角色列表
      */
     public List<Role> findAllActive() {
         QueryWrapper<Role> wrapper = new QueryWrapper<>();

@@ -19,9 +19,11 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 /**
  * Redis 和 Redisson 配置类
- *
- * @author xuwenye
- * @date 2026-07-20
+ * 1.配置 Redisson 客户端（分布式锁核心）
+ * 2.配置 RedisTemplate（String key + Jackson value 序列化）
+ * 3.注入分布式锁工具 RedisLockHelper
+ * <p>
+ * @author ZuiM
  */
 @Configuration
 public class RedisConfig {
@@ -37,6 +39,15 @@ public class RedisConfig {
     private int redisDatabase;
 
     // ========== 1. Redisson 客户端（分布式锁核心） ==========
+    /**
+     * Redisson 客户端（分布式锁核心）
+     * 1.构建单节点模式配置
+     * 2.设置连接池与超时参数
+     * 3.有密码则设置密码
+     * <p>
+     * @author ZuiM
+     * @return RedissonClient 分布式锁客户端
+     */
     @Bean
     public RedissonClient redissonClient() {
         Config config = new Config();
@@ -62,6 +73,16 @@ public class RedisConfig {
     }
 
     // ========== 2. RedisTemplate（通用 Redis 操作） ==========
+    /**
+     * RedisTemplate（通用 Redis 操作）
+     * 1.key 使用 String 序列化器
+     * 2.value 使用 Jackson 序列化器（支持对象存储与 LocalDateTime 时间类型）
+     * 3.启用默认类型信息（写入 @class 字段），保证反序列化为正确类型
+     * <p>
+     * @author ZuiM
+     * @param connectionFactory Redis 连接工厂
+     * @return RedisTemplate&lt;String, Object&gt; 通用 Redis 操作模板
+     */
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
@@ -95,6 +116,13 @@ public class RedisConfig {
     }
 
     // ========== 3. 分布式锁工具类（可选，封装常用操作） ==========
+    /**
+     * 分布式锁工具类（封装常用操作）
+     * <p>
+     * @author ZuiM
+     * @param redissonClient Redisson 客户端
+     * @return RedisLockHelper 分布式锁工具
+     */
     @Bean
     public RedisLockHelper redisLockHelper(RedissonClient redissonClient) {
         return new RedisLockHelper(redissonClient);

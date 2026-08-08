@@ -20,6 +20,15 @@ import org.springframework.jms.support.converter.MessageType;
 import jakarta.jms.Queue;
 import jakarta.jms.Topic;
 
+/**
+ * ActiveMQ 消息队列配置类
+ * 1.定义连接工厂（broker-url/账号密码/信任所有包）
+ * 2.定义 JMS 模板（发送消息）与消息监听容器工厂（消费消息）
+ * 3.定义 JSON 消息转换器（支持 LocalDateTime）
+ * 4.注册业务队列 Bean（邮件/日志/订单/短信/统计/文件/通知）与主题 Bean（广播/告警）
+ * <p>
+ * @author ZuiM
+ */
 @Configuration
 @EnableJms  // 启用 JMS 支持
 public class ActiveMQConfig {
@@ -47,6 +56,14 @@ public class ActiveMQConfig {
     public static final String TOPIC_ALERT = "topic.alert";
 
     // ========== 1. 连接工厂 ==========
+    /**
+     * ActiveMQ 连接工厂
+     * 1.从配置读取 broker 地址、账号、密码
+     * 2.设置信任所有包（允许序列化对象）
+     * <p>
+     * @author ZuiM
+     * @return ActiveMQConnectionFactory 连接工厂
+     */
     @Bean
     public ActiveMQConnectionFactory connectionFactory() {
         ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory();
@@ -59,6 +76,15 @@ public class ActiveMQConfig {
     }
 
     // ========== 2. JMS 模板（发送消息） ==========
+    /**
+     * JMS 模板（发送消息，队列模式）
+     * 1.绑定连接工厂
+     * 2.默认使用队列模式（pubSubDomain=false）
+     * 3.设置 JSON 消息转换器
+     * <p>
+     * @author ZuiM
+     * @return JmsTemplate 消息发送模板
+     */
     @Bean
     public JmsTemplate jmsTemplate() {
         JmsTemplate template = new JmsTemplate();
@@ -71,6 +97,12 @@ public class ActiveMQConfig {
     }
 
     // ========== 3. JMS 消息发送模板（更高级） ==========
+    /**
+     * JMS 消息发送模板（高级封装，支持 convertAndSend）
+     * <p>
+     * @author ZuiM
+     * @return JmsMessagingTemplate 高级消息发送模板
+     */
     @Bean
     public JmsMessagingTemplate jmsMessagingTemplate() {
         JmsMessagingTemplate template = new JmsMessagingTemplate();
@@ -79,6 +111,15 @@ public class ActiveMQConfig {
     }
 
     // ========== 4. 消息监听容器工厂（队列） ==========
+    /**
+     * 消息监听容器工厂（队列模式）
+     * 1.绑定连接工厂
+     * 2.设置并发消费者 5-20
+     * 3.开启事务会话，设置 JSON 消息转换器
+     * <p>
+     * @author ZuiM
+     * @return JmsListenerContainerFactory 队列监听容器工厂
+     */
     @Bean
     public JmsListenerContainerFactory<?> jmsListenerContainerFactory() {
         DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
@@ -90,6 +131,15 @@ public class ActiveMQConfig {
     }
 
     // ========== 5. 消息监听容器工厂（主题） ==========
+    /**
+     * 消息监听容器工厂（主题/发布订阅模式）
+     * 1.绑定连接工厂
+     * 2.设置并发消费者 5-20
+     * 3.开启主题模式（pubSubDomain=true）与事务会话
+     * <p>
+     * @author ZuiM
+     * @return JmsListenerContainerFactory 主题监听容器工厂
+     */
     @Bean
     public JmsListenerContainerFactory<?> topicListenerContainerFactory() {
         DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
@@ -102,6 +152,14 @@ public class ActiveMQConfig {
     }
 
     // ========== 6. 消息转换器（JSON） ==========
+    /**
+     * JSON 消息转换器
+     * 1.目标类型为 TEXT
+     * 2.注册 Java8 时间模块（支持 LocalDateTime/LocalDate）
+     * <p>
+     * @author ZuiM
+     * @return MessageConverter JSON 消息转换器
+     */
     @Bean
     public MessageConverter jacksonMessageConverter() {
         MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
@@ -116,47 +174,101 @@ public class ActiveMQConfig {
     }
 
     // ========== 7. 队列 Bean ==========
+    /**
+     * 邮件队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 邮件队列
+     */
     @Bean
     public Queue emailQueue() {
         return new ActiveMQQueue(QUEUE_EMAIL);
     }
 
+    /**
+     * 日志队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 日志队列
+     */
     @Bean
     public Queue logQueue() {
         return new ActiveMQQueue(QUEUE_LOG);
     }
 
+    /**
+     * 订单队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 订单队列
+     */
     @Bean
     public Queue orderQueue() {
         return new ActiveMQQueue(QUEUE_ORDER);
     }
 
+    /**
+     * 短信队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 短信队列
+     */
     @Bean
     public Queue smsQueue() {
         return new ActiveMQQueue(QUEUE_SMS);
     }
 
+    /**
+     * 统计队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 统计队列
+     */
     @Bean
     public Queue statisticsQueue() {
         return new ActiveMQQueue(QUEUE_STATISTICS);
     }
 
+    /**
+     * 文件队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 文件队列
+     */
     @Bean
     public Queue fileQueue() {
         return new ActiveMQQueue(QUEUE_FILE);
     }
 
+    /**
+     * 通知队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 通知队列
+     */
     @Bean
     public Queue notificationQueue() {
         return new ActiveMQQueue(QUEUE_NOTIFICATION);
     }
 
     // ========== 8. 主题 Bean ==========
+    /**
+     * 广播主题 Bean（所有订阅者都能收到）
+     * <p>
+     * @author ZuiM
+     * @return Topic 广播主题
+     */
     @Bean
     public Topic broadcastTopic() {
         return new ActiveMQTopic(TOPIC_BROADCAST);
     }
 
+    /**
+     * 告警主题 Bean（所有订阅者都能收到）
+     * <p>
+     * @author ZuiM
+     * @return Topic 告警主题
+     */
     @Bean
     public Topic alertTopic() {
         return new ActiveMQTopic(TOPIC_ALERT);
