@@ -48,7 +48,7 @@ public class InitAdminRunner implements CommandLineRunner {
         if (examStatus) {
             // 检查是否有用户
             System.out.println("===== 开始创建管理员admin =====");
-            if (userService.findUsername("admin") == null) {
+            if (userService.findAllUser("admin") == null) {
                 User admin = new User();
                 admin.setUsername("admin");
                 admin.setPassword(passwordEncoder.encode("123456"));  // 加密存储
@@ -57,7 +57,7 @@ public class InitAdminRunner implements CommandLineRunner {
                 admin.setUserRole("ROLE_ADMIN");
                 admin.setEmail(testInitEmailName);
                 admin.setCreateTime(LocalDateTime.now());
-                userService.save(admin);
+                userService.saveUser(admin);
             }
             System.out.println("✅ 初始化管理员账号：admin / 123456");
 
@@ -66,7 +66,7 @@ public class InitAdminRunner implements CommandLineRunner {
                 // 用户名 admin_1、admin_2 ... admin_1000，避免唯一索引冲突
                 String username = "tester_" + i;
                 // 判断账号不存在再新增，防止重启项目重复创建
-                if (userService.findUsername(username) == null) {
+                if (userService.findAllUser(username) == null) {
                     User testUser = new User();
                     testUser.setUsername(username);
                     testUser.setPassword(passwordEncoder.encode("123456"));
@@ -74,7 +74,7 @@ public class InitAdminRunner implements CommandLineRunner {
                     testUser.setStatus(1);
                     testUser.setCreateTime(LocalDateTime.now());
 //                        testUser.setEmail(testInitEmailName);
-                    userService.save(testUser);
+                    userService.saveUser(testUser);
                     if (i % 100 == 0) {
                         System.out.println("已创建：" + i + " 个测试账号");
                     }

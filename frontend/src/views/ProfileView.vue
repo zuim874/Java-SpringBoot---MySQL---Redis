@@ -72,6 +72,10 @@
               <span class="edit-profile-btn-icon">📧</span>
               <span>换绑邮箱</span>
             </button>
+            <button class="edit-profile-btn" @click="openChangePassword">
+              <span class="edit-profile-btn-icon">🔒</span>
+              <span>修改密码</span>
+            </button>
           </div>
           <button class="delete-btn" @click="confirmDelete">
             <span class="delete-btn-icon">⚠️</span>
@@ -189,6 +193,49 @@
       </div>
     </Teleport>
 
+    <!-- 修改密码弹窗 -->
+    <Teleport to="body">
+      <div v-if="showChangePassword" class="modal-overlay" @click.self="showChangePassword = false">
+        <div class="modal-card">
+          <div class="modal-icon">🔒</div>
+          <h3 class="modal-title">修改密码</h3>
+          <p class="modal-desc">修改后请使用新密码重新登录</p>
+
+          <div class="modal-form">
+            <div class="modal-field-row">
+              <label>旧密码</label>
+              <div class="modal-field">
+                <input v-model="oldPassword" :type="showOldPwd ? 'text' : 'password'" placeholder="请输入当前密码" />
+                <span class="toggle-pwd" @click.stop="showOldPwd = !showOldPwd">{{ showOldPwd ? '🙈' : '👁️' }}</span>
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>新密码</label>
+              <div class="modal-field">
+                <input v-model="newPassword" :type="showNewPwd ? 'text' : 'password'" placeholder="至少8位，含大小写字母/数字/符号" />
+                <span class="toggle-pwd" @click.stop="showNewPwd = !showNewPwd">{{ showNewPwd ? '🙈' : '👁️' }}</span>
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>确认新密码</label>
+              <div class="modal-field">
+                <input v-model="newPasswordCheck" :type="showNewPwdCheck ? 'text' : 'password'" placeholder="再次输入新密码" />
+                <span class="toggle-pwd" @click.stop="showNewPwdCheck = !showNewPwdCheck">{{ showNewPwdCheck ? '🙈' : '👁️' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="modal-btn modal-btn--cancel" @click="showChangePassword = false">取消</button>
+            <button class="modal-btn modal-btn--confirm modal-btn--blue" @click="submitChangePassword" :disabled="changingPassword">
+              <span v-if="changingPassword" class="btn-loading"></span>
+              <span v-else>确认修改</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- 底部版权 -->
     <div class="profile-footer">
       <span>© 2026 ZuiMShop. All rights reserved.</span>
@@ -230,6 +277,16 @@ const oldCodeCountdown = ref(0)
 const newCodeSending = ref(false)
 const newCodeCountdown = ref(0)
 const changingEmail = ref(false)
+
+// 修改密码
+const showChangePassword = ref(false)
+const oldPassword = ref('')
+const newPassword = ref('')
+const newPasswordCheck = ref('')
+const showOldPwd = ref(false)
+const showNewPwd = ref(false)
+const showNewPwdCheck = ref(false)
+const changingPassword = ref(false)
 
 // 注销验证码
 const deleteCode = ref('')
@@ -466,6 +523,63 @@ async function submitChangeEmail() {
     message.value = '网络错误，请检查后端服务是否启动'
   } finally {
     changingEmail.value = false
+  }
+}
+
+// ==================== 修改密码 ====================
+function openChangePassword() {
+  oldPassword.value = ''
+  newPassword.value = ''
+  newPasswordCheck.value = ''
+  showOldPwd.value = false
+  showNewPwd.value = false
+  showNewPwdCheck.value = false
+  showChangePassword.value = true
+  message.value = ''
+}
+
+async function submitChangePassword() {
+  if (!oldPassword.value) {
+    message.value = '请输入旧密码'
+    success.value = false
+    return
+  }
+  if (!newPassword.value || newPassword.value.length < 8) {
+    message.value = '新密码长度至少 8 位'
+    success.value = false
+    return
+  }
+  if (newPassword.value !== newPasswordCheck.value) {
+    message.value = '两次输入的新密码不一致'
+    success.value = false
+    return
+  }
+
+  changingPassword.value = true
+  message.value = ''
+  try {
+    const params = new URLSearchParams()
+    params.append('oldPassword', oldPassword.value)
+    params.append('newPassword', newPassword.value)
+    params.append('newPassword_check', newPasswordCheck.value)
+    const data = await request('/user/change_password', {
+      method: 'POST',
+      body: params
+    })
+    if (data.code === 200) {
+      success.value = true
+      message.value = '密码修改成功，请重新登录'
+      showChangePassword.value = false
+      setTimeout(() => { handleLogout() }, 1200)
+    } else {
+      success.value = false
+      message.value = data.mes || '密码修改失败'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = '网络错误，请检查后端服务是否启动'
+  } finally {
+    changingPassword.value = false
   }
 }
 
@@ -1082,6 +1196,17 @@ async function handleDelete() {
 .modal-send-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+.toggle-pwd {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.3s;
+  padding: 4px;
+}
+.toggle-pwd:hover {
+  opacity: 1;
 }
 @keyframes modalIn {
   from { opacity: 0; transform: translateY(16px) scale(0.96); }

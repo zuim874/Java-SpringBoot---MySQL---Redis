@@ -55,7 +55,7 @@ public class AdminUserController {
         }
 
         // 执行删除
-        boolean deleteSuccess = userService.deleteById(id);
+        boolean deleteSuccess = userService.deleteUserById(id);
         if (deleteSuccess) {
             return Result.ok("删除用户成功");
         } else {
@@ -85,7 +85,7 @@ public class AdminUserController {
         }
 
         // 执行恢复
-        boolean recoverSuccess = userService.recoverById(id);
+        boolean recoverSuccess = userService.recoverUserById(id);
         if (recoverSuccess) {
             return Result.ok("恢复用户成功");
         } else {

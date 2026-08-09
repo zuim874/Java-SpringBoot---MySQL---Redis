@@ -12,8 +12,9 @@ import com.xuwenye.demo.util.email.EmailType;
 import com.xuwenye.demo.util.email.EmailUtil;
 import com.xuwenye.demo.util.oi.SanitizeUtil;
 import com.xuwenye.demo.util.redis.RedisUtil;
+import com.xuwenye.demo.util.redis.RedisLockHelper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/api/user")
 @Validated
+@Slf4j  // 打印错误堆栈日志
 public class UserController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
@@ -37,6 +39,7 @@ public class UserController {
     private final MQProducer mqProducer;
     private final PasswordEncoder passwordEncoder;
     private final PasswordStrengthUtils passwordStrengthUtils;
+    private final RedisLockHelper redisLockHelper;
     public UserController(UserService userService,
                           JwtUtil jwtUtil,
                           RedisUtil redisUtil,
@@ -44,7 +47,8 @@ public class UserController {
                           SanitizeUtil sanitizeUtil,
                           MQProducer mqProducer,
                           PasswordEncoder passwordEncoder,
-                          PasswordStrengthUtils passwordStrengthUtils) {
+                          PasswordStrengthUtils passwordStrengthUtils,
+                          RedisLockHelper redisLockHelper) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.redisUtil = redisUtil;
@@ -53,6 +57,7 @@ public class UserController {
         this.mqProducer = mqProducer;
         this.passwordEncoder = passwordEncoder;
         this.passwordStrengthUtils = passwordStrengthUtils;
+        this.redisLockHelper = redisLockHelper;
     }
 
     /** 账号恢复验证码校验开关 */
@@ -84,48 +89,50 @@ public class UserController {
      * @param code 邮箱验证码
      * @return Result<?> 200/400/401/500：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "注销尝试过多，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 3, message = "账号注销尝试过多，请稍后再试")
     @DeleteMapping("/delete_user")
     public Result<?> deleteSelf(
             @RequestHeader("Authorization") String token,
             @RequestParam String email,
             @RequestParam String code
     ) {
-        // 1.校验 token
-        if (token == null || !token.startsWith("Bearer ")) {
-            return Result.error(401, "未登录，请先登录");
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return Result.error(401, "令牌失效，请重新登录");
-        }
-
-        // 2.从 token 获取当前登录用户
-        String loginUsername = jwtUtil.parseUsername(realToken);
-        User targetUser = userService.findUsernameforlogin(loginUsername);
-        if (targetUser == null) {
-            return Result.error(400, "用户不存在");
-        }
-
-        // 3.校验验证码
-        String redisKey = "verify_deleteCode:" + email;
-        String storedCode = (String) redisUtil.get(redisKey);
-        if (deleteCodeCheckStatus) {
-            if (storedCode == null) {
-                return Result.error(400, "验证码已过期，请重新获取");
+        try {
+            // 1.校验 token
+            if (token == null || !token.startsWith("Bearer ")) {
+                return Result.error(401, "未登录，请先登录");
             }
-            if (!storedCode.equals(code)) {
-                return Result.error(400, "验证码错误");
+            String realToken = token.substring(7);
+            if (!jwtUtil.validate(realToken)) {
+                return Result.error(401, "令牌失效，请重新登录");
             }
-        } else {
-            System.out.println("已跳过验证");
-        }
-
-        // 4.删除自己（天然不存在越权问题）
-        boolean deleteSuccess = userService.deleteById(targetUser.getId());
-        if (deleteSuccess) {
-            return Result.ok("账号注销成功");
-        } else {
+            // 2.从 token 获取当前登录用户
+            String loginUsername = jwtUtil.parseUsername(realToken);
+            User targetUser = userService.findUserableUser(loginUsername);
+            if (targetUser == null) {
+                return Result.error(400, "用户不存在");
+            }
+            // 3.校验验证码
+            String redisKey = "verify_deleteCode:" + email;
+            String storedCode = (String) redisUtil.get(redisKey);
+            if (deleteCodeCheckStatus) {
+                if (storedCode == null) {
+                    return Result.error(400, "验证码已过期，请重新获取");
+                }
+                if (!storedCode.equals(code)) {
+                    return Result.error(400, "验证码错误");
+                }
+            } else {
+                System.out.println("已跳过验证");
+            }
+            // 4.删除自己（天然不存在越权问题）
+            boolean deleteSuccess = userService.deleteUserById(targetUser.getId());
+            if (deleteSuccess) {
+                return Result.ok("账号注销成功");
+            } else {
+                return Result.error(500, "账号注销失败，请稍后重试");
+            }
+        } catch (Exception e) {
+            log.error("用户注销失败", e);
             return Result.error(500, "账号注销失败，请稍后重试");
         }
     }
@@ -146,50 +153,53 @@ public class UserController {
      * @param code 邮箱验证码
      * @return Result<?> 200/400：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "账号恢复尝试过多，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 3, message = "账号恢复尝试过多，请稍后再试")
     @PutMapping("/recover_user")
     public Result<?> recoverUserByUserParam(
             @RequestParam String username,
             @RequestParam String email,
             @RequestParam String code
     ) {
-        // 1: 检查用户名（查找已删除的用户）
-        User user = userService.findUsernameforRecover(username);
-        if (user == null) {
-            return Result.error(400, "请检查用户名是否正确");
-        }
-        // 2: 检查邮箱是否匹配
-        if (!user.getEmail().equals(email)) {
-            return Result.error(400, "请检查绑定的邮箱是否正确");
-        }
-
-        String redisKey = "verify_recoverCode:" + email;
-        String storedCode = (String) redisUtil.get(redisKey);
-        // 3: 校验验证码
-        if (recoverCodeCheckStatus) {
-            if (storedCode == null) {
-                return Result.error(400, "验证码已过期，请重新获取");
+        try {
+            // 1: 检查用户名（查找已删除的用户）
+            User user = userService.findDeletedUserByUsername(username);
+            if (user == null) {
+                return Result.error(400, "请检查用户名是否正确");
             }
-            if (!storedCode.equals(code)) {
-                return Result.error(400, "验证码错误");
+            // 2: 检查邮箱是否匹配
+            if (!user.getEmail().equals(email)) {
+                return Result.error(400, "请检查绑定的邮箱是否正确");
             }
-        } else {
-            System.out.println("已跳过验证");
-        }
-
-        // 4: 执行恢复
-        boolean recoverSuccess = userService.recoverById(user.getId());
-        if (recoverSuccess) {
-            // 恢复成功后清除验证码，防止重复使用
-            redisUtil.delete(redisKey);
-            return Result.ok("恢复用户成功");
-        } else {
-            return Result.error(400, "恢复失败，该用户不存在");
+            String redisKey = "verify_recoverCode:" + email;
+            String storedCode = (String) redisUtil.get(redisKey);
+            // 3: 校验验证码
+            if (recoverCodeCheckStatus) {
+                if (storedCode == null) {
+                    return Result.error(400, "验证码已过期，请重新获取");
+                }
+                if (!storedCode.equals(code)) {
+                    return Result.error(400, "验证码错误");
+                }
+            } else {
+                System.out.println("已跳过验证");
+            }
+            // 4: 执行恢复
+            boolean recoverSuccess = userService.recoverUserById(user.getId());
+            if (recoverSuccess) {
+                // 恢复成功后清除验证码，防止重复使用
+                redisUtil.delete(redisKey);
+                return Result.ok("恢复用户成功");
+            } else {
+                return Result.error(400, "恢复失败，该用户不存在");
+            }
+        } catch (Exception e) {
+            log.error("用户恢复失败");
+            return Result.error(500, "用户恢复失败，请稍后再试");
         }
     }
 
     /**
-     * 发送账号删除验证码到邮箱
+     * 发送账号删除验证码到邮箱（ip+邮箱双重限流：1次每分钟）
      * 1.邮箱格式校验
      * 2.检查邮箱是否已注册
      * 3.原子防刷（防止并发数据不一致）
@@ -199,7 +209,7 @@ public class UserController {
      * @param email 已注册的邮箱
      * @return Result<?> 200/400：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "注销邮箱发送过多，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 1, message = "注销验证码发送频繁，请稍后再试")
     @PostMapping("/send-deletecode")
     public Result<?> sendDeleteCode(@RequestParam String email) {
         if (deleteEmailCheckStatus) {
@@ -213,7 +223,7 @@ public class UserController {
                 if (!userService.isEmailExist(email)) {
                     return Result.error(400, "该邮箱未绑定账号");
                 }
-                // 2. 原子防刷：首次设置限流 key 成功才放行（60 秒内重复请求被拦截）
+                // 2. 原子防刷：首次设置限流 key 成功才放行（60 秒内同一账号重复请求被拦截）
                 String sendLimitKey = "verify_deleteCode_limit:" + realEmail;
                 Boolean firstRequest = redisUtil.setIfAbsent(sendLimitKey, "1");
                 if (Boolean.FALSE.equals(firstRequest)) {
@@ -221,11 +231,10 @@ public class UserController {
                     return Result.error(400, "请等待 " + ttl + " 秒后再试");
                 }
                 // 3. 发送邮件（消息队列）
-//                emailUtil.sendVerificationCode(email, 2);
                 mqProducer.sendEmailTask(email, 2);
                 return Result.ok("账号注销验证码已发送到您的邮箱，请注意查收");
             } catch (Exception e) {
-                e.printStackTrace();
+                log.error("账号注销验证码发送失败", e);
                 return Result.error(400, "发送验证码失败：" + e.getMessage());
             }
         } else {
@@ -234,7 +243,7 @@ public class UserController {
     }
 
     /**
-     * 发送账号恢复验证码到邮箱
+     * 发送账号恢复验证码到邮箱（ip+邮箱双重限流：1次每分钟）
      * 1.邮箱格式校验
      * 2.检查邮箱是否已注册
      * 3.原子防刷（防止并发数据不一致）
@@ -244,34 +253,35 @@ public class UserController {
      * @param email 已注册的邮箱
      * @return Result<?> 200/400：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "恢复邮箱发送过多，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 1, message = "恢复验证码发送频繁，请稍后再试")
     @PostMapping("/send-recovercode")
-    public Result<?> sendRecoverCode(@RequestParam String email) {
+    public Result<?> sendRecoverCode(@RequestParam String username,
+                                     @RequestParam String email) {
         if (recoverEmailCheckStatus) {
             try {
-                // 0. 邮箱格式校验
-                if (!EmailUtil.isValidEmail(email)) {
-                    return Result.error(400, "邮箱格式不正确");
+                // 1: 检查用户名（查找已删除的用户）
+                User user = userService.findDeletedUserByUsername(username);
+                if (user == null) {
+                    return Result.error(400, "请检查用户名是否正确");
                 }
                 String realEmail = sanitizeUtil.dealEmail(email);
-                // 1. 检查邮箱是否已注册
-                if (!userService.isEmailExist(email)) {
-                    return Result.error(400, "该邮箱未绑定账号");
+                // 2: 检查邮箱是否匹配
+                if (!user.getEmail().equals(realEmail)) {
+                    return Result.error(400, "请检查绑定的邮箱是否正确");
                 }
-                // 2. 原子操作
+                // 3. 原子操作
                 String sendLimitKey = "verify_recoverCode_limit:" + realEmail;
                 Boolean success = redisUtil.setIfAbsent(sendLimitKey, "1");
                 if (Boolean.FALSE.equals(success)) {
                     long ttl = redisUtil.getExpire(sendLimitKey, TimeUnit.SECONDS);
                     return Result.error(400, "请等待 " + ttl + " 秒后再试");
                 }
-                // 3. 发送邮件（异步发送，消息队列）
-//                emailUtil.sendVerificationCode(email, 1);
+                // 4. 发送邮件（异步发送，消息队列）
                 mqProducer.sendEmailTask(email, 1);
                 return Result.ok("账号恢复验证码已发送到您的邮箱，请注意查收");
             } catch (Exception e) {
-                e.printStackTrace();
-                return Result.error(400, "发送验证码失败：" + e.getMessage());
+                log.error("账号恢复验证码发送失败", e);
+                return Result.error(400, "发送账号恢复验证码失败：" + e.getMessage());
             }
         } else {
             return Result.ok("已跳过账号恢复邮箱验证");
@@ -288,28 +298,34 @@ public class UserController {
      * @param token 登录令牌（Bearer xxx）
      * @return Result<?> 200/400/401：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "用户资料刷新过于频繁，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 3, message = "用户资料刷新频繁，请稍后再试")
     @GetMapping("/me")
     public Result<?> getCurrentUser(@RequestHeader("Authorization") String token) {
-        // 1. 校验 token
-        if (token == null || !token.startsWith("Bearer ")) {
-            return Result.error(401, "未登录，请先登录");
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return Result.error(401, "令牌失效，请重新登录");
-        }
-        // 2. 查询当前用户
-        String loginUsername = jwtUtil.parseUsername(realToken);
+        try {
+            // 1. 校验 token
+            if (token == null || !token.startsWith("Bearer ")) {
+                return Result.error(401, "未登录，请先登录");
+            }
+            String realToken = token.substring(7);
+            if (!jwtUtil.validate(realToken)) {
+                return Result.error(401, "令牌失效，请重新登录");
+            }
+            // 2. 查询当前用户
+            String loginUsername = jwtUtil.parseUsername(realToken);
 
-        User user = userService.findUsernameforlogin(loginUsername);
-        if (user == null) {
-            return Result.error(400, "用户不存在");
+            User user = userService.findUserableUser(loginUsername);
+            if (user == null) {
+                return Result.error(400, "用户不存在");
+            }
+            // 3. 清空敏感字段再返回（密码、逻辑删除标记不外泄）
+            user.setPassword(null);
+            user.setIsDeleted(null);
+            return Result.ok(user);
+        } catch (Exception e) {
+            log.error("用户资料获取失败", e);
+            return Result.error(500, "用户资料获取失败");
         }
-        // 3. 清空敏感字段再返回（密码、逻辑删除标记不外泄）
-        user.setPassword(null);
-        user.setIsDeleted(null);
-        return Result.ok(user);
+
     }
 
     /**
@@ -324,7 +340,7 @@ public class UserController {
      * @param file 头像图片文件（jpg/png/gif/webp，大小不超过 2MB）
      * @return Result<?> 200/400/401/500：成功返回新头像 URL
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "头像上传过于频繁，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 3, message = "头像上传频繁，请稍后再试")
     @PostMapping("/avatar")
     public Result<?> uploadAvatar(@RequestHeader("Authorization") String token,
                                   @RequestParam("file") MultipartFile file) {
@@ -336,31 +352,62 @@ public class UserController {
         if (!jwtUtil.validate(realToken)) {
             return Result.error(401, "令牌失效，请重新登录");
         }
-
         // 2. 查询当前用户
         String loginUsername = jwtUtil.parseUsername(realToken);
-        User currentUser = userService.findUsernameforlogin(loginUsername);
+        User currentUser = userService.findUserableUser(loginUsername);
         if (currentUser == null) {
             return Result.error(400, "用户不存在");
         }
-
-        // 3. 保存文件（类型/大小校验在 FileStorageService 内完成）
-        String avatarUrl;
+        // 3.分布式锁（看门狗模式）：同一用户同一时刻只允许一个更新头像请求
+        String lockKey = "user:change_avatar:lock:" + currentUser.getId();
+        boolean locked = false;
         try {
-            avatarUrl = fileStorageService.storeAvatar(file);
-        } catch (IllegalArgumentException e) {
-            return Result.error(400, e.getMessage());
-        } catch (RuntimeException e) {
-            return Result.error(500, e.getMessage());
-        }
-
-        // 4. 更新数据库并清理缓存
-        boolean updated = userService.updateAvatar(currentUser.getId(), avatarUrl);
-        if (!updated) {
+            // 尝试获取锁
+            locked = redisLockHelper.tryLock(lockKey, 3, TimeUnit.SECONDS);
+            if (!locked) {
+                return Result.error(429, "操作正在处理，请勿重复提交");
+            }
+            // 4.锁内双重检查
+            // 4.1 重新解析用户名
+            String lockedUsername = jwtUtil.parseUsername(realToken);
+            if (lockedUsername == null || lockedUsername.isEmpty()) {
+                return Result.error(401, "身份验证失败，请重新登录");
+            }
+            // 4.2 重新查询用户
+            User lockUser = userService.findUserableUser(lockedUsername);
+            if (lockUser == null) {
+                return Result.error(400, "用户不存在");
+            }
+            // 5. 保存文件（类型/大小校验在 FileStorageService 内完成）
+            String avatarUrl;
+            try {
+                avatarUrl = fileStorageService.storeAvatar(file);
+            } catch (IllegalArgumentException e) {
+                log.error("头像上传失败", e);
+                return Result.error(400, e.getMessage());
+            } catch (RuntimeException e) {
+                log.error("头像上传失败", e);
+                return Result.error(500, e.getMessage());
+            }
+            // 6. 更新数据库并清理缓存
+            boolean updated = userService.updateAvatar(currentUser.getId(), avatarUrl);
+            if (!updated) {
+                return Result.error(500, "头像保存失败，请稍后重试");
+            }
+            return Result.ok(avatarUrl);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // 恢复中断状态
+            log.error("头像上传失败", e);
+            return Result.error(500, "系统繁忙，请稍后再试");
+        } catch (Exception e) {
+            log.error("头像上传失败", e);
             return Result.error(500, "头像保存失败，请稍后重试");
+        } finally {
+            // 7.释放分布式锁
+            if (locked) {
+                redisLockHelper.unlock(lockKey);
+            }
         }
-
-        return Result.ok(avatarUrl);
     }
 
     /**
@@ -375,42 +422,69 @@ public class UserController {
      * @param nickname 新昵称
      * @return Result<?> 200/400/401/500：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "资料更新过于频繁，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 3, message = "资料更新频繁，请稍后再试")
     @PutMapping("/update_profile")
     public Result<?> updateProfile(@RequestHeader("Authorization") String token,
                                    @RequestParam String nickname) {
-        // 1. 校验 token
-        if (token == null || !token.startsWith("Bearer ")) {
-            return Result.error(401, "当前未登录，请先登录！");
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return Result.error(401, "登录信息已过期，请重新登录");
-        }
-
-        // 2. 获取当前登录用户
-        String loginUsername = jwtUtil.parseUsername(realToken);
-        User currentUser = userService.findUsernameforlogin(loginUsername);
-        if (currentUser == null) {
-            return Result.error(400, "用户不存在");
-        }
-
-        // 3. 校验昵称（非空、长度 1~20）
-        if (nickname == null || nickname.trim().isEmpty()) {
-            return Result.error(400, "昵称不能为空");
-        }
-        String realNickname = nickname.trim();
-        if (realNickname.length() > 20) {
-            return Result.error(400, "昵称长度不能超过 20 个字符");
-        }
-
-        // 4. 更新昵称（不涉及邮箱字段）
-        boolean updated = userService.updateProfile(currentUser.getId(), realNickname, null);
-        if (!updated) {
-            return Result.error(500, "资料更新失败，请稍后重试");
-        }
-
-        return Result.ok("资料更新成功");
+            // 1. 校验 token
+            if (token == null || !token.startsWith("Bearer ")) {
+                return Result.error(401, "当前未登录，请先登录！");
+            }
+            String realToken = token.substring(7);
+            if (!jwtUtil.validate(realToken)) {
+                return Result.error(401, "登录信息已过期，请重新登录");
+            }
+            // 2. 获取当前登录用户
+            String loginUsername = jwtUtil.parseUsername(realToken);
+            User currentUser = userService.findUserableUser(loginUsername);
+            if (currentUser == null) {
+                return Result.error(400, "用户不存在");
+            }
+            // 3. 校验昵称（非空、长度 1~20）
+            if (nickname == null || nickname.trim().isEmpty()) {
+                return Result.error(400, "昵称不能为空");
+            }
+            String realNickname = nickname.trim();
+            if (realNickname.length() > 20) {
+                return Result.error(400, "昵称长度不能超过 20 个字符");
+            }
+            String lockKey = "user:update_profile:lock:" + currentUser.getId();
+            boolean locked = false;
+            // 4. 分布式锁
+            try {
+                // 尝试上锁
+                locked = redisLockHelper.tryLock(lockKey, 5, TimeUnit.SECONDS);
+                if (!locked) {
+                    return Result.error(429, "操作正在处理，请勿重复提交");
+                }
+                // 双重校验
+                // 解析用户名
+                if (jwtUtil.validate(token)) {
+                    return Result.error(400, "用户信息已过期，请重新登录");
+                }
+                User lockUsername = userService.findUserableUser(loginUsername);
+                if (lockUsername == null) {
+                    return Result.error(400, "用户不存在");
+                }
+                // 5. 更新昵称（不涉及邮箱字段）
+                boolean updated = userService.updateProfile(currentUser.getId(), realNickname, null);
+                if (!updated) {
+                    return Result.error(500, "资料更新失败，请稍后重试");
+                }
+                return Result.ok("资料更新成功");
+            } catch (InterruptedException e) {
+                // 获取锁被中断：恢复中断状态，避免吞掉中断信号
+                Thread.currentThread().interrupt();
+                return Result.error(500, "系统繁忙，请稍后再试");
+            } catch (Exception e) {
+                log.error("用户资料更新失败", e);   // 控制台定位报错代码行数
+                return Result.error(500, "资料更新失败，请稍后重试");
+            } finally {
+                // 6. 释放分布式锁（unlock 会停止看门狗续期；helper 内部自动判断当前线程是否持有，不会误释放他人锁）
+                if (locked) {
+                    redisLockHelper.unlock(lockKey);
+                }
+            }
     }
 
     /**
@@ -434,7 +508,7 @@ public class UserController {
      * 需先调用 /send-changeEmail 获取两组验证码：
      * type=3 旧邮箱验证码（发到旧邮箱）、type=4 新邮箱验证码（发到新邮箱）
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "邮箱更换过于频繁，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 3, message = "邮箱更换过于频繁，请稍后再试")
     @PutMapping("/change_email")
     public Result<?> changeEmail(@RequestHeader("Authorization") String token,
                                  @RequestParam String oldEmail,
@@ -449,19 +523,16 @@ public class UserController {
         if (!jwtUtil.validate(realToken)) {
             return Result.error(401, "登录信息已过期，请重新登录");
         }
-
         // 2. 获取当前登录用户
         String loginUsername = jwtUtil.parseUsername(realToken);
-        User currentUser = userService.findUsernameforlogin(loginUsername);
+        User currentUser = userService.findUserableUser(loginUsername);
         if (currentUser == null) {
             return Result.error(400, "用户不存在");
         }
-
         // 3. 统一邮箱格式（与 send-changeEmail 发送验证码时的处理保持一致，避免大小写导致 key 对不上）
         String realOldEmail = sanitizeUtil.dealEmail(oldEmail.trim());
         String realNewEmail = sanitizeUtil.dealEmail(newEmail.trim());
         String realNowEmail = sanitizeUtil.dealEmail(currentUser.getEmail());
-
         // 4. 新邮箱不能与当前相同
         if (realNewEmail.equals(realNowEmail)) {
             return Result.error(400, "新邮箱与当前邮箱相同，无需换绑");
@@ -478,7 +549,6 @@ public class UserController {
         if (userService.isEmailExist(realNewEmail)) {
             return Result.error(400, "该新邮箱已被注册");
         }
-
         // 8. 校验旧邮箱验证码（verify_oldEmailCheckCode:{旧邮箱}）
         if (changeEmailCodeCheckStatus) {
             String oldRedisKey = "verify_oldEmailCheckCode:" + realOldEmail;
@@ -489,7 +559,6 @@ public class UserController {
             if (!oldStoredCode.equals(oldEmail_code)) {
                 return Result.error(400, "旧邮箱验证码错误");
             }
-
             // 9. 校验新邮箱验证码（verify_newEmailCheckCode:{新邮箱}）
             String newRedisKey = "verify_newEmailCheckCode:" + realNewEmail;
             String newStoredCode = (String) redisUtil.get(newRedisKey);
@@ -500,18 +569,52 @@ public class UserController {
                 return Result.error(400, "新邮箱验证码错误");
             }
         }
-
-        // 10. 更新邮箱（不涉及昵称字段）
-        boolean updated = userService.updateProfile(currentUser.getId(), null, newEmail);
-        if (!updated) {
-            return Result.error(500, "换绑邮箱失败，请稍后重试");
+        String lockKey = "user:change_email:lock:" + currentUser.getId();
+        boolean locked = false;
+        try {
+            // 获取锁
+            locked = redisLockHelper.tryLock(lockKey, 5, TimeUnit.SECONDS);
+            if (!locked) {
+                return Result.error(429, "操作正在处理，请勿反复提交");
+            }
+            // 校验token有效性
+            if (jwtUtil.validate(token)) {
+                return Result.error(400, "用户信息已过期，请重新登录");
+            }
+            // 检查用户
+            User lockUsername = userService.findUserableUser(currentUser.getUsername());
+            if (lockUsername == null) {
+                return Result.error(400, "用户不存在");
+            }
+            // 校验邮箱
+            if (oldEmail.matches(currentUser.getEmail())) {
+                return Result.error(400, "旧邮箱信息错误");
+            }
+            if (userService.isEmailExist(newEmail)) {
+                return Result.error(400, "新邮箱已被注册");
+            }
+            // 10. 更新邮箱（不涉及昵称字段）
+            boolean updated = userService.updateProfile(currentUser.getId(), null, newEmail);
+            if (!updated) {
+                return Result.error(500, "换绑邮箱失败，请稍后重试");
+            }
+            // 11. 换绑成功后清除验证码，防止重复使用（用统一后的邮箱保证 key 一致）
+            redisUtil.delete("verify_oldEmailCheckCode:" + realOldEmail);
+            redisUtil.delete("verify_newEmailCheckCode:" + realNewEmail);
+            return Result.ok("邮箱更换成功");
+        } catch (InterruptedException e) {
+            // 获取锁被中断：恢复中断状态，避免吞掉中断信号
+            Thread.currentThread().interrupt();
+            return Result.error(500, "系统繁忙，请稍后再试");
+        } catch (Exception e) {
+            log.error("邮箱换绑失败", e);   // 控制台定位报错代码行数
+            return Result.error(500, "邮箱换绑失败，请稍后重试");
+        } finally {
+            // 12. 释放分布式锁（unlock 会停止看门狗续期；helper 内部自动判断当前线程是否持有，不会误释放他人锁）
+            if (locked) {
+                redisLockHelper.unlock(lockKey);
+            }
         }
-
-        // 11. 换绑成功后清除验证码，防止重复使用（用统一后的邮箱保证 key 一致）
-        redisUtil.delete("verify_oldEmailCheckCode:" + realOldEmail);
-        redisUtil.delete("verify_newEmailCheckCode:" + realNewEmail);
-
-        return Result.ok("邮箱更换成功");
     }
 
     /**
@@ -546,7 +649,7 @@ public class UserController {
 
         // 2. 获取当前登录用户
         String loginUsername = jwtUtil.parseUsername(realToken);
-        User currentUser = userService.findUsernameforlogin(loginUsername);
+        User currentUser = userService.findUserableUser(loginUsername);
         if (currentUser == null) {
             return Result.error(400, "用户不存在");
         }
@@ -595,7 +698,9 @@ public class UserController {
      * 2.获取当前用户名
      * 3.清洗、校验密码
      * 4.密码强度校验
-     * 5.修改密码
+     * 5.分布式锁（看门狗）防并发重复提交
+     * 6.锁内双重检查（重新查库 + 重新校验旧密码）
+     * 7.修改密码
      * <p>
      * @author ZuiM
      * @param token token验证
@@ -620,43 +725,69 @@ public class UserController {
         }
         // 2.获取当前用户名
         String loginUsername = jwtUtil.parseUsername(realToken);
-        User currentUser = userService.findUsernameforlogin(loginUsername);
+        User currentUser = userService.findUserableUser(loginUsername);
         if (currentUser == null) {
             return Result.error(400, "用户不存在");
         }
-
         // 3.校验密码,输入清洗
         oldPassword = oldPassword.trim();
         if (!passwordEncoder.matches(oldPassword, currentUser.getPassword())) {
-            return Result.error(400, "密码错误");
+            return Result.error(400, "原密码错误");
         }
         newPassword = newPassword.trim();
         newPassword_check = newPassword_check.trim();
+        if (oldPassword.equals(newPassword)) {
+            return Result.error(400, "新密码不能与旧密码相同");
+        }
         if (!newPassword.equals(newPassword_check)) {
-            return Result.error(401, "两次密码不一致");
+            return Result.error(400, "两次密码不一致");
         }
         // 4.密码强度检验（替换原来的简单长度校验）
         PasswordStrengthUtils.StrengthResult strengthResult =
                 passwordStrengthUtils.checkStrength(newPassword);
-
         if (!strengthResult.isValid()) {
             return Result.error(400, strengthResult.getMessage());
         }
-
-        // 5.更改密码
-        User user = new User();
-        user.setPassword(passwordEncoder.encode(newPassword));
-
+        // 5.分布式锁（看门狗模式）：同一用户同一时刻只允许一个改密码请求（防并发重复提交）
+        String lockKey = "user:change_password:lock:" + currentUser.getId();
+        boolean locked = false;
         try {
-            boolean updated = userService.save(user);
+            // 尝试获取锁：最多等待 5 秒；拿到后由 Redisson 看门狗自动续期，
+            // 业务执行多久锁就持有多久，不会因锁租约到期被提前释放（unlock 后停止续期）
+            locked = redisLockHelper.tryLock(lockKey, 5, TimeUnit.SECONDS);
+            if (!locked) {
+                return Result.error(429, "操作正在处理，请勿重复提交");
+            }
+            // 6. 锁内双重检查（防止等待锁期间数据被其他请求修改）
+            // 6.1 重新查询用户，确保拿到最新数据
+            User lockedUser = userService.findUserableUser(loginUsername);
+            if (lockedUser == null) {
+                return Result.error(400, "用户不存在");
+            }
+            // 6.3 重新校验旧密码，防止锁等待期间密码已被其他请求修改
+            if (!passwordEncoder.matches(oldPassword, lockedUser.getPassword())) {
+                return Result.error(400, "原密码错误");
+            }
+            // 7. 更改密码（updateById 更新已有用户，避免误用 save 导致插入新记录）
+            String encodedPassword = passwordEncoder.encode(newPassword);
+            boolean updated = userService.updatePassword(lockedUser.getId(), encodedPassword);
             if (updated) {
                 return Result.ok("密码修改成功");
             }
-        } catch (DuplicateKeyException e) {
             return Result.error(500, "密码修改失败");
+        } catch (InterruptedException e) {
+            // 获取锁被中断：恢复中断状态，避免吞掉中断信号
+            Thread.currentThread().interrupt();
+            return Result.error(500, "系统繁忙，请稍后再试");
+        } catch (Exception e) {
+            log.error("用户密码修改失败", e);   // 控制台定位报错代码行数
+            return Result.error(500, "密码修改失败，请稍后重试");
+        } finally {
+            // 8. 释放分布式锁（unlock 会停止看门狗续期；helper 内部自动判断当前线程是否持有，不会误释放他人锁）
+            if (locked) {
+                redisLockHelper.unlock(lockKey);
+            }
         }
-
-        return Result.ok("密码修改成功");
     }
 }
 

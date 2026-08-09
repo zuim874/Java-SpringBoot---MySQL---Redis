@@ -5,6 +5,8 @@ import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Mapper.UserMapper;
 import org.springframework.stereotype.Service;
 
+import java.sql.Time;
+import java.time.LocalDateTime;
 import java.util.List;
 import com.xuwenye.demo.util.redis.RedisUtil;
 
@@ -28,7 +30,7 @@ public class UserService {
 
     /**
      * 根据用户名查询用户（登录用，含 Redis 缓存）
-     * 1.先从 Redis 查（demo:user:login:active:{username}）
+     * 1.先从 Redis 查（demo:user:active:{username}）
      * 2.未命中则查 MySQL
      * 3.查到了写入 Redis（过期 redisTimeOut 分钟）
      * <p>
@@ -37,37 +39,27 @@ public class UserService {
      * @return User 用户（可能为 null）
      */
     //根据用户名查询用户（登录用，含 Redis 缓存）
-    public User findUsernameforlogin(String username) {
+    public User findUserableUser(String username) {
         // Redis key 命名规则：项目名:模块:业务标识
-        String cacheKey = "demo:user:login:active:" + username;
-
+        String cacheKey = "demo:user:active:" + username;
         // 第 1 步：先从 Redis 查，有则直接返回
         User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-
         // 第 2 步：Redis 没有，查 MySQL
-        //QueryWrapper<实体> wrapper = new QueryWrapper<>();创造一个条件构造器
-        QueryWrapper<User> wrapper = new QueryWrapper<>();
-        //wrapper.eq("数据表字段名",传入参数);用条件构造器判断值是否相等
-        wrapper.eq("username",username);
-        User user = userMapper.selectOne(wrapper);
-
+        User user = userMapper.findUseableUserByUsername(username);
         // 第 3 步：查到了就写入 Redis（10 分钟过期，避免数据长期不一致）
         if (user != null) {
             redisUtil.set(cacheKey, user);
-            // 缓存击穿测试用
-//            redisUtil.set(cacheKey, user, 2, TimeUnit.SECONDS);
         }
-
         return user;
     }
 
     /**
      * 根据用户名查询用户（包含已逻辑删除的，含 Redis 缓存）
-     * 1.先从 Redis 查（demo:user:login:all:{username}）
-     * 2.未命中则查 MySQL（findByUsernameAll）
+     * 1.先从 Redis 查（demo:user:all:{username}）
+     * 2.未命中则查 MySQL（findAllUserByUsername）
      * 3.查到了写入 Redis
      * <p>
      * @author ZuiM
@@ -75,19 +67,16 @@ public class UserService {
      * @return User 用户（可能为 null）
      */
     //根据用户名查询用户（包含已逻辑删除的）
-    public User findUsername(String username) {
+    public User findAllUser(String username) {
         // Redis key 命名规则：项目名:模块:业务标识
-        String cacheKey = "demo:user:login:all:" + username;
-
+        String cacheKey = "demo:user:all:" + username;
         // redis查询
         User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-
         // redis没有，查mysql
-        User user = userMapper.findByUsernameAll(username);
-
+        User user = userMapper.findAllUserByUsername(username);
         // 写入redis(10分钟过期)
         if (user != null) {
             redisUtil.set(cacheKey, user);
@@ -98,7 +87,7 @@ public class UserService {
     /**
      * 查询已逻辑删除的用户（用于账号恢复，含 Redis 缓存）
      * 1.先从 Redis 查（demo:user:recover:{username}）
-     * 2.未命中则查 MySQL（findByUsernameDeleted）
+     * 2.未命中则查 MySQL（findDeletedUserByUsername）
      * 3.查到了写入 Redis
      * <p>
      * @author ZuiM
@@ -106,18 +95,15 @@ public class UserService {
      * @return User 已删除用户（可能为 null）
      */
     //查询删除用户
-    public User findUsernameforRecover(String username) {
+    public User findDeletedUserByUsername(String username) {
         String cacheKey = "demo:user:recover:" + username;
-
         // redis查询
         User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-
         // redis没有，查mysql
-        User user = userMapper.findByUsernameDeleted(username);
-
+        User user = userMapper.findDeletedUserByUsername(username);
         // 写入redis(10分钟过期)
         if (user != null) {
             redisUtil.set(cacheKey, user);
@@ -139,18 +125,15 @@ public class UserService {
     @SuppressWarnings("unchecked")
     public List<User> findNickname(String nickname) {
         String cacheKey = "demo:user:nickname:" + nickname;
-
         // 第 1 步：先从 Redis 查
         List<User> cached = (List<User>) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-
         // 第 2 步：Redis 没有，查 MySQL
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         wrapper.eq("nickname", nickname);
         List<User> list = userMapper.selectList(wrapper);
-
         // 第 3 步：写入 Redis（5 分钟过期，列表缓存允许短暂不一致）
         if (list != null && !list.isEmpty()) {
             redisUtil.set(cacheKey, list);
@@ -172,18 +155,15 @@ public class UserService {
     @SuppressWarnings("unchecked")
     public List<User> findStatus(String status) {
         String cacheKey = "demo:user:status:" + status;
-
         // 第 1 步：先从 Redis 查
         List<User> cached = (List<User>) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-
         // 第 2 步：Redis 没有，查 MySQL
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         wrapper.eq("status", status);
         List<User> list = userMapper.selectList(wrapper);
-
         // 第 3 步：写入 Redis（5 分钟过期）
         if (list != null && !list.isEmpty()) {
             redisUtil.set(cacheKey, list);
@@ -202,21 +182,18 @@ public class UserService {
      * @return User 用户（可能为 null）
      */
     //根据用户ID查询用户（含 Redis 缓存）
-    public User getById(Long id) {
+    public User getUserById(Long id) {
         // Redis key 命名规则：项目名:模块:业务标识
         String cacheKey = "demo:user:id:" + id;
-
         // 第 1 步：先从 Redis 查
         User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-
         // 第 2 步：Redis 没有，查 MySQL
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         wrapper.eq("id", id);
         User user = userMapper.selectOne(wrapper);
-
         // 第 3 步：查到了就写入 Redis（10 分钟过期）
         if (user != null) {
             redisUtil.set(cacheKey, user);
@@ -237,16 +214,13 @@ public class UserService {
     //检查邮箱是否已存在（含 Redis 缓存）
     public boolean isEmailExist(String email) {
         String cacheKey = "demo:user:email:" + email;
-
         // 第 1 步：先从 Redis 查
         User cached = (User) redisUtil.get(cacheKey);
         if (cached != null) {
             return true;
         }
-
         // 第 2 步：Redis 没有，查 MySQL
-        User user = userMapper.findByEmail(email);
-
+        User user = userMapper.findUserByUserEmail(email);
         // 第 3 步：存在则写入 Redis（10 分钟过期）
         if (user != null) {
             redisUtil.set(cacheKey, user);
@@ -258,19 +232,18 @@ public class UserService {
     /**
      * 保存用户（插入成功后才写缓存）
      * 1.插入数据库
-     * 2.插入成功才写入 Redis（demo:user:login:active:{username}），避免无效数据进缓存
+     * 2.插入成功才写入 Redis（demo:user:active:{username}），避免无效数据进缓存
      * <p>
      * @author ZuiM
      * @param user 用户实体
      * @return boolean true=保存成功
      */
     //保存用户（插入成功后才写入缓存）
-    public boolean save(User user) {
+    public boolean saveUser(User user) {
         String username = user.getUsername();
         // Redis key 命名规则：项目名:模块:业务标识
-        String cacheKey = "demo:user:login:active:" + username;
+        String cacheKey = "demo:user:active:" + username;
         boolean result = userMapper.insert(user) > 0;
-
         // 插入成功才写缓存，避免无效数据进入 Redis
         if (result) {
             redisUtil.set(cacheKey, user);
@@ -282,23 +255,22 @@ public class UserService {
      * 逻辑删除用户（同时清理所有关联缓存）
      * 1.先查出用户信息（用于删除缓存）
      * 2.执行逻辑删除
-     * 3.清理该用户所有维度缓存（login:active/login:all/recover/id/email）
+     * 3.清理该用户所有维度缓存（active/all/recover/id/email）
      * <p>
      * @author ZuiM
      * @param id 用户 ID
      * @return boolean true=删除成功
      */
     //删除用户(逻辑删除，同时清理所有关联缓存)
-    public boolean deleteById(Long id) {
+    public boolean deleteUserById(Long id) {
         // 先查出用户信息，用于删除缓存
         User user = userMapper.selectById(id);
         boolean result = userMapper.deleteById(id) > 0;
-
         if (result && user != null) {
             String username = user.getUsername();
             // 清除该用户关联的所有缓存
-            redisUtil.delete("demo:user:login:active:" + username);
-            redisUtil.delete("demo:user:login:all:" + username);
+            redisUtil.delete("demo:user:active:" + username);
+            redisUtil.delete("demo:user:all:" + username);
             redisUtil.delete("demo:user:recover:" + username);
             redisUtil.delete("demo:user:id:" + id);
             if (user.getEmail() != null) {
@@ -319,19 +291,18 @@ public class UserService {
      * @return boolean true=恢复成功
      */
     //恢复用户(根据ID，恢复后刷新缓存)
-    public boolean recoverById(Long id) {
-        boolean result = userMapper.recoverById(id) > 0;
+    public boolean recoverUserById(Long id) {
+        boolean result = userMapper.recoverDeletedUserByUserId(id) > 0;
         if (result) {
             User user = userMapper.selectById(id);
             if (user != null) {
                 String username = user.getUsername();
                 // 清除旧的关联缓存（recover 和 all 中的数据已过时）
                 redisUtil.delete("demo:user:recover:" + username);
-                redisUtil.delete("demo:user:login:all:" + username);
+                redisUtil.delete("demo:user:all:" + username);
                 redisUtil.delete("demo:user:id:" + id);
-
                 // 恢复后重新写入 active 缓存（用户已可登录）
-                String cacheKey = "demo:user:login:active:" + username;
+                String cacheKey = "demo:user:active:" + username;
                 redisUtil.set(cacheKey, user);
             }
         }
@@ -341,7 +312,7 @@ public class UserService {
     /**
      * 更新用户头像（更新数据库并清理关联缓存，下次查询重新加载）
      * 1.组装更新对象并执行 updateById
-     * 2.更新成功后清理 login:active / login:all / id 缓存
+     * 2.更新成功后清理 active / all / id 缓存
      * <p>
      * @author ZuiM
      * @param id 用户 ID
@@ -354,14 +325,13 @@ public class UserService {
         update.setId(id);
         update.setAvatar(avatarUrl);
         boolean result = userMapper.updateById(update) > 0;
-
         if (result) {
             // 清理该用户所有维度缓存，保证下次查询拿到最新头像
             User user = userMapper.selectById(id);
             if (user != null) {
                 String username = user.getUsername();
-                redisUtil.delete("demo:user:login:active:" + username);
-                redisUtil.delete("demo:user:login:all:" + username);
+                redisUtil.delete("demo:user:active:" + username);
+                redisUtil.delete("demo:user:all:" + username);
                 redisUtil.delete("demo:user:id:" + id);
             }
         }
@@ -372,7 +342,7 @@ public class UserService {
      * 更新用户资料（昵称/换绑邮箱，更新数据库并清理关联缓存）
      * 1.更新前先查旧数据（用于清理旧邮箱维度缓存）
      * 2.组装更新对象（MyBatis-Plus 默认忽略 null 字段，不会误清已有值）
-     * 3.执行 updateById 并清理 login:active / login:all / id / 新旧邮箱缓存
+     * 3.执行 updateById 并清理 active / all / id / 新旧邮箱缓存
      * <p>
      * @author ZuiM
      * @param id 用户 ID
@@ -387,7 +357,6 @@ public class UserService {
         if (old == null) {
             return false;
         }
-
         // 组装更新对象（MyBatis-Plus 默认忽略 null 字段，不会误清已有值）
         User update = new User();
         update.setId(id);
@@ -398,12 +367,11 @@ public class UserService {
             update.setEmail(newEmail);
         }
         boolean result = userMapper.updateById(update) > 0;
-
         if (result) {
             String username = old.getUsername();
             // 清理该用户所有维度缓存，保证下次查询拿到最新资料
-            redisUtil.delete("demo:user:login:active:" + username);
-            redisUtil.delete("demo:user:login:all:" + username);
+            redisUtil.delete("demo:user:active:" + username);
+            redisUtil.delete("demo:user:all:" + username);
             redisUtil.delete("demo:user:id:" + id);
             // 邮箱维度缓存（旧邮箱 + 新邮箱）
             if (old.getEmail() != null) {
@@ -417,7 +385,52 @@ public class UserService {
     }
 
     /**
-     * 检查权限（复用 findUsername 的 Redis 缓存，避免额外数据库查询）
+     * 更新用户密码（updateById 更新，成功后清理关联缓存）
+     * 1.组装更新对象（仅密码字段）并执行 updateById
+     * 2.更新成功后清理 active / all / id 缓存
+     * <p>
+     * @author ZuiM
+     * @param id 用户 ID
+     * @param newPassword BCrypt 加密后的新密码
+     * @return boolean true=更新成功
+     */
+    //更新用户密码（更新数据库并清理关联缓存，下次登录重新加载）
+    public boolean updatePassword(Long id, String newPassword) {
+        User update = new User();
+        update.setId(id);
+        update.setPassword(newPassword);
+        boolean result = userMapper.updateById(update) > 0;
+        if (result) {
+            User user = userMapper.selectById(id);
+            if (user != null) {
+                String username = user.getUsername();
+                redisUtil.delete("demo:user:active:" + username);
+                redisUtil.delete("demo:user:all:" + username);
+                redisUtil.delete("demo:user:id:" + id);
+            }
+        }
+        return result;
+    }
+
+    public boolean updateLastLoginTime(Long id, LocalDateTime time) {
+        User update = new User();
+        update.setId(id);
+        update.setLastLoginTime(time);
+        boolean result = userMapper.updateById(update) > 0;
+        if (result) {
+            User user = userMapper.selectById(id);
+            if (user != null) {
+                String username = user.getUsername();
+                redisUtil.delete("demo:user:active:" + username);
+                redisUtil.delete("demo:user:all:" + username);
+                redisUtil.delete("demo:user:id:" + id);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 检查权限（复用 findUser 的 Redis 缓存，避免额外数据库查询）
      * 1.查询用户（含缓存）
      * 2.判空、角色判空
      * 3.比较角色是否为 ROLE_ADMIN
@@ -429,19 +442,16 @@ public class UserService {
     //检查权限（复用 findUsername 的 Redis 缓存，避免额外数据库查询）
     public boolean isAdmin(String username) {
         // 1. 查询用户（含 Redis 缓存）
-        User user = findUsername(username);
-
+        User user = userMapper.findUseableUserByUsername(username);
         // 2. 判空
         if (user == null) {
             return false;
         }
-
         // 3. 获取角色并判空
         String userRole = user.getUserRole();
         if (userRole == null) {
             return false;
         }
-
         // 4. 比较
         return "ROLE_ADMIN".equals(userRole);
     }

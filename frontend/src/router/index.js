@@ -29,26 +29,40 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
 
-  // 不需要登录的页面
+  // 公开页面（不需要登录）
   const publicPages = ['Login', 'Register', 'Recover']
+  const isPublicPage = publicPages.includes(to.name)
+  const isRecoverPage = to.name === 'Recover'
 
-  // 如果要访问的页面需要登录，但没有 Token
-  if (!publicPages.includes(to.name) && !token) {
-    next({ name: 'Login' })
+  // --- 公开页面 ---
+  if (isPublicPage) {
+    // Recover 页面：无论是否登录、token 是否过期，一律放行
+    // 场景：账号被删除后 token 未清，用户需要访问恢复页面
+    if (isRecoverPage) {
+      next()
+      return
+    }
+    // Login / Register：已登录则跳转主页，未登录则正常访问
+    if (token && !isTokenExpired(token)) {
+      next({ name: 'Home' })
+    } else {
+      next()
+    }
+    return
   }
-  // 如果 Token 已过期，清空登录状态
-  else if (!publicPages.includes(to.name) && isTokenExpired(token)) {
+
+  // --- 非公开页面（需要登录） ---
+  if (!token) {
+    next({ name: 'Login' })
+    return
+  }
+  if (isTokenExpired(token)) {
     clearUserData()
     next({ name: 'Login' })
+    return
   }
-  // 如果已经登录，但要去登录页/注册页，跳转到主页
-  else if (publicPages.includes(to.name) && token) {
-    next({ name: 'Home' })
-  }
-  // 其他情况，正常跳转
-  else {
-    next()
-  }
+
+  next()
 })
 
 export default router

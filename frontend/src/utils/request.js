@@ -54,7 +54,9 @@ export async function request(url, options = {}) {
         const res = await fetch(BASE_URL + url, mergedOptions)
 
         // 第一层判断：HTTP 状态码为 401 时跳转登录页（Token 过期/未登录）
-        if (res.status === 401) {
+        // 恢复账号相关接口例外：已删除账号的用户没有有效 token，401 属正常业务状态，不应跳转登录页
+        const isPublicRequest = url.includes('/user/recover_user') || url.includes('/user/send-recovercode')
+        if (res.status === 401 && !isPublicRequest) {
             localStorage.removeItem('token')
             localStorage.removeItem('nickname')
             window.location.href = '/login'
@@ -63,8 +65,8 @@ export async function request(url, options = {}) {
 
         const data = await res.json()
 
-        // 第二层判断：响应体中的 code 为 401（兜底）
-        if (data.code === 401) {
+        // 第二层判断：响应体中的 code 为 401（兜底），同样排除恢复账号接口
+        if (data.code === 401 && !isPublicRequest) {
             localStorage.removeItem('token')
             localStorage.removeItem('nickname')
             window.location.href = '/login'

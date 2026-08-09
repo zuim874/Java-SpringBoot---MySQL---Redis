@@ -48,7 +48,7 @@ public class SecurityConfig {
      * 安全过滤链
      * 1.开启 CORS、关闭 CSRF
      * 2.设置无状态会话（STATELESS）
-     * 3.放行公开接口（登录/注册/发送验证码/静态资源 /uploads/**）
+     * 3.放行公开接口（登录/注册/发送验证码/恢复账号/静态资源 /uploads/**）
      * 4.其余请求要求认证，并在 UsernamePasswordAuthenticationFilter 前注册 JWT 过滤器
      * <p>
      * @author ZuiM
@@ -63,7 +63,8 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/send-registercode", "/api/user/send-recovercode", "/uploads/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/send-registercode",
+                                "/api/user/send-recovercode", "/api/user/recover_user", "/uploads/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .httpBasic(b -> b.disable())

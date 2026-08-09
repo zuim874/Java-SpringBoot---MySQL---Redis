@@ -40,6 +40,12 @@ export function stopTokenCheck() {
  * 检查 Token 状态
  */
 function checkToken(onExpired) {
+    // 在恢复页面上跳过 token 检查
+    // 场景：账号被删除后 token 可能已过期，但用户正在恢复账号，不能清空数据或跳转
+    if (window.location.pathname === '/recover') {
+        return
+    }
+
     const token = localStorage.getItem('token')
 
     if (!token) {

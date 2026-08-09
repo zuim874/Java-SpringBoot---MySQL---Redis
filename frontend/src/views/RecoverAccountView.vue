@@ -136,6 +136,7 @@ async function sendCode() {
   try {
     const params = new URLSearchParams()
     params.append('email', email.value)
+    params.append('username', username.value)
     const data = await request('/user/send-recovercode', {
       method: 'POST',
       body: params

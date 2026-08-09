@@ -10,13 +10,16 @@ import com.xuwenye.demo.util.auth.JwtUtil;
 import com.xuwenye.demo.util.auth.PasswordStrengthUtils;
 import com.xuwenye.demo.util.oi.SanitizeUtil;
 import com.xuwenye.demo.util.email.EmailUtil;
+import com.xuwenye.demo.util.redis.RedisLockHelper;
 import com.xuwenye.demo.util.redis.RedisUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -30,7 +33,9 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/api/auth")
 @Validated
+@Slf4j
 public class AuthController {
+    private final RedisLockHelper redisLockHelper;
     /** 注册验证码校验开关 */
     @Value("${test.registerCodeCheck.status:false}")
     private boolean registerCodeCheckStatus;
@@ -52,7 +57,7 @@ public class AuthController {
                           RedisUtil redisUtil,
                           PasswordStrengthUtils passwordStrengthUtils,
                           SanitizeUtil sanitizeUtil,
-                          MQProducer mqProducer) {
+                          MQProducer mqProducer, RedisLockHelper redisLockHelper) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
@@ -60,6 +65,7 @@ public class AuthController {
         this.passwordStrengthUtils = passwordStrengthUtils;
         this.sanitizeUtil = sanitizeUtil;
         this.mqProducer = mqProducer;
+        this.redisLockHelper = redisLockHelper;
     }
 
     /**
@@ -81,16 +87,15 @@ public class AuthController {
         // 输入清洗：去掉首尾空格（用户名防注入清洗；密码是敏感数据只 trim，不做字符替换以免篡改用户密码）
         username = sanitizeUtil.sanitize(username);
         password = password.trim();
-
-        User user = userService.findUsernameforlogin(username);
-
+        User user = userService.findUserableUser(username);
         if (user == null || !passwordEncoder.matches(password, user.getPassword())) {
             return Result.error(400, "账号或密码错误");
         }
         if (user.getStatus() == 0) {
             return Result.error(403, "账号已被禁用");
         }
-
+        // 更新活跃时间
+        userService.updateLastLoginTime(user.getId(), LocalDateTime.now());
         String token = jwtUtil.generateToken(username);
         return Result.ok(new LoginResponse(token, user.getNickname()));
     }
@@ -112,7 +117,7 @@ public class AuthController {
      * @param code 注册验证码
      * @return Result 200 注册成功；400 参数/验证码错误；500 注册失败
      */
-    @RateLimit(window = 60, maxRequests = 5, message = "注册尝试过多，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 3, message = "注册尝试过多，请稍后再试")
     @PostMapping("/register")
     public Result<?> register(@RequestParam String username,
                               @RequestParam String password,
@@ -127,12 +132,11 @@ public class AuthController {
         nickname = sanitizeUtil.sanitize(nickname);
         email = sanitizeUtil.sanitize(email);
         code = code.trim();
-
         // 邮箱格式校验
         if (!EmailUtil.isValidEmail(email)) {
             return Result.error(400, "邮箱格式不正确");
         }
-        if (userService.findUsername(username) != null) {
+        if (userService.findAllUser(username) != null) {
             return Result.error(400, "用户名已存在");
         }
         if (!password.equals(password_exam)) {
@@ -148,7 +152,6 @@ public class AuthController {
         if (!strengthResult.isValid()) {
             return Result.error(400, strengthResult.getMessage());
         }
-
         String redisKey = "verify_registerCode:" + email;
         String storedCode = (String) redisUtil.get(redisKey);
         if (registerCodeCheckStatus) {
@@ -163,29 +166,54 @@ public class AuthController {
         else {
             System.out.println("已跳过验证");
         }
-
-        User user = new User();
-        user.setUsername(username);
-        user.setPassword(passwordEncoder.encode(password));
-        user.setNickname(nickname);
-        user.setStatus(1);
-        // 保存小写（@gmail除外）
-        email = sanitizeUtil.dealEmail(email);
-        user.setEmail(email);
-        user.setCreateTime(java.time.LocalDateTime.now());
-
+        String lockKey = "user:register:lock:" + email;
+        boolean locked = false;
         try {
-            boolean saved = userService.save(user);
+            // 分布式锁
+            locked = redisLockHelper.tryLock(lockKey, 5, TimeUnit.SECONDS);
+            if (!locked) {
+                return Result.error(429, "操作正在执行，请勿重复提交");
+            }
+            // 校验用户名
+            User lockedUser = userService.findAllUser(username);
+            if (lockedUser != null) {
+                return Result.error(400, "用户已经存在");
+            }
+            if (userService.isEmailExist(email)) {
+                return Result.error(400, "邮箱已经被注册");
+            }
+            User user = new User();
+            user.setUsername(username);
+            user.setPassword(passwordEncoder.encode(password));
+            user.setNickname(nickname);
+            user.setStatus(1);
+            // 保存小写（@gmail除外）
+            email = sanitizeUtil.dealEmail(email);
+            user.setEmail(email);
+            user.setCreateTime(java.time.LocalDateTime.now());
+            // 保存新用户信息
+            boolean saved = userService.saveUser(user);
             if (saved) {
                 // 注册成功后清除 Redis 中的验证码，防止重复使用
                 redisUtil.delete(redisKey);
                 redisUtil.delete("verify_registerCode_limit:" + email);
                 return Result.ok("注册成功");
             }
+            return Result.error(400, "注册失败");
         } catch (DuplicateKeyException e) {
             return Result.error(400, "用户名已存在");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();;
+            return Result.error(429, "系统繁忙，请稍后再试");
+        } catch (Exception e) {
+            log.error("注册失败", e);
+            return Result.error(400, "注册失败，请重新尝试");
+        } finally {
+            // 释放锁
+            if (locked) {
+                redisLockHelper.unlock(lockKey);
+            }
         }
-        return Result.error(500, "注册失败");
     }
 
     /**
@@ -222,13 +250,6 @@ public class AuthController {
                     long ttl = redisUtil.getExpire(sendLimitKey, TimeUnit.SECONDS);
                     return Result.error(400, "请等待 " + ttl + " 秒后再试");
                 }
-//                // 3. 生成6位随机验证码
-//                String code = generateVerificationCode.generateVerificationCode();
-//                // 4. 存入 Redis（设置过期时间 5分钟）
-//                String redisKey = "verify_registerCode:" + email;
-//                redisUtil.set(redisKey, code);
-                // 5. 发送邮件（异步发送）
-//                emailUtil.sendVerificationCode(email, 0);
                 // 消息队列发送
                 mqProducer.sendEmailTask(email, 0);
                 return Result.ok("注册验证码已发送到您的邮箱，请注意查收");
