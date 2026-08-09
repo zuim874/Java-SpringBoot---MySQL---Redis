@@ -1,0 +1,127 @@
+2026.8.9
+
+========== 问题：
+首页 /home 商品无法显示，页面商品区域一片空白，但点击空白处可以进入商品详情页。
+
+浏览器控制台报错（关键线索）：
+    GET http://localhost:5173/api/product/list 500 (Internal Server Error)
+    GET http://localhost:5173/api/product/3 500 (Internal Server Error)
+    GET http://localhost:5173/api/product/3/images 500 (Internal Server Error)
+    request.js:77 请求失败: SyntaxError: Failed to execute 'json' on 'Response':
+                   Unexpected end of JSON input
+
+"Unexpected end of JSON input" 说明 500 响应的 body 不是 JSON 甚至为空。
+
+========== 排查过程（曲折，共五层）：
+
+第一层：直连后端/nginx 验证
+用命令行直接请求后端，结果全部正常：
+    http://localhost:8080/api/product/list      => HTTP 200（12 个商品）
+    http://localhost:8081/api/product/list      => HTTP 200
+    http://localhost:8080/api/product/3         => HTTP 200
+
+结论：后端代码、数据库、SQL 全部正常，问题出在"浏览器 → vite → nginx → 后端"链路的中间层。
+
+第二层：nginx 限流返回 444 空响应（第一个根因）
+浏览器请求走 vite(5173) → nginx(8081) → 后端(8080)。
+nginx.conf 中 /api/ 配置了限流：
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=5r/m;
+    location /api/ {
+        limit_req zone=api_limit burst=3 nodelay;
+        limit_req_status 444;      // ← 超限直接关闭连接、不返回任何响应
+    }
+
+rate=5r/m（每分钟 5 个请求）+ burst=3，正常操作（进首页 list + 点详情 detail/images
++ 刷新）很容易超限。nginx 超限时返回 444（nginx 自定义状态码：关闭连接、空响应），
+vite 代理收到空响应转为 500 + 空 body → 前端 res.json() 抛 SyntaxError。
+
+第三层：nginx 限流速率过严（第二个根因）
+rate=5r/m 对商品浏览（高频 GET）完全不合适，连续 15 次请求就有 4 次被限。
+放宽后（rate=600r/m + burst=100）不再触发。
+
+第四层：后端 @RateLimit 按 IP 限流失效——代理后所有人共享一个桶（第三个根因）
+放宽 nginx 限流后仍偶发 429，直连 8081 返回：
+    {"code":429,"mes":"请求过于频繁，请稍后再试","data":null}
+注意：这是后端 Result 的 429（nginx 的 429 是 HTML），说明是后端 RateLimitAspect 触发。
+
+后端 RateLimitAspect 用 request.getRemoteAddr() 取 IP：
+    ip = request.getRemoteAddr();
+但所有请求都经过 nginx 反向代理，后端看到的 remoteAddr 永远是 127.0.0.1！
+→ 所有用户、所有接口共享同一个限流 key（127.0.0.1:xxx:getActiveProducts）
+→ 商品浏览请求稍多就打满 30 次/分钟 → 全员 429。
+
+第五层：商品图片外网图源无法加载（第四个根因）
+商品图片 URL 全部是 https://images.unsplash.com/...（外网图源）。
+经 frp 远程访问时该图源无法加载 → 图片区域空白（文字和点击正常）。
+
+第六层：HomeView 滚动动画导致卡片永远隐藏（第五个根因）
+商品卡片 CSS 初始状态是隐藏的：
+    .product-card { opacity: 0; transform: translateY(40px); }
+    .product-card.visible { opacity: 1; transform: translateY(0); }
+.visible 由 IntersectionObserver 在元素进入视口时添加。
+但 onMounted 里 fetchProducts() 是异步的，观察时机在商品渲染之前：
+    onMounted(() => {
+        fetchProducts()                    // 异步，此时商品卡片还没渲染
+        observer.observe(卡片)             // v-for 未执行，refs 为空，什么都没观察到
+    })
+数据返回后 v-for 才渲染卡片，但没人再 observe → 卡片永远拿不到 .visible
+→ 永远 opacity:0 → 空白但可点击（与现象完全吻合）。
+
+========== 根因汇总：
+一个"商品无法显示"现象，实际是五个问题叠加：
+1. nginx limit_req_status 444：限流超限返回空响应，前端解析崩溃
+2. nginx rate=5r/m：对商品浏览类高频 GET 限流过严
+3. 后端 RateLimitAspect 取 remoteAddr：经代理后全是 127.0.0.1，所有用户共享限流桶
+4. 商品图片依赖外网 unsplash：远程访问（frp）时无法加载
+5. HomeView 滚动动画时序 bug：异步渲染的卡片从未被 observer 观察，永远隐藏
+
+========== 解决方案：
+1. nginx 限流状态码 444 → 429（标准状态码，前端可处理）
+   nginx.conf：limit_req_status 429;  limit_conn_status 429;
+
+2. nginx 限流速率 5r/m → 600r/m、burst 3 → 100
+   （仅兜底防爬虫级攻击；精确限流交给后端 @RateLimit 按接口独立控制）
+
+3. RateLimitAspect 获取真实客户端 IP（X-Forwarded-For）：
+    // 修改前：代理后所有请求 IP 都是 127.0.0.1，所有人共享限流桶
+    ip = request.getRemoteAddr();
+
+    // 修改后：优先取 nginx 写入的 X-Forwarded-For（真实客户端 IP）
+    ip = request.getHeader("X-Forwarded-For");
+    if (ip == null || ip.isBlank() || "unknown".equalsIgnoreCase(ip)) {
+        ip = request.getRemoteAddr();   // 直连场景退化
+    } else {
+        ip = ip.split(",")[0].trim();   // 多级代理取第一个 = 客户端真实 IP
+    }
+
+4. 商品图片本地化：
+   - 下载 12 张商品主图到 uploads/products/product-1.jpg ~ product-12.jpg
+     （其中 3 张原图在 unsplash 已 404，改用同主题替代图）
+   - 下载 3 张首页轮播图到 uploads/hero/hero-1.jpg ~ hero-3.jpg
+   - InitDataBase.sql 全部图片 URL 改为 /uploads/ 本地路径
+   - 新增 Script/UpdateProductImages.sql 更新现有数据库（无需重建表）
+   - HomeView.vue 轮播图和兜底图改为本地
+
+5. HomeView 滚动动画修复（observeCards 机制）：
+   - fetchProducts 的 finally 中 nextTick(() => observeCards())，
+     商品/分类卡片渲染完成后重新观察
+   - observeCards() 对已在视口内的元素直接加 .visible，不依赖滚动触发
+   - 不支持 IntersectionObserver 的老浏览器全部直接显示（兜底）
+
+========== 结果：
+- 后端/nginx 图片接口全部 HTTP 200
+- 连续 40 次请求商品接口全部 200，无 429
+- 前端 npm run build 构建通过
+- 刷新 /home 商品列表、图片、详情页均正常显示
+
+========== 教训：
+1. 排查"前端页面空白"问题，先直连后端接口确认数据层正常，
+   再逐层检查代理链（vite → nginx → 后端）——问题往往在中间层。
+2. nginx 的 444 状态码会"静默断开连接"，对前端极不友好，
+   限流应返回 429 并保留可读响应体。
+3. 引入反向代理后，后端取客户端 IP 必须读 X-Forwarded-For，
+   否则按 IP 限流/审计全部失效（所有请求都来自代理服务器 IP）。
+4. 前端滚动动画（IntersectionObserver + opacity:0）与异步渲染是经典组合坑：
+   "v-for 元素是异步产生的，observe 时机必须在数据渲染之后"。
+   任何"点击有反应但看不见"的问题，优先怀疑 opacity/visibility/display。
+5. 外网图源（unsplash 等）在国内/远程环境不可靠，生产应本地化静态资源。

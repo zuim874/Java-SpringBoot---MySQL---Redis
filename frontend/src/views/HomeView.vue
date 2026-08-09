@@ -75,27 +75,42 @@
           <p class="section-desc">{{ activeCategory === '全部' ? '所有商品' : activeCategory }} · 共 {{ filteredProducts.length }} 件</p>
         </div>
         <div class="filter-tabs">
-          <button v-for="cat in ['全部', ...categories.map(c => c.name)]" :key="cat"
+          <button v-for="cat in allCategoryNames" :key="cat"
                   class="filter-tab" :class="{ active: activeCategory === cat }"
                   @click="filterByCategory(cat)">{{ cat }}</button>
         </div>
         <div class="products-grid">
           <div v-for="(prod, idx) in filteredProducts" :key="prod.id"
                class="product-card" :ref="el => { if(el) prodRefs[idx] = el }"
-               :style="{ transitionDelay: (idx % 4) * 0.08 + 's' }">
+               :style="{ transitionDelay: (idx % 4) * 0.08 + 's' }"
+               @click="goToProductDetail(prod.id)">
             <div class="product-image">
-              <img :src="prod.image" :alt="prod.name" loading="lazy">
-              <div class="product-tag" v-if="prod.tag">{{ prod.tag }}</div>
+              <img :src="prod.mainImageUrl || '/uploads/hero/hero-1.jpg'" :alt="prod.productName" loading="lazy">
+              <div class="product-tag" v-if="prod.sold > 100">热卖</div>
+              <div class="product-tag tag-new" v-else-if="prod.stock > 0 && prod.sold < 10">新品</div>
             </div>
             <div class="product-info">
-              <h3 class="product-name">{{ prod.name }}</h3>
-              <p class="product-desc">{{ prod.desc }}</p>
+              <h3 class="product-name">{{ prod.productName }}</h3>
+              <p class="product-desc">{{ prod.description }}</p>
+              <div class="product-meta">
+                <span class="product-seller">{{ prod.sellerName }}</span>
+                <span class="product-sold">已售 {{ prod.sold }}</span>
+              </div>
               <div class="product-bottom">
                 <span class="product-price">¥{{ prod.price.toFixed(2) }}</span>
                 <button class="add-cart-btn" @click.stop="addToCart(prod)">加入购物车</button>
               </div>
             </div>
           </div>
+        </div>
+        <!-- 加载状态 -->
+        <div class="loading-state" v-if="loading">
+          <div class="loading-spinner"></div>
+          <p>正在加载商品...</p>
+        </div>
+        <!-- 空状态 -->
+        <div class="empty-state" v-if="!loading && filteredProducts.length === 0">
+          <p>暂无商品</p>
         </div>
       </div>
     </section>
@@ -109,9 +124,9 @@
       </div>
       <div class="cart-body" v-if="cart.length > 0">
         <div v-for="(item, idx) in cart" :key="idx" class="cart-item">
-          <img :src="item.image" :alt="item.name" class="cart-item-img">
+          <img :src="item.mainImageUrl || item.image" :alt="item.productName" class="cart-item-img">
           <div class="cart-item-info">
-            <h4>{{ item.name }}</h4>
+            <h4>{{ item.productName }}</h4>
             <p class="cart-item-price">¥{{ item.price.toFixed(2) }}</p>
           </div>
           <div class="cart-item-qty">
@@ -153,8 +168,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { request } from '../utils/request.js'
 
 const router = useRouter()
 const nickname = ref(localStorage.getItem('nickname') || '用户')
@@ -162,6 +178,116 @@ const scrolled = ref(false)
 const menuOpen = ref(false)
 const showCart = ref(false)
 const activeCategory = ref('全部')
+const loading = ref(true)
+
+// ===== 商品数据（从后端 API 获取） =====
+const products = ref([])
+
+/**
+ * 从后端 API 获取商品列表
+ * 1.调用 GET /api/product/list 获取所有已上架商品
+ * 2.按返回数据渲染，不再使用 mock 数据
+ * 3.加载失败时显示空列表，不阻塞页面
+ * <p>
+ * @author ZuiM
+ */
+async function fetchProducts() {
+  loading.value = true
+  try {
+    const res = await request('/product/list')
+    if (res && res.code === 200) {
+      products.value = res.data || []
+    } else {
+      console.error('获取商品列表失败:', res?.mes)
+      products.value = []
+    }
+  } catch (e) {
+    console.error('获取商品列表异常:', e)
+    products.value = []
+  } finally {
+    loading.value = false
+    // 商品/分类卡片是异步渲染的（数据返回前 v-for 卡片不存在），
+    // 数据就绪后必须重新观察，否则卡片永远拿不到 .visible、保持 opacity:0 不可见
+    nextTick(() => observeCards())
+  }
+}
+
+// ===== 分类数据（从商品数据中提取） =====
+const categoryIcons = {
+  '手机配件': '📱',
+  '电脑外设': '💻',
+  '音频设备': '🎧',
+  '智能家居': '🏠',
+  '穿戴设备': '⌚',
+  '摄影器材': '📷'
+}
+
+/**
+ * 从商品数据中动态提取分类列表
+ * 1.按分类名称去重
+ * 2.统计每个分类的商品数量
+ * 3.映射图标
+ * <p>
+ * @author ZuiM
+ */
+const categories = computed(() => {
+  const catMap = {}
+  products.value.forEach(p => {
+    if (p.category) {
+      if (!catMap[p.category]) {
+        catMap[p.category] = 0
+      }
+      catMap[p.category]++
+    }
+  })
+  return Object.entries(catMap).map(([name, count]) => ({
+    name,
+    count,
+    icon: categoryIcons[name] || '📦'
+  }))
+})
+
+/**
+ * 所有分类名称（含"全部"）
+ * <p>
+ * @author ZuiM
+ */
+const allCategoryNames = computed(() => {
+  return ['全部', ...categories.value.map(c => c.name)]
+})
+
+/**
+ * 按当前分类筛选后的商品列表
+ * <p>
+ * @author ZuiM
+ */
+const filteredProducts = computed(() => {
+  if (activeCategory.value === '全部') return products.value
+  return products.value.filter(p => p.category === activeCategory.value)
+})
+
+/**
+ * 切换分类筛选
+ * 1.更新 activeCategory
+ * 2.滚动到商品区域
+ * <p>
+ * @author ZuiM
+ * @param name 分类名称
+ */
+function filterByCategory(name) {
+  activeCategory.value = name
+  setTimeout(() => scrollTo('#products'), 100)
+}
+
+/**
+ * 跳转商品详情页
+ * <p>
+ * @author ZuiM
+ * @param id 商品ID
+ */
+function goToProductDetail(id) {
+  router.push(`/product/${id}`)
+}
 
 // ===== 退出登录 =====
 function handleLogout() {
@@ -175,51 +301,15 @@ function goAdmin() { router.push('/admin/users') }
 
 // ===== 轮播数据 =====
 const slides = [
-  { image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&q=85', alt: 'Tech Shopping' },
-  { image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=1920&q=85', alt: 'Shopping Mall' },
-  { image: 'https://images.unsplash.com/photo-1556742111-a301076d9d18?w=1920&q=85', alt: 'Digital Products' }
+  { image: '/uploads/hero/hero-1.jpg', alt: 'Tech Shopping' },
+  { image: '/uploads/hero/hero-2.jpg', alt: 'Shopping Mall' },
+  { image: '/uploads/hero/hero-3.jpg', alt: 'Digital Products' }
 ]
 const currentSlide = ref(0)
 let carouselTimer = null
 function goToSlide(idx) { currentSlide.value = idx; resetCarousel() }
 function nextSlide() { currentSlide.value = (currentSlide.value + 1) % slides.length }
 function resetCarousel() { clearInterval(carouselTimer); carouselTimer = setInterval(nextSlide, 5000) }
-
-// ===== 分类数据 =====
-const categories = [
-  { icon: '📱', name: '手机配件', count: 24 },
-  { icon: '💻', name: '电脑外设', count: 18 },
-  { icon: '🎧', name: '音频设备', count: 15 },
-  { icon: '🏠', name: '智能家居', count: 12 },
-  { icon: '⌚', name: '穿戴设备', count: 9 },
-  { icon: '📷', name: '摄影器材', count: 7 }
-]
-
-// ===== 商品数据（模拟） =====
-const products = [
-  { id: 1, name: '极速无线充电器', desc: '15W 快充 · 兼容 iPhone/Android', price: 129.00, image: 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=400&q=80', category: '手机配件', tag: '热卖' },
-  { id: 2, name: '机械键盘 K8 Pro', desc: '87键 · 青轴 · RGB背光', price: 399.00, image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=400&q=80', category: '电脑外设', tag: '新品' },
-  { id: 3, name: '降噪耳机 AirSound', desc: '主动降噪 · 40h续航 · 蓝牙5.3', price: 599.00, image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&q=80', category: '音频设备', tag: '推荐' },
-  { id: 4, name: '智能台灯 Lumina', desc: '无级调光 · 色温调节 · 护眼', price: 249.00, image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80', category: '智能家居', tag: '' },
-  { id: 5, name: '运动手环 FitBand', desc: '心率监测 · 睡眠分析 · IP68防水', price: 199.00, image: 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=400&q=80', category: '穿戴设备', tag: '特价' },
-  { id: 6, name: '便携三脚架 ProPod', desc: '碳纤维 · 1.5kg承重 · 折叠便携', price: 159.00, image: 'https://images.unsplash.com/photo-1586101447506-1e0b6b312f63?w=400&q=80', category: '摄影器材', tag: '' },
-  { id: 7, name: '手机壳 防摔系列', desc: '军工级防摔 · 磁吸兼容 · 多色可选', price: 49.00, image: 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=400&q=80', category: '手机配件', tag: '爆款' },
-  { id: 8, name: '显示器支架 ArmOne', desc: '气动悬臂 · 17-32寸 · 理线设计', price: 299.00, image: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400&q=80', category: '电脑外设', tag: '' },
-  { id: 9, name: '蓝牙音箱 MiniBeat', desc: '360°环绕声 · 12h续航 · 防水', price: 179.00, image: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=400&q=80', category: '音频设备', tag: '' },
-  { id: 10, name: '智能插座 SmartPlug', desc: '远程控制 · 电量统计 · 语音控制', price: 89.00, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=80', category: '智能家居', tag: '特价' },
-  { id: 11, name: '智能手表 WatchX', desc: 'AMOLED屏 · eSIM · 7天续航', price: 899.00, image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80', category: '穿戴设备', tag: '高端' },
-  { id: 12, name: 'USB-C 扩展坞 HubMax', desc: '12合1 · 4K60Hz · 100W PD', price: 259.00, image: 'https://images.unsplash.com/photo-1623869675781-80aa31029cb0?w=400&q=80', category: '电脑外设', tag: '推荐' }
-]
-
-const filteredProducts = computed(() => {
-  if (activeCategory.value === '全部') return products
-  return products.filter(p => p.category === activeCategory.value)
-})
-
-function filterByCategory(name) {
-  activeCategory.value = name
-  setTimeout(() => scrollTo('#products'), 100)
-}
 
 // ===== 购物车逻辑 =====
 const cart = ref(JSON.parse(localStorage.getItem('cart') || '[]'))
@@ -268,6 +358,9 @@ const prodRefs = reactive({})
 let observer = null
 
 onMounted(() => {
+  // 加载商品数据
+  fetchProducts()
+
   window.addEventListener('scroll', onScroll)
   carouselTimer = setInterval(nextSlide, 5000)
 
@@ -280,12 +373,42 @@ onMounted(() => {
     })
   }, { threshold: 0.10, rootMargin: '0px 0px -60px 0px' })
 
+  // 观察滚动动画目标（静态 header；商品/分类卡片异步渲染后由 observeCards 再次调用）
+  observeCards()
+})
+
+/**
+ * 观察所有滚动动画目标（section-header / 分类卡片 / 商品卡片）
+ * 1.商品与分类是异步渲染的（fetchProducts 完成前 v-for 卡片不存在），
+ *   数据就绪后必须重新调用本方法，否则卡片永远拿不到 .visible、保持 opacity:0 不可见
+ * 2.已在视口内的元素直接加 .visible，不依赖滚动触发
+ * 3.不支持 IntersectionObserver 时全部直接显示，避免内容永远隐藏
+ * <p>
+ * @author ZuiM
+ */
+function observeCards() {
+  if (!observer) return
+  // 不支持 IntersectionObserver（老浏览器）：全部直接显示
+  if (typeof IntersectionObserver === 'undefined') {
+    document.querySelectorAll('.section-header, .cat-card, .product-card')
+      .forEach(el => el.classList.add('visible'))
+    return
+  }
   const targets = [
     catHeader.value, prodHeader.value,
     ...Object.values(catRefs), ...Object.values(prodRefs)
   ].filter(Boolean)
-  targets.forEach(el => observer.observe(el))
-})
+  targets.forEach(el => {
+    const rect = el.getBoundingClientRect()
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      // 已在视口内：直接显示，避免依赖滚动触发
+      el.classList.add('visible')
+      observer.unobserve(el)
+    } else {
+      observer.observe(el)
+    }
+  })
+}
 
 onUnmounted(() => {
   window.removeEventListener('scroll', onScroll)
@@ -513,7 +636,7 @@ a { text-decoration: none; color: inherit; }
 .product-card {
   background: #ffffff; border: 1px solid #dee2e6; border-radius: 20px;
   overflow: hidden; transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  opacity: 0; transform: translateY(40px);
+  opacity: 0; transform: translateY(40px); cursor: pointer;
 }
 .product-card.visible { opacity: 1; transform: translateY(0); }
 .product-card:hover {
@@ -536,12 +659,24 @@ a { text-decoration: none; color: inherit; }
   background: linear-gradient(135deg, #e03131, #c92a2a);
   color: white; font-size: 0.7rem; font-weight: 600;
 }
+.product-tag.tag-new {
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
+}
 .product-info { padding: 20px; }
 .product-name {
   font-family: 'Playfair Display', Georgia, serif;
   font-size: 1rem; font-weight: 600; color: #212529; margin-bottom: 6px;
 }
-.product-desc { font-size: 0.8rem; color: #868e96; line-height: 1.5; margin-bottom: 16px; }
+.product-desc {
+  font-size: 0.8rem; color: #868e96; line-height: 1.5;
+  margin-bottom: 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.product-meta {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px; font-size: 0.75rem; color: #adb5bd;
+}
+.product-seller { color: #2b6cb0; font-weight: 500; }
 .product-bottom { display: flex; align-items: center; justify-content: space-between; }
 .product-price { font-size: 1.15rem; font-weight: 700; color: #2b6cb0; }
 .add-cart-btn {
@@ -552,6 +687,17 @@ a { text-decoration: none; color: inherit; }
   transition: all 0.3s;
 }
 .add-cart-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(43,108,176,0.30); }
+
+/* ===== Loading & Empty ===== */
+.loading-state, .empty-state {
+  text-align: center; padding: 80px 0; color: #868e96;
+}
+.loading-spinner {
+  width: 40px; height: 40px; margin: 0 auto 16px;
+  border: 3px solid #f1f3f5; border-top-color: #2b6cb0;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ===== Cart Sidebar ===== */
 .cart-overlay {

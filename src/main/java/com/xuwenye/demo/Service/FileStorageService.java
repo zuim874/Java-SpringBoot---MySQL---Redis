@@ -30,6 +30,12 @@ public class FileStorageService {
     /** 头像子目录（相对 upload 根目录） */
     private static final String AVATAR_SUB_DIR = "avatars";
 
+    /** 商品图片子目录（相对 upload 根目录） */
+    private static final String PRODUCT_IMAGE_SUB_DIR = "products";
+
+    /** 商品图片最大体积：10MB */
+    private static final long MAX_PRODUCT_IMAGE_SIZE = 10 * 1024 * 1024;
+
     /**
      * 保存头像文件，返回可访问的 URL 路径
      * 1.非空校验
@@ -83,5 +89,60 @@ public class FileStorageService {
 
         // 6. 返回浏览器可访问的 URL
         return "/uploads/" + AVATAR_SUB_DIR + "/" + filename;
+    }
+
+    /**
+     * 保存商品图片，返回可访问的 URL 路径
+     * 1.非空校验
+     * 2.大小校验（10MB 上限）
+     * 3.扩展名白名单校验（仅图片格式）
+     * 4.生成随机文件名（UUID，避免路径穿越）
+     * 5.创建目录并落盘
+     * 6.返回浏览器可访问的 URL
+     * <p>
+     * @author ZuiM
+     * @param file 上传的商品图片文件
+     * @return String 例如 /uploads/products/xxx.png
+     * @throws IllegalArgumentException 文件为空 / 类型不允许 / 超过大小限制
+     */
+    public String storeProductImage(MultipartFile file) {
+        // 1. 非空校验
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("上传文件不能为空");
+        }
+
+        // 2. 大小校验（10MB 上限）
+        if (file.getSize() > MAX_PRODUCT_IMAGE_SIZE) {
+            throw new IllegalArgumentException("商品图片大小不能超过 10MB");
+        }
+
+        // 3. 扩展名白名单校验（防止上传非图片文件）
+        String originalFilename = file.getOriginalFilename();
+        String ext = "";
+        if (originalFilename != null && originalFilename.contains(".")) {
+            ext = originalFilename.substring(originalFilename.lastIndexOf('.') + 1).toLowerCase();
+        }
+        if (!ALLOWED_IMAGE_EXT.contains(ext)) {
+            throw new IllegalArgumentException("仅支持 jpg/jpeg/png/gif/webp 格式的图片");
+        }
+
+        // 4. 生成随机文件名（UUID 无扩展名污染，避免路径穿越）
+        String filename = UUID.randomUUID().toString().replace("-", "") + "." + ext;
+
+        // 5. 创建目录并落盘
+        String uploadRoot = System.getProperty("user.dir") + File.separator + "uploads";
+        File productDir = new File(uploadRoot, PRODUCT_IMAGE_SUB_DIR);
+        if (!productDir.exists() && !productDir.mkdirs()) {
+            throw new RuntimeException("创建商品图片上传目录失败");
+        }
+        File dest = new File(productDir, filename);
+        try {
+            file.transferTo(dest);
+        } catch (IOException e) {
+            throw new RuntimeException("商品图片保存失败：" + e.getMessage());
+        }
+
+        // 6. 返回浏览器可访问的 URL
+        return "/uploads/" + PRODUCT_IMAGE_SUB_DIR + "/" + filename;
     }
 }

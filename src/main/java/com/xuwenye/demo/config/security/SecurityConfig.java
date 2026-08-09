@@ -1,5 +1,6 @@
 package com.xuwenye.demo.config.security;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -65,6 +66,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/send-registercode",
                                 "/api/user/send-recovercode", "/api/user/recover_user", "/uploads/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/product/list", "/api/product/category/**",
+                                "/api/product/search", "/api/product/*/images", "/api/product/*").permitAll()
                         .anyRequest().authenticated()
                 )
                 .httpBasic(b -> b.disable())

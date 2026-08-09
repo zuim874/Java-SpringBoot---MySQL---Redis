@@ -75,13 +75,17 @@ public class RateLimitAspect {
     }
 
     /**
-     * 生成限流 Key：IP + 类名 + 方法名
-     * 1.从 RequestContextHolder 获取请求 IP
-     * 2.取接口声明类型名与方法名（避免代理类名变化导致 key 漂移）
+     * 生成限流 Key：真实客户端 IP + 类名 + 方法名
+     * 1.优先取 X-Forwarded-For 头（nginx 等反向代理会写入），取第一个 IP 即客户端真实 IP
+     * 2.无代理时（直连）退化为 getRemoteAddr()
+     * 3.取接口声明类型名与方法名（避免代理类名变化导致 key 漂移）
+     * <p>
+     * 说明：若直接使用 getRemoteAddr()，经 nginx 代理后所有请求的 IP 都是代理服务器
+     * （如 127.0.0.1），会导致所有用户共享同一个限流桶、互相挤占额度（表现为偶发 429）。
      * <p>
      * @author ZuiM
      * @param joinPoint 连接点
-     * @return String 限流 key（如 127.0.0.1:xxx.AuthController:login）
+     * @return String 限流 key（如 1.2.3.4:xxx.AuthController:login）
      */
     private String getKey(ProceedingJoinPoint joinPoint) {
         // 获取 IP
@@ -90,7 +94,15 @@ public class RateLimitAspect {
         String ip = "unknown";
         if (attributes != null) {
             HttpServletRequest request = attributes.getRequest();
-            ip = request.getRemoteAddr();
+            // 优先取反向代理写入的 X-Forwarded-For（真实客户端 IP）
+            ip = request.getHeader("X-Forwarded-For");
+            if (ip == null || ip.isBlank() || "unknown".equalsIgnoreCase(ip)) {
+                // 直连场景：无代理头，退化为连接来源 IP
+                ip = request.getRemoteAddr();
+            } else {
+                // 多级代理时 X-Forwarded-For 形如 "client, proxy1, proxy2"，取第一个
+                ip = ip.split(",")[0].trim();
+            }
         }
 
         // 获取类名和方法名（用接口声明的类型名，避免代理类名变化导致 key 漂移）
