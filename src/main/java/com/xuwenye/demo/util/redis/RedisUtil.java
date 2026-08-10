@@ -6,6 +6,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -56,11 +57,11 @@ public class RedisUtil {
      * @param value 缓存值
      */
     public void set(String key, Object value) {
-        redisTemplate.opsForValue().set(key, value, redisTimeOut, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(key, value, redisTimeOut + ThreadLocalRandom.current().nextInt(0, 300), TimeUnit.SECONDS);
     }
 
     public void setCode(String key, Object value) {
-        redisTemplate.opsForValue().set(key, value, redisCodeTimeOut, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(key, value, redisCodeTimeOut + ThreadLocalRandom.current().nextInt(0, 60), TimeUnit.SECONDS);
     }
 
     /**

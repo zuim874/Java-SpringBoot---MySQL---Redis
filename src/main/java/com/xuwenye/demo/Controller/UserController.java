@@ -195,7 +195,7 @@ public class UserController {
      * @param email 已注册的邮箱
      * @return Result<?> 200/400/401：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 3, message = "注销验证码发送频繁，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 1, message = "注销验证码发送频繁，请稍后再试")
     @PostMapping("/send-deletecode")
     public Result<?> sendDeleteCode(@RequestHeader(value = "Authorization", required = false) String token,
                                     @RequestParam String email) {
