@@ -1,3 +1,12 @@
+（日期缺失，原记录未标注，整理时保留原状）
+
+========== 问题：
+后台注册却返回 500
+
+========== 原因：
 GenericJackson2JsonRedisSerializer 序列化 User 到 Redis 时，
-遇到 create_time （ LocalDateTime 类型），
+遇到 create_time（LocalDateTime 类型），
 但默认的 Jackson 没有注册 JSR310 时间模块
+
+========== 说明：
+（原记录未包含解决方案与结果，此处仅整理格式，保留原始排查内容）

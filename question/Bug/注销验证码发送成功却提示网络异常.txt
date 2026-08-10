@@ -1,0 +1,59 @@
+2026.8.10
+
+========== 问题：
+注销账号发送验证码 过程中：收到验证码邮件，但前端一直提示"网络错误，请检查后端服务是否启动"
+现象：Profile 个人中心 -> 注销账号 -> 点击"发送验证码"，
+      手机邮箱收到注销验证码邮件（说明后端处理成功），但前端弹窗提示"网络错误"。
+      把前端错误提示改进为显示真实原因后，暴露出具体错误：
+         请求异常：Cannot set properties of undefined (setting 'value')
+
+========== 排查过程：
+1. 先验证后端链路（排除后端问题）：
+   - 带有效 token 调用 /api/user/send-deletecode
+   - 直连 8080、经 nginx 8081、经 vite 5173 代理，全部返回 HTTP 200 合法 JSON
+     {"code":200,"data":"账号注销验证码已发送到您的邮箱，请注意查收"}
+   - GlobalExceptionHandler 所有异常都返回 Result JSON（500 -> "服务器异常"）
+   - DemoApplication 已有 @EnableAsync（发送邮件是异步的，不阻塞接口）
+   => 后端与代理链路 100% 正常
+
+2. 错误信息"Cannot set properties of undefined (setting 'value')"是给 undefined 对象设置 .value 属性，
+   定位到 ProfileView.vue 的 startCountdown 函数：
+        function startCountdown(targetRef, seconds = 60) {
+            targetRef.value = seconds    // <-- targetRef 没传 = undefined -> 抛 TypeError
+            ...
+        }
+   但三处调用全部是无参调用：
+        sendOldEmailCode:  startCountdown()
+        sendNewEmailCode:  startCountdown()
+        sendDeleteCode:    startCountdown()
+   => targetRef 为 undefined，函数第一行就抛 TypeError
+
+3. 完整因果链：
+   点"发送验证码" -> 后端成功（邮件发出）-> 返回 200
+   -> 前端进入成功分支 -> startCountdown() 参数没传 -> 抛 TypeError
+   -> 异常被 try/catch 捕获 -> 显示错误
+   （之前显示"网络错误"是因为 catch 里笼统兜底，掩盖了真实错误）
+
+========== 根因：
+startCountdown 函数签名要求传入 targetRef 参数，但所有调用处都没传；
+验证码发送成功后启动倒计时的逻辑必然抛错。属于前端 JS 参数缺陷。
+
+========== 解决方案：
+三处调用传入对应的倒计时 ref：
+        sendOldEmailCode:  startCountdown(oldCodeCountdown)
+        sendNewEmailCode:  startCountdown(newCodeCountdown)
+        sendDeleteCode:    startCountdown(deleteCountdown)
+   同时完善函数注释说明 targetRef 的取值。
+
+========== 结果：
+- 前端 npm run build 构建通过
+- 发送验证码成功后正常显示"验证码已发送" + 按钮进入 60 秒倒计时，不再报错
+
+========== 教训：
+1. catch 里不要把异常统一显示成"网络错误，请检查后端服务是否启动"，
+   应显示 err.message 暴露真实原因，否则会掩盖前端自己的 bug（这次就是）。
+2. "收到邮件却报错"说明业务成功分支执行到了，问题在前端成功分支内的逻辑，
+   不是后端问题——先验证后端链路，再怀疑前端成功路径。
+3. JS 函数参数不传 = undefined，函数体内对参数做属性访问（xxx.value = ...）必然抛
+   "Cannot set properties of undefined"，函数参数要有默认值或调用处必须传参。
+4. 排查顺序：curl 直连后端确认数据层 OK -> 让前端显示真实错误 -> 定位具体函数。

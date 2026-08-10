@@ -1,12 +1,15 @@
 2026.7.22
 
-问题；
-    测试/api/user/recover_admin时，发现删除的admin用户可以正常登录
+========== 问题：
+测试 /api/user/recover_admin 时，发现删除的 admin 用户可以正常登录
 
-原因：
-        //删除用户(逻辑删除)
-        public boolean deleteById(Long id) {
-            return userMapper.deleteById(id) > 0;
-        }
-    删除用户的逻辑不会删除redis中对该用户的缓存，删除使用的是/api/user/delete_user，为用户登录后自行删除，此时redis缓存
-    中存有用户信息，所以删除后该用户仍可登录
+========== 原因：
+    //删除用户(逻辑删除)
+    public boolean deleteById(Long id) {
+        return userMapper.deleteById(id) > 0;
+    }
+删除用户的逻辑不会删除 redis 中对该用户的缓存，删除使用的是 /api/user/delete_user，
+为用户登录后自行删除，此时 redis 缓存中存有用户信息，所以删除后该用户仍可登录
+
+========== 说明：
+（原记录未包含解决方案，此处仅整理格式，保留原始排查内容）

@@ -1,32 +1,44 @@
 2026.8.10
-验证码发送功能测试 过程中：发现    1.验证码过期 异常的问题
-现象： 调用接口发送验证码，使用手机邮箱收到的验证码进行账号恢复，返回验证码过期的提示
 
-排查： 问题相关代码         String redisKey = "verify_recoverCode:" + email;
-                        String storedCode = (String) redisUtil.get(redisKey);
-                        // 3: 校验验证码
-                        if (recoverCodeCheckStatus) {
-                            if (storedCode == null) {
-                                return Result.error(400, "验证码已过期，请重新获取");
-                            }
-    说明 storedCode 为null -> 说明 redis 中没有键为 verify_recoverCode:邮箱名 的值
-    检查接口调用参数：/api/user/send-recoverCode email:Xu3298140377@outlook.com
-    检查redis缓存：verify_recoverCode:Xu3298140377@outlook.com
-    问题不在缓存，那么异常发生在业务代码
-    检查接口调用参数：/api/user/recover_user email：xu3298140377@outlook.com
-    发现问题了，过程中有大小判断上不统一导致异常
+========== 问题：
+验证码发送功能测试过程中，发现验证码过期异常的问题。
+现象：调用接口发送验证码，使用手机邮箱收到的验证码进行账号恢复，返回验证码过期的提示
 
-    修改为：            String realEmail = sanitizeUtil.dealEmail(email);
-                    String redisKey = "verify_recoverCode:" + realEmail;
-    因为之前问题而统一将与邮箱有关的业务：发送、判断，将邮箱处理为小写来进行业务，邮箱的数据库写入除外
-    一同顺着查找：                 mqProducer.sendEmailTask(email, 2);
-        这里通过消息队列发送的目标邮箱不经过处理
-                            String redisKey = "verify_" + template + "Code:" + toEmail;
-                            redisUtil.setCode(redisKey, code);
-        发送邮箱也不经过处理
-    最终导致redis存入Xu3298140377@outlook.com，业务以为是不同的邮箱
-解决方法：1.修改对比源（接口层）
-               String realEmail = sanitizeUtil.dealEmail(email);
-               String sendLimitKey = "verify_deleteCode_limit:" + realEmail;
-               mqProducer.sendEmailTask(realEmail, 2);
-        2.修改redis结果
+========== 排查过程：
+问题相关代码：
+        String redisKey = "verify_recoverCode:" + email;
+        String storedCode = (String) redisUtil.get(redisKey);
+        // 3: 校验验证码
+        if (recoverCodeCheckStatus) {
+            if (storedCode == null) {
+                return Result.error(400, "验证码已过期，请重新获取");
+            }
+说明 storedCode 为 null -> 说明 redis 中没有键为 verify_recoverCode:邮箱名 的值
+
+检查接口调用参数：/api/user/send-recoverCode email:Xu3298140377@outlook.com
+检查 redis 缓存：verify_recoverCode:Xu3298140377@outlook.com
+问题不在缓存，那么异常发生在业务代码
+
+检查接口调用参数：/api/user/recover_user email：xu3298140377@outlook.com
+发现问题了，过程中有大小判断上不统一导致异常
+
+========== 解决方案：
+修改为：
+        String realEmail = sanitizeUtil.dealEmail(email);
+        String redisKey = "verify_recoverCode:" + realEmail;
+因为之前问题而统一将与邮箱有关的业务：发送、判断，将邮箱处理为小写来进行业务，邮箱的数据库写入除外
+
+一同顺着查找：
+        mqProducer.sendEmailTask(email, 2);
+这里通过消息队列发送的目标邮箱不经过处理
+        String redisKey = "verify_" + template + "Code:" + toEmail;
+        redisUtil.setCode(redisKey, code);
+发送邮箱也不经过处理
+最终导致 redis 存入 Xu3298140377@outlook.com，业务以为是不同的邮箱
+
+解决方法：
+1. 修改对比源（接口层）
+        String realEmail = sanitizeUtil.dealEmail(email);
+        String sendLimitKey = "verify_deleteCode_limit:" + realEmail;
+        mqProducer.sendEmailTask(realEmail, 2);
+2. 修改 redis 结果

@@ -1,5 +1,8 @@
 2026.7.17
 ========== 问题：
+现象：注册重复用户名时，绕过 400"用户名已存在"校验，数据库唯一键冲突返回 500。
+（以下为建表 SQL 与注册校验相关代码）
+
 DROP TABLE IF EXISTS sys_user;
 CREATE TABLE sys_user (
                           id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',

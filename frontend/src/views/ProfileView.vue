@@ -393,7 +393,7 @@ async function submitEditNickname() {
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
   } finally {
     editingNickname.value = false
   }
@@ -447,14 +447,14 @@ async function sendOldEmailCode() {
     if (data && data.code === 200) {
       success.value = true
       message.value = data.mes || '旧邮箱验证码已发送'
-      startCountdown()
+      startCountdown(oldCodeCountdown)
     } else {
       success.value = false
       message.value = data.mes || '发送失败'
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
   } finally {
     oldCodeSending.value = false
   }
@@ -480,14 +480,14 @@ async function sendNewEmailCode() {
     if (data && data.code === 200) {
       success.value = true
       message.value = data.mes || '新邮箱验证码已发送'
-      startCountdown()
+      startCountdown(newCodeCountdown)
     } else {
       success.value = false
       message.value = data.mes || '发送失败'
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
   } finally {
     newCodeSending.value = false
   }
@@ -530,7 +530,7 @@ async function submitChangeEmail() {
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
   } finally {
     changingEmail.value = false
   }
@@ -586,8 +586,9 @@ async function submitChangePassword() {
       message.value = data.mes || '密码修改失败'
     }
   } catch (err) {
+    console.error('请求异常详情:', err)
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
   } finally {
     changingPassword.value = false
   }
@@ -674,14 +675,14 @@ async function sendDeleteCode() {
     if (data && data.code === 200) {
       success.value = true
       message.value = data.mes || '注销验证码已发送'
-      startCountdown()
+      startCountdown(deleteCountdown)
     } else {
       success.value = false
       message.value = data.mes || '发送验证码失败'
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
   } finally {
     deleteCodeSending.value = false
   }
@@ -716,7 +717,7 @@ async function handleDelete() {
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
   } finally {
     deleting.value = false
     // 仅注销成功时关闭弹窗；失败保留弹窗，让错误消息显示在弹窗内
