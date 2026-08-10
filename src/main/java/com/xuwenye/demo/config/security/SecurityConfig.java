@@ -1,6 +1,5 @@
 package com.xuwenye.demo.config.security;
 
-import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -13,6 +12,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
 
@@ -49,8 +49,9 @@ public class SecurityConfig {
      * 安全过滤链
      * 1.开启 CORS、关闭 CSRF
      * 2.设置无状态会话（STATELESS）
-     * 3.放行公开接口（登录/注册/发送验证码/恢复账号/静态资源 /uploads/**）
+     * 3.放行公开接口（登录/注册/发送验证码/恢复账号/商品浏览(GET)/静态资源 /uploads/**）
      * 4.其余请求要求认证，并在 UsernamePasswordAuthenticationFilter 前注册 JWT 过滤器
+     * 5.未认证统一返回 401 JSON（便于前端拦截处理）
      * <p>
      * @author ZuiM
      * @param http HttpSecurity 安全构建器
@@ -66,10 +67,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/send-registercode",
                                 "/api/user/send-recovercode", "/api/user/recover_user", "/uploads/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/product/list", "/api/product/category/**",
-                                "/api/product/search", "/api/product/*/images", "/api/product/*").permitAll()
+                        // 商品公开接口（GET请求）
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/product/**").permitAll()
                         .anyRequest().authenticated()
                 )
+                // 未认证访问返回 401 JSON（避免 Spring Security 默认 403 空响应导致前端 JSON 解析报错）
+                .exceptionHandling(e -> e.authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"code\":401,\"mes\":\"未登录或登录已过期\"}");
+                }))
                 .httpBasic(b -> b.disable())
                 .formLogin(f -> f.disable())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

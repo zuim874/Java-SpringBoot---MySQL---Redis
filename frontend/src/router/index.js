@@ -15,10 +15,10 @@ const routes = [
   { path: '/login', name: 'Login', component: LoginView },
   { path: '/register', name: 'Register', component: RegisterView },
   { path: '/home', name: 'Home', component: HomeView },
+  { path: '/product/:id', name: 'ProductDetail', component: ProductDetailView },
   { path: '/profile', name: 'Profile', component: ProfileView },
   { path: '/recover', name: 'Recover', component: RecoverAccountView },
-  { path: '/admin/users', name: 'AdminUsers', component: AdminUserManageView },
-  { path: '/product/:id', name: 'ProductDetail', component: ProductDetailView }
+  { path: '/admin/users', name: 'AdminUsers', component: AdminUserManageView }
 ]
 
 // 创建路由实例
@@ -32,19 +32,20 @@ router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
 
   // 公开页面（不需要登录）
-  const publicPages = ['Login', 'Register', 'Recover', 'ProductDetail', 'Home']
+  const publicPages = ['Login', 'Register', 'Recover', 'Home', 'ProductDetail']
   const isPublicPage = publicPages.includes(to.name)
   const isRecoverPage = to.name === 'Recover'
 
   // --- 公开页面 ---
   if (isPublicPage) {
-    // Recover / ProductDetail / Home 页面：无论是否登录、token 是否过期，一律放行
-    if (isRecoverPage || to.name === 'ProductDetail' || to.name === 'Home') {
+    // Recover 页面：无论是否登录、token 是否过期，一律放行
+    // 场景：账号被删除后 token 未清，用户需要访问恢复页面
+    if (isRecoverPage) {
       next()
       return
     }
-    // Login / Register：已登录则跳转主页，未登录则正常访问
-    if (token && !isTokenExpired(token)) {
+    // Login / Register / Home / ProductDetail：已登录则跳转主页，未登录则正常访问
+    if ((to.name === 'Login' || to.name === 'Register') && token && !isTokenExpired(token)) {
       next({ name: 'Home' })
     } else {
       next()

@@ -20,11 +20,14 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class RedisUtil {
-    /** 通用缓存过期时间（分钟，默认 1） */
+    /** 通用缓存过期时间（分钟，默认 10） */
     @Value("${test.redisTimeOut:1}")
     private long redisTimeOut;
-    /** 验证码相关过期时间（分钟，默认 1） */
-    @Value("${test.redisCodeTimeOut:1}")
+    /** 验证码发送间隔（分钟，默认 1） */
+    @Value("${test.redisCodeSendTimeOut:1}")
+    private long redisCodeSendTimeOut;
+    /** 验证码过期时间（分钟，默认 10） */
+    @Value("${test.redisCodeTimeOut:10}")
     private long redisCodeTimeOut;
 
     private final RedisTemplate<String, Object> redisTemplate;
@@ -54,6 +57,10 @@ public class RedisUtil {
      */
     public void set(String key, Object value) {
         redisTemplate.opsForValue().set(key, value, redisTimeOut, TimeUnit.MINUTES);
+    }
+
+    public void setCode(String key, Object value) {
+        redisTemplate.opsForValue().set(key, value, redisCodeTimeOut, TimeUnit.MINUTES);
     }
 
     /**
@@ -159,6 +166,6 @@ public class RedisUtil {
      */
     public Boolean setIfAbsent(String key, String value) {
         return redisTemplate.opsForValue()
-                .setIfAbsent(key, value, redisCodeTimeOut, TimeUnit.MINUTES);
+                .setIfAbsent(key, value, redisCodeSendTimeOut, TimeUnit.SECONDS);
     }
 }

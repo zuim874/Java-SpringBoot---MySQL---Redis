@@ -99,7 +99,7 @@ async function handleLogin() {
       method: 'POST',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = data.mes
       localStorage.setItem('token', data.data.token)

@@ -1,19 +1,25 @@
 package com.xuwenye.demo.Service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xuwenye.demo.Entity.Product;
 import com.xuwenye.demo.Entity.ProductImage;
+import com.xuwenye.demo.Entity.Seller;
 import com.xuwenye.demo.Mapper.ProductImageMapper;
 import com.xuwenye.demo.Mapper.ProductMapper;
+import com.xuwenye.demo.Mapper.SellerMapper;
+import com.xuwenye.demo.util.redis.RedisLockHelper;
 import com.xuwenye.demo.util.redis.RedisUtil;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 商品业务层
- * 1.查询：所有商品列表 / 按分类筛选 / 按关键词搜索 / 商品详情，均带 Redis 缓存（Cache-Aside）
- * 2.写操作：新增/更新/逻辑删除，写库后维护缓存
- * 3.图片查询：按商品ID查询图片列表
+ * 1.查询：商品列表/详情/分类，均带 Redis 缓存（Cache-Aside）
+ * 2.写操作：新增/更新/删除/上架/下架，写库后维护缓存
+ * 3.库存操作：使用分布式锁保护扣减库存
  * <p>
  * @author ZuiM
  */
@@ -21,118 +27,102 @@ import java.util.List;
 public class ProductService {
     private final ProductMapper productMapper;
     private final ProductImageMapper productImageMapper;
+    private final SellerMapper sellerMapper;
     private final RedisUtil redisUtil;
+    private final RedisLockHelper redisLockHelper;
+
+    // Redis缓存Key前缀
+    private static final String PRODUCT_CACHE_PREFIX = "demo:product:";
+    private static final String PRODUCT_LIST_CACHE_KEY = "demo:product:list:all";
+    private static final String PRODUCT_CATEGORY_CACHE_PREFIX = "demo:product:category:";
+    private static final String PRODUCT_DETAIL_CACHE_PREFIX = "demo:product:detail:";
+    private static final String ALL_CATEGORIES_CACHE_KEY = "demo:product:categories:all";
+    private static final String SELLER_CACHE_PREFIX = "demo:seller:";
 
     public ProductService(ProductMapper productMapper,
                           ProductImageMapper productImageMapper,
-                          RedisUtil redisUtil) {
+                          SellerMapper sellerMapper,
+                          RedisUtil redisUtil,
+                          RedisLockHelper redisLockHelper) {
         this.productMapper = productMapper;
         this.productImageMapper = productImageMapper;
+        this.sellerMapper = sellerMapper;
         this.redisUtil = redisUtil;
+        this.redisLockHelper = redisLockHelper;
     }
 
-    // ==================== 查询方法（带缓存） ====================
-
     /**
-     * 查询所有已上架商品（含 Redis 缓存）
-     * 1.先从 Redis 查（demo:product:active:list）
-     * 2.未命中则查 MySQL（含卖家名称左连接）
+     * 获取所有上架商品（含 Redis 缓存）
+     * 1.先从 Redis 查
+     * 2.未命中则查 MySQL
      * 3.查到了写入 Redis
      * <p>
      * @author ZuiM
-     * @return List&lt;Product&gt; 商品列表
+     * @return List<Product> 上架商品列表
      */
     @SuppressWarnings("unchecked")
-    public List<Product> findActiveProducts() {
-        String cacheKey = "demo:product:active:list";
-        // 1. 先从 Redis 查
-        List<Product> cached = (List<Product>) redisUtil.get(cacheKey);
+    public List<Product> getAllOnShelfProducts() {
+        // 第 1 步：先从 Redis 查
+        List<Product> cached = (List<Product>) redisUtil.get(PRODUCT_LIST_CACHE_KEY);
         if (cached != null) {
             return cached;
         }
-        // 2. Redis 没有，查 MySQL
-        List<Product> list = productMapper.findActiveProducts();
-        // 3. 写入 Redis（5 分钟过期，列表缓存允许短暂不一致）
-        if (list != null && !list.isEmpty()) {
-            redisUtil.set(cacheKey, list);
+        // 第 2 步：Redis 没有，查 MySQL
+        List<Product> products = productMapper.findAllOnShelfProducts();
+        // 第 3 步：写入 Redis
+        if (products != null && !products.isEmpty()) {
+            redisUtil.set(PRODUCT_LIST_CACHE_KEY, products);
         }
-        return list;
+        return products;
     }
 
     /**
-     * 按分类查询已上架商品（含 Redis 缓存）
-     * 1.先从 Redis 查（demo:product:category:{category}）
+     * 按分类查询上架商品（含 Redis 缓存）
+     * 1.先从 Redis 查
      * 2.未命中则查 MySQL
      * 3.查到了写入 Redis
      * <p>
      * @author ZuiM
      * @param category 商品分类
-     * @return List&lt;Product&gt; 商品列表
+     * @return List<Product> 指定分类的上架商品列表
      */
     @SuppressWarnings("unchecked")
-    public List<Product> findActiveProductsByCategory(String category) {
-        String cacheKey = "demo:product:category:" + category;
-        // 1. 先从 Redis 查
+    public List<Product> getProductsByCategory(String category) {
+        String cacheKey = PRODUCT_CATEGORY_CACHE_PREFIX + category;
+        // 第 1 步：先从 Redis 查
         List<Product> cached = (List<Product>) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-        // 2. Redis 没有，查 MySQL
-        List<Product> list = productMapper.findActiveProductsByCategory(category);
-        // 3. 写入 Redis（5 分钟过期）
-        if (list != null && !list.isEmpty()) {
-            redisUtil.set(cacheKey, list);
+        // 第 2 步：Redis 没有，查 MySQL
+        List<Product> products = productMapper.findProductsByCategory(category);
+        // 第 3 步：写入 Redis
+        if (products != null && !products.isEmpty()) {
+            redisUtil.set(cacheKey, products);
         }
-        return list;
+        return products;
     }
 
     /**
-     * 按关键词搜索已上架商品（含 Redis 缓存，搜索词作为 key 的一部分）
-     * 1.先从 Redis 查（demo:product:search:{keyword}）
-     * 2.未命中则查 MySQL（LIKE 模糊匹配）
-     * 3.查到了写入 Redis（注意：搜索缓存时效性较低，可接受短暂不一致）
-     * <p>
-     * @author ZuiM
-     * @param keyword 搜索关键词
-     * @return List&lt;Product&gt; 商品列表
-     */
-    @SuppressWarnings("unchecked")
-    public List<Product> searchActiveProducts(String keyword) {
-        String cacheKey = "demo:product:search:" + keyword;
-        // 1. 先从 Redis 查
-        List<Product> cached = (List<Product>) redisUtil.get(cacheKey);
-        if (cached != null) {
-            return cached;
-        }
-        // 2. Redis 没有，查 MySQL
-        List<Product> list = productMapper.searchActiveProducts(keyword);
-        // 3. 写入 Redis（3 分钟过期，搜索缓存允许短暂不一致）
-        if (list != null && !list.isEmpty()) {
-            redisUtil.set(cacheKey, list);
-        }
-        return list;
-    }
-
-    /**
-     * 查询商品详情（含卖家名称，含 Redis 缓存）
-     * 1.先从 Redis 查（demo:product:detail:{id}）
-     * 2.未命中则查 MySQL（含卖家名称左连接）
+     * 按ID查询商品详情（含 Redis 缓存）
+     * 1.先从 Redis 查
+     * 2.未命中则查 MySQL
      * 3.查到了写入 Redis
      * <p>
      * @author ZuiM
      * @param id 商品ID
-     * @return Product 商品详情（可能为 null）
+     * @return Product 商品（可能为null）
      */
-    public Product findProductWithSeller(Long id) {
-        String cacheKey = "demo:product:detail:" + id;
-        // 1. 先从 Redis 查
+    public Product getProductById(Long id) {
+        String cacheKey = PRODUCT_DETAIL_CACHE_PREFIX + id;
+        // 第 1 步：先从 Redis 查
         Product cached = (Product) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-        // 2. Redis 没有，查 MySQL
-        Product product = productMapper.findProductWithSeller(id);
-        // 3. 写入 Redis（5 分钟过期）
+        // 第 2 步：Redis 没有，查 MySQL
+        Product product = productMapper.findProductById(id);
+        // 第 3 步：查到了就写入 Redis
         if (product != null) {
             redisUtil.set(cacheKey, product);
         }
@@ -140,155 +130,290 @@ public class ProductService {
     }
 
     /**
-     * 查询商品图片列表（含 Redis 缓存）
-     * 1.先从 Redis 查（demo:product:images:{productId}）
+     * 获取所有分类列表（含 Redis 缓存）
+     * 1.先从 Redis 查
      * 2.未命中则查 MySQL
      * 3.查到了写入 Redis
      * <p>
      * @author ZuiM
-     * @param productId 商品ID
-     * @return List&lt;ProductImage&gt; 图片列表
+     * @return List<String> 分类列表
      */
     @SuppressWarnings("unchecked")
-    public List<ProductImage> findImagesByProductId(Long productId) {
-        String cacheKey = "demo:product:images:" + productId;
-        // 1. 先从 Redis 查
-        List<ProductImage> cached = (List<ProductImage>) redisUtil.get(cacheKey);
+    public List<String> getAllCategories() {
+        // 第 1 步：先从 Redis 查
+        List<String> cached = (List<String>) redisUtil.get(ALL_CATEGORIES_CACHE_KEY);
         if (cached != null) {
             return cached;
         }
-        // 2. Redis 没有，查 MySQL
-        List<ProductImage> list = productImageMapper.findImagesByProductId(productId);
-        // 3. 写入 Redis（5 分钟过期）
-        if (list != null && !list.isEmpty()) {
-            redisUtil.set(cacheKey, list);
+        // 第 2 步：Redis 没有，查 MySQL
+        List<String> categories = productMapper.findAllCategories();
+        // 第 3 步：写入 Redis
+        if (categories != null && !categories.isEmpty()) {
+            redisUtil.set(ALL_CATEGORIES_CACHE_KEY, categories);
         }
-        return list;
+        return categories;
     }
 
     /**
-     * 查询卖家自己创建的商品列表（含已下架、未删除的，含 Redis 缓存）
-     * 1.卖家管理后台使用
-     * 2.先从 Redis 查（demo:product:seller:{sellerId}）
-     * 3.未命中则查 MySQL
+     * 获取商品的所有图片（按排序）
      * <p>
      * @author ZuiM
-     * @param sellerId 卖家ID
-     * @return List&lt;Product&gt; 商品列表
+     * @param productId 商品ID
+     * @return List<ProductImage> 图片列表
      */
-    @SuppressWarnings("unchecked")
-    public List<Product> findProductsBySellerId(Long sellerId) {
-        String cacheKey = "demo:product:seller:" + sellerId;
-        // 1. 先从 Redis 查
-        List<Product> cached = (List<Product>) redisUtil.get(cacheKey);
-        if (cached != null) {
-            return cached;
-        }
-        // 2. Redis 没有，查 MySQL
-        List<Product> list = productMapper.findProductsBySellerId(sellerId);
-        // 3. 写入 Redis（5 分钟过期）
-        if (list != null && !list.isEmpty()) {
-            redisUtil.set(cacheKey, list);
-        }
-        return list;
+    public List<ProductImage> getProductImages(Long productId) {
+        return productImageMapper.findImagesByProductId(productId);
     }
 
-    // ==================== 写方法（更新后清理缓存） ====================
+    /**
+     * 获取商品主图
+     * <p>
+     * @author ZuiM
+     * @param productId 商品ID
+     * @return ProductImage 主图（可能为null）
+     */
+    public ProductImage getMainImage(Long productId) {
+        return productImageMapper.findMainImageByProductId(productId);
+    }
 
     /**
-     * 创建商品（插入数据库并写入缓存）
+     * 保存商品（新增）
      * 1.插入数据库
-     * 2.插入成功才写入 Redis 并清理列表缓存
+     * 2.清除所有商品列表和分类缓存
      * <p>
      * @author ZuiM
      * @param product 商品实体
-     * @return boolean true=创建成功
+     * @return boolean true=保存成功
      */
+    @Transactional
     public boolean saveProduct(Product product) {
         boolean result = productMapper.insert(product) > 0;
         if (result) {
-            // 清理所有列表缓存，保证下次查询拉取最新数据
-            clearProductListCache();
-            // 写入商品详情缓存
-            Product saved = productMapper.findProductWithSeller(product.getId());
-            if (saved != null) {
-                redisUtil.set("demo:product:detail:" + product.getId(), saved);
-            }
+            // 清除列表和分类缓存
+            clearProductListCaches();
+            // 清除详情缓存（如果之前有）
+            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + product.getId());
         }
         return result;
     }
 
     /**
-     * 保存商品图片记录（插入 product_image 表并清理图片缓存）
-     * 1.插入数据库
-     * 2.插入成功才清理图片列表缓存
-     * <p>
-     * @author ZuiM
-     * @param productImage 商品图片实体
-     * @return boolean true=保存成功
-     */
-    public boolean saveProductImage(ProductImage productImage) {
-        boolean result = productImageMapper.insert(productImage) > 0;
-        if (result && productImage.getProductId() != null) {
-            // 清理该商品的图片缓存，下次查询重新加载
-            redisUtil.delete("demo:product:images:" + productImage.getProductId());
-        }
-        return result;
-    }
-
-    /**
-     * 更新商品（更新数据库并清理关联缓存）
+     * 更新商品信息
      * 1.执行 updateById
-     * 2.更新成功后清理该商品详情缓存和所有列表缓存
+     * 2.清除所有相关缓存
      * <p>
      * @author ZuiM
-     * @param product 商品实体（需包含 id）
+     * @param product 商品实体（必须包含id）
      * @return boolean true=更新成功
      */
+    @Transactional
     public boolean updateProduct(Product product) {
         boolean result = productMapper.updateById(product) > 0;
         if (result) {
-            // 清理该商品详情缓存
-            redisUtil.delete("demo:product:detail:" + product.getId());
-            // 清理所有列表缓存
-            clearProductListCache();
+            // 清除详情缓存
+            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + product.getId());
+            // 清除列表和分类缓存
+            clearProductListCaches();
+            // 重新加载详情缓存
+            reloadProductDetail(product.getId());
         }
         return result;
     }
 
     /**
-     * 逻辑删除商品（更新数据库并清理关联缓存）
+     * 逻辑删除商品
      * 1.执行逻辑删除
-     * 2.删除成功后清理该商品详情缓存和所有列表缓存
+     * 2.清除所有相关缓存
      * <p>
      * @author ZuiM
      * @param id 商品ID
      * @return boolean true=删除成功
      */
+    @Transactional
     public boolean deleteProduct(Long id) {
+        Product product = productMapper.findProductById(id);
         boolean result = productMapper.deleteById(id) > 0;
-        if (result) {
-            // 清理该商品详情缓存
-            redisUtil.delete("demo:product:detail:" + id);
-            // 清理所有列表缓存
-            clearProductListCache();
+        if (result && product != null) {
+            // 清除详情缓存
+            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + id);
+            // 清除列表和分类缓存
+            clearProductListCaches();
         }
         return result;
     }
 
-    // ==================== 缓存清理工具 ====================
+    /**
+     * 上架商品（设置status=1）
+     * <p>
+     * @author ZuiM
+     * @param id 商品ID
+     * @return boolean true=上架成功
+     */
+    @Transactional
+    public boolean onShelfProduct(Long id) {
+        Product product = new Product();
+        product.setId(id);
+        product.setStatus(1);
+        boolean result = productMapper.updateById(product) > 0;
+        if (result) {
+            // 清除所有商品列表和分类缓存
+            clearProductListCaches();
+            // 重新加载详情缓存
+            reloadProductDetail(id);
+        }
+        return result;
+    }
 
     /**
-     * 清理所有商品列表缓存（分类缓存和搜索缓存无法精确清理，直接删除所有列表 key）
-     * 1.删除全量列表缓存
-     * 2.卖家商品列表缓存（由卖家自行管理，此处不清理）
+     * 下架商品（设置status=0）
      * <p>
-     * 注意：此方法使用通配符模式匹配 Redis key，需要 Redis 支持 KEYS 命令。
-     * 生产环境建议使用 Redis SCAN 或记录所有缓存 key 逐一删除。
+     * @author ZuiM
+     * @param id 商品ID
+     * @return boolean true=下架成功
+     */
+    @Transactional
+    public boolean offShelfProduct(Long id) {
+        Product product = new Product();
+        product.setId(id);
+        product.setStatus(0);
+        boolean result = productMapper.updateById(product) > 0;
+        if (result) {
+            // 清除所有商品列表和分类缓存
+            clearProductListCaches();
+            // 重新加载详情缓存
+            reloadProductDetail(id);
+        }
+        return result;
+    }
+
+    /**
+     * 扣减库存（使用分布式锁保护）
+     * 1.获取分布式锁
+     * 2.检查库存
+     * 3.扣减库存
+     * 4.释放锁
+     * <p>
+     * @author ZuiM
+     * @param id 商品ID
+     * @param quantity 扣减数量
+     * @return boolean true=扣减成功
+     */
+    @Transactional
+    public boolean deductStock(Long id, int quantity) {
+        String lockKey = "product:stock:" + id;
+        try {
+            // 获取分布式锁（看门狗模式，业务执行多久锁就持有多久）
+            boolean locked = redisLockHelper.tryLock(lockKey, 10, TimeUnit.SECONDS);
+            if (!locked) {
+                return false; // 获取锁失败
+            }
+
+            // 查询商品
+            Product product = productMapper.findProductById(id);
+            if (product == null || product.getStock() < quantity) {
+                return false; // 商品不存在或库存不足
+            }
+
+            // 扣减库存，增加销量
+            Product update = new Product();
+            update.setId(id);
+            update.setStock(product.getStock() - quantity);
+            update.setSold(product.getSold() + quantity);
+            boolean result = productMapper.updateById(update) > 0;
+
+            if (result) {
+                // 更新成功，清除相关缓存
+                redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + id);
+                clearProductListCaches();
+            }
+
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            // 释放锁
+            redisLockHelper.unlock(lockKey);
+        }
+    }
+
+    /**
+     * 添加商品图片
+     * <p>
+     * @author ZuiM
+     * @param productImage 图片实体
+     * @return boolean true=添加成功
+     */
+    @Transactional
+    public boolean addProductImage(ProductImage productImage) {
+        return productImageMapper.insert(productImage) > 0;
+    }
+
+    /**
+     * 删除商品图片
+     * <p>
+     * @author ZuiM
+     * @param imageId 图片ID
+     * @param productId 商品ID（用于清除缓存）
+     * @return boolean true=删除成功
+     */
+    @Transactional
+    public boolean deleteProductImage(Long imageId, Long productId) {
+        boolean result = productImageMapper.deleteById(imageId) > 0;
+        if (result) {
+            // 清除商品详情缓存
+            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + productId);
+        }
+        return result;
+    }
+
+    /**
+     * 清除所有商品列表和分类缓存
+     * <p>
      * @author ZuiM
      */
-    private void clearProductListCache() {
-        redisUtil.delete("demo:product:active:list");
-        // 分类缓存和搜索缓存无法精确清理，下次查询时会重新加载
+    private void clearProductListCaches() {
+        redisUtil.delete(PRODUCT_LIST_CACHE_KEY);
+        redisUtil.delete(ALL_CATEGORIES_CACHE_KEY);
+        // 清除所有分类缓存
+        for (String category : new String[]{"手机配件", "电脑外设", "音频设备", "智能家居", "穿戴设备", "摄影器材", "其他"}) {
+            redisUtil.delete(PRODUCT_CATEGORY_CACHE_PREFIX + category);
+        }
+    }
+
+    /**
+     * 重新加载商品详情缓存
+     * <p>
+     * @author ZuiM
+     * @param id 商品ID
+     */
+    private void reloadProductDetail(Long id) {
+        Product product = productMapper.findProductById(id);
+        if (product != null) {
+            redisUtil.set(PRODUCT_DETAIL_CACHE_PREFIX + id, product);
+        }
+    }
+
+    /**
+     * 根据ID查询卖家（含 Redis 缓存）
+     * <p>
+     * @author ZuiM
+     * @param sellerId 卖家ID
+     * @return Seller 卖家（可能为null）
+     */
+    public Seller getSellerById(Long sellerId) {
+        String cacheKey = SELLER_CACHE_PREFIX + sellerId;
+        // 第 1 步：先从 Redis 查
+        Seller cached = (Seller) redisUtil.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        // 第 2 步：Redis 没有，查 MySQL
+        Seller seller = sellerMapper.findSellerById(sellerId);
+        // 第 3 步：写入 Redis
+        if (seller != null) {
+            redisUtil.set(cacheKey, seller);
+        }
+        return seller;
     }
 }

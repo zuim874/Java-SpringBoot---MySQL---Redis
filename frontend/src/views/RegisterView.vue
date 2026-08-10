@@ -249,7 +249,7 @@ async function sendVerificationCode() {
       body: params
     })
 
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = '验证码已发送到您的邮箱'
       // 开始倒计时
@@ -290,7 +290,7 @@ async function handleRegister() {
       method: 'POST',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = '注册成功，即将跳转登录...'
       setTimeout(() => { router.push('/login') }, 1500)

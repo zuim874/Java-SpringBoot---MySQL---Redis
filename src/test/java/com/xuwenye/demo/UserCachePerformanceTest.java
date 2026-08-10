@@ -39,7 +39,7 @@ public class UserCachePerformanceTest {
         System.out.println("========== 第1轮：冷查询（查MySQL）==========");
         long start1 = System.currentTimeMillis();
         for (int i = 0; i < 1000; i++) {
-            userService.findUsernameforlogin(username);
+            userService.findUserableUser(username);
         }
         long time1 = System.currentTimeMillis() - start1;
         System.out.println("1000次查询耗时: " + time1 + "ms, 平均: " + (time1 / 1000.0) + "ms");
@@ -47,7 +47,7 @@ public class UserCachePerformanceTest {
         System.out.println("\n========== 第2轮：热查询（查Redis）==========");
         long start2 = System.currentTimeMillis();
         for (int i = 0; i < 1000; i++) {
-            userService.findUsernameforlogin(username);
+            userService.findUserableUser(username);
         }
         long time2 = System.currentTimeMillis() - start2;
         System.out.println("1000次查询耗时: " + time2 + "ms, 平均: " + (time2 / 1000.0) + "ms");
@@ -80,7 +80,7 @@ public class UserCachePerformanceTest {
         // 第2轮：预热缓存（让所有用户数据进入Redis）
         System.out.println("===== 预热缓存中... =====");
         for (int i = 1; i <= 1000; i++) {
-            userService.findUsernameforlogin("tester_" + i);
+            userService.findUserableUser("tester_" + i);
         }
         System.out.println("缓存预热完成\n");
 
@@ -114,7 +114,7 @@ public class UserCachePerformanceTest {
                         for (int j = 0; j < usersPerThread; j++) {
                             int userId = (threadId * usersPerThread + j) % 1000 + 1;
                             String username = "tester_" + userId;
-                            userService.findUsernameforlogin(username);
+                            userService.findUserableUser(username);
                         }
                         totalTime.addAndGet(System.currentTimeMillis() - start);
                     } finally {

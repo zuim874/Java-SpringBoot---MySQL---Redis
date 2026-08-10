@@ -165,7 +165,7 @@ async function handleDeleteUser() {
       method: 'DELETE',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       msgSuccess.value = true
       message.value = data.mes || '用户已删除'
     } else {
@@ -193,7 +193,7 @@ async function handleRecoverUser() {
       method: 'PUT',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       msgSuccess.value = true
       message.value = data.mes || '用户已恢复'
     } else {

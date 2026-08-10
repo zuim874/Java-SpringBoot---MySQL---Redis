@@ -1,6 +1,7 @@
 package com.xuwenye.demo.util.email;
 
 import com.xuwenye.demo.util.codeGenerator.GenerateVerificationCode;
+import com.xuwenye.demo.util.oi.SanitizeUtil;
 import com.xuwenye.demo.util.redis.RedisUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
@@ -24,13 +25,15 @@ public class EmailUtil {
     private final JavaMailSender mailSender;
     private final GenerateVerificationCode generateVerificationCode;
     private final RedisUtil redisUtil;
+    private final SanitizeUtil sanitizeUtil;
 
     public EmailUtil(JavaMailSender mailSender,
                      GenerateVerificationCode generateVerificationCode,
-                     RedisUtil redisUtil) {
+                     RedisUtil redisUtil, SanitizeUtil sanitizeUtil) {
         this.mailSender = mailSender;
         this.generateVerificationCode = generateVerificationCode;
         this.redisUtil = redisUtil;
+        this.sanitizeUtil = sanitizeUtil;
     }
 
     // 发信人邮箱
@@ -77,8 +80,9 @@ public class EmailUtil {
             if (needCode) {
                 String template = type.getTemplate();
                 String code = generateVerificationCode.generateVerificationCode();  // 生成六位数验证码
-                String redisKey = "verify_" + template + "Code:" + toEmail;
-                redisUtil.set(redisKey, code);
+                String realEmail = sanitizeUtil.dealEmail(toEmail);
+                String redisKey = "verify_" + template + "Code:" + realEmail;
+                redisUtil.setCode(redisKey, code);
 
                 message.setText(
                         "您好！\n\n" +

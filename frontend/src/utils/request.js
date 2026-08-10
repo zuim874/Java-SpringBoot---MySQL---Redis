@@ -60,7 +60,8 @@ export async function request(url, options = {}) {
             localStorage.removeItem('token')
             localStorage.removeItem('nickname')
             window.location.href = '/login'
-            return
+            // 返回明确的失败对象（而不是 undefined），避免调用方访问 data.code 时抛 TypeError
+            return { code: 401, mes: '未登录或登录已过期，请重新登录' }
         }
 
         const data = await res.json()

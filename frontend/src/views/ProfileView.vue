@@ -105,6 +105,8 @@
               <span v-else>发送验证码</span>
             </button>
           </div>
+          <!-- 发送验证码/注销结果提示（显示在弹窗内） -->
+          <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showConfirm = false">取消</button>
             <button class="modal-btn modal-btn--confirm" @click="handleDelete" :disabled="deleting">
@@ -126,6 +128,8 @@
           <div class="modal-field">
             <input v-model="editNickname" type="text" placeholder="请输入新昵称（1-20个字符）" maxlength="20" />
           </div>
+          <!-- 保存昵称结果提示 -->
+          <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showEditNickname = false">取消</button>
             <button class="modal-btn modal-btn--confirm modal-btn--blue" @click="submitEditNickname" :disabled="editingNickname">
@@ -182,6 +186,9 @@
             </div>
           </div>
 
+          <!-- 发送验证码/换绑结果提示（显示在弹窗内） -->
+          <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
+
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showChangeEmail = false">取消</button>
             <button class="modal-btn modal-btn--confirm modal-btn--blue" @click="submitChangeEmail" :disabled="changingEmail">
@@ -224,6 +231,9 @@
               </div>
             </div>
           </div>
+
+          <!-- 修改密码结果提示（显示在弹窗内） -->
+          <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
 
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showChangePassword = false">取消</button>
@@ -310,7 +320,7 @@ const newEmailValid = computed(() => {
 onMounted(async () => {
   try {
     const data = await request('/user/me')
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       const u = data.data
       if (u.username) username.value = u.username
       if (u.nickname) nickname.value = u.nickname
@@ -371,7 +381,7 @@ async function submitEditNickname() {
       method: 'PUT',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       nickname.value = realNickname
       localStorage.setItem('nickname', realNickname)
       success.value = true
@@ -434,7 +444,7 @@ async function sendOldEmailCode() {
       method: 'POST',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = data.mes || '旧邮箱验证码已发送'
       startCountdown()
@@ -467,7 +477,7 @@ async function sendNewEmailCode() {
       method: 'POST',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = data.mes || '新邮箱验证码已发送'
       startCountdown()
@@ -508,7 +518,7 @@ async function submitChangeEmail() {
       method: 'PUT',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       email.value = newEmail.value
       localStorage.setItem('email', newEmail.value)
       success.value = true
@@ -566,7 +576,7 @@ async function submitChangePassword() {
       method: 'POST',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = '密码修改成功，请重新登录'
       showChangePassword.value = false
@@ -621,7 +631,7 @@ async function handleFileChange(event) {
       method: 'POST',
       body: formData
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       avatar.value = data.data
       success.value = true
       message.value = '头像更新成功'
@@ -661,7 +671,7 @@ async function sendDeleteCode() {
       method: 'POST',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = data.mes || '注销验证码已发送'
       startCountdown()
@@ -694,7 +704,7 @@ async function handleDelete() {
       method: 'DELETE',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       success.value = true
       message.value = data.mes || '账号注销成功'
       localStorage.removeItem('token')
@@ -709,7 +719,10 @@ async function handleDelete() {
     message.value = '网络错误，请检查后端服务是否启动'
   } finally {
     deleting.value = false
-    showConfirm.value = false
+    // 仅注销成功时关闭弹窗；失败保留弹窗，让错误消息显示在弹窗内
+    if (success.value) {
+      showConfirm.value = false
+    }
   }
 }
 </script>
@@ -1084,6 +1097,26 @@ async function handleDelete() {
 .msg--error {
   color: #c92a2a;
   background: rgba(201,42,42,0.06);
+  border: 1px solid rgba(201,42,42,0.12);
+}
+
+/* ===== 弹窗内消息提示 ===== */
+.modal-msg {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+.modal-msg--success {
+  color: #2b8a3e;
+  background: rgba(43,138,62,0.08);
+  border: 1px solid rgba(43,138,62,0.12);
+}
+.modal-msg--error {
+  color: #c92a2a;
+  background: rgba(201,42,42,0.08);
   border: 1px solid rgba(201,42,42,0.12);
 }
 

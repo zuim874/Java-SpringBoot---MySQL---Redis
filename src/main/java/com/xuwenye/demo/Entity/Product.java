@@ -2,10 +2,11 @@ package com.xuwenye.demo.Entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 卖家实体（对应 sys_seller 表）
+ * 商品实体（对应 sys_product 表）
  * 1.主键自增（IdType.AUTO）
  * 2.Java 字段用驼峰命名，@TableField 映射数据库蛇形列名
  * 3.逻辑删除字段 is_deleted（配合 @TableLogic）
@@ -13,14 +14,19 @@ import java.time.LocalDateTime;
  * @author ZuiM
  */
 @Data                           // Lombok自动生成getter/setter/toString
-@TableName("sys_seller")        // 对应数据库表名
-public class Seller {
+@TableName("sys_product")       // 对应数据库表名
+public class Product {
     @TableId(type = IdType.AUTO)  // 主键自增
     private Long id;
-    private String sellerName;    // 卖家名称
-    private String address;       // 卖家地址
-    private String sellerAvatar;  // 卖家头像URL
-    private String sellerContact; // 卖家联系方式（电话）
+    private Long sellerId;        // 卖家ID，关联sys_seller.id
+    private String productName;   // 商品名称
+    private BigDecimal price;     // 商品价格(元)
+    private Integer stock;        // 商品库存数量
+    private Integer sold;         // 已售出数量
+    private Integer status;       // 商品状态：0下架 1上架
+    private String description;   // 商品描述
+    private String category;      // 商品分类（如：手机配件、电脑外设等）
+    private String mainImageUrl;  // 冗余：商品主图URL
     @TableField("create_time")
     private LocalDateTime createTime;  // 创建时间
     @TableField("update_time")

@@ -141,7 +141,7 @@ async function sendCode() {
       method: 'POST',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       msgSuccess.value = true
       message.value = data.mes || '验证码已发送'
       startCountdown()
@@ -169,7 +169,7 @@ async function handleRecover() {
       method: 'PUT',
       body: params
     })
-    if (data.code === 200) {
+    if (data && data.code === 200) {
       msgSuccess.value = true
       message.value = data.mes || '账号恢复成功'
       setTimeout(() => { router.push('/login') }, 1500)
