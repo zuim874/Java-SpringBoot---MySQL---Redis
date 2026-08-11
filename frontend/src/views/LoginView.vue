@@ -104,6 +104,12 @@ async function handleLogin() {
       message.value = data.mes
       localStorage.setItem('token', data.data.token)
       localStorage.setItem('nickname', data.data.nickname)
+      // 缓存角色信息（如果有）
+      if (data.data.roles) {
+        localStorage.setItem('roles', JSON.stringify(
+          Array.isArray(data.data.roles) ? data.data.roles : [data.data.roles]
+        ))
+      }
       setTimeout(() => { router.push('/home') }, 300)
     } else {
       success.value = false

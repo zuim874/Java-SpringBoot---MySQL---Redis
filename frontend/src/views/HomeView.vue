@@ -2,19 +2,20 @@
   <div class="store-page">
     <!-- ===== 毛玻璃导航 ===== -->
     <nav class="nav" :class="{ scrolled: scrolled }">
-      <div class="nav-logo">ZuiMShop</div>
+      <div class="nav-logo" @click="scrollToTop">ZuiMShop</div>
       <ul class="nav-links" :class="{ open: menuOpen }">
-        <li><a href="#hero" @click="closeMenu">首页</a></li>
-        <li><a href="#products" @click="closeMenu">商品</a></li>
-        <li><a href="#categories" @click="closeMenu">分类</a></li>
+        <li><a href="#hero" @click.prevent="closeMenu; scrollTo('#hero')">首页</a></li>
+        <li><a href="#products" @click.prevent="closeMenu; scrollTo('#products')">商品</a></li>
+        <li><a href="#categories" @click.prevent="closeMenu; scrollTo('#categories')">分类</a></li>
         <li class="nav-user">
           <button class="nav-cart-btn" @click="showCart = true" aria-label="购物车">
             <span class="cart-icon">🛒</span>
-            <span class="cart-badge" v-if="cart.length > 0">{{ cart.length }}</span>
+            <span class="cart-badge" v-if="cartTotalCount > 0">{{ cartTotalCount }}</span>
           </button>
           <span class="nav-nickname">{{ nickname }}</span>
           <button class="nav-profile-btn" @click="goProfile">个人中心</button>
-          <button class="nav-profile-btn" @click="goAdmin">管理</button>
+          <button class="nav-profile-btn nav-admin-btn" v-if="isAdminUser" @click="goAdmin">管理后台</button>
+          <button class="nav-profile-btn" v-if="isSellerUser" @click="goSeller">商家管理</button>
           <button class="nav-logout" @click="handleLogout">退出</button>
         </li>
       </ul>
@@ -23,7 +24,7 @@
       </button>
     </nav>
 
-    <!-- ===== 轮播大图 ===== -->
+    <!-- ===== 轮播大图（英雄区域） ===== -->
     <section class="hero" id="hero">
       <div v-for="(slide, idx) in slides" :key="idx"
            class="hero-slide" :class="{ active: currentSlide === idx }">
@@ -54,7 +55,18 @@
           <h2 class="section-title">一站式<span class="highlight">科技购物</span></h2>
           <p class="section-desc">覆盖数码配件、智能家居、办公设备等热门品类，满足你的所有需求。</p>
         </div>
-        <div class="cats-grid">
+        <!-- 分类加载中 -->
+        <div class="loading-state" v-if="categoriesLoading">
+          <div class="loading-spinner"></div>
+          <p>加载分类中...</p>
+        </div>
+        <!-- 分类错误 -->
+        <div class="empty-state" v-else-if="categoriesError">
+          <p>分类加载失败</p>
+          <button class="retry-btn" @click="fetchCategories">重试</button>
+        </div>
+        <!-- 分类网格 -->
+        <div class="cats-grid" v-else>
           <div v-for="(cat, idx) in categories" :key="idx"
                class="cat-card" :ref="el => { if(el) catRefs[idx] = el }"
                @click="filterByCategory(cat.name)">
@@ -66,21 +78,44 @@
       </div>
     </section>
 
-    <!-- ===== 商品列表 ===== -->
+    <!-- ===== 商品列表（分页） ===== -->
     <section class="section products" id="products">
       <div class="container">
         <div class="section-header" ref="prodHeader">
           <span class="section-tag">精选商品</span>
           <h2 class="section-title">热门<span class="highlight">推荐</span></h2>
-          <p class="section-desc">{{ activeCategory === '全部' ? '所有商品' : activeCategory }} · 共 {{ filteredProducts.length }} 件</p>
+          <p class="section-desc">{{ activeCategory === '全部' ? '所有商品' : activeCategory }} · 共 {{ totalProducts }} 件</p>
         </div>
+        <!-- 分类筛选标签 -->
         <div class="filter-tabs">
           <button v-for="cat in allCategoryNames" :key="cat"
                   class="filter-tab" :class="{ active: activeCategory === cat }"
                   @click="filterByCategory(cat)">{{ cat }}</button>
         </div>
-        <div class="products-grid">
-          <div v-for="(prod, idx) in filteredProducts" :key="prod.id"
+
+        <!-- 商品加载中 -->
+        <div class="loading-state" v-if="loading">
+          <div class="loading-spinner"></div>
+          <p>正在加载商品...</p>
+        </div>
+
+        <!-- 商品加载错误 -->
+        <div class="empty-state" v-else-if="error">
+          <div class="error-icon">⚠️</div>
+          <p>商品加载失败，请稍后重试</p>
+          <button class="retry-btn" @click="fetchProducts">重新加载</button>
+        </div>
+
+        <!-- 商品为空 -->
+        <div class="empty-state" v-else-if="products.length === 0">
+          <div class="empty-icon">📦</div>
+          <p>暂无商品</p>
+          <p class="empty-hint">该分类下暂无商品，去看看其他分类吧</p>
+        </div>
+
+        <!-- 商品网格 -->
+        <div class="products-grid" v-else>
+          <div v-for="(prod, idx) in products" :key="prod.id"
                class="product-card" :ref="el => { if(el) prodRefs[idx] = el }"
                :style="{ transitionDelay: (idx % 4) * 0.08 + 's' }"
                @click="goToProductDetail(prod.id)">
@@ -93,24 +128,30 @@
               <h3 class="product-name">{{ prod.productName }}</h3>
               <p class="product-desc">{{ prod.description }}</p>
               <div class="product-meta">
-                <span class="product-seller">{{ prod.sellerName }}</span>
-                <span class="product-sold">已售 {{ prod.sold }}</span>
+                <span class="product-seller">{{ prod.sellerName || '官方自营' }}</span>
+                <span class="product-sold">已售 {{ prod.sold || 0 }}</span>
               </div>
               <div class="product-bottom">
-                <span class="product-price">¥{{ prod.price.toFixed(2) }}</span>
+                <span class="product-price">¥{{ (prod.price || 0).toFixed(2) }}</span>
                 <button class="add-cart-btn" @click.stop="addToCart(prod)">加入购物车</button>
               </div>
             </div>
           </div>
         </div>
-        <!-- 加载状态 -->
-        <div class="loading-state" v-if="loading">
-          <div class="loading-spinner"></div>
-          <p>正在加载商品...</p>
-        </div>
-        <!-- 空状态 -->
-        <div class="empty-state" v-if="!loading && filteredProducts.length === 0">
-          <p>暂无商品</p>
+
+        <!-- ===== 分页器 ===== -->
+        <div class="pagination" v-if="totalPages > 1">
+          <button class="page-btn" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">
+            ‹ 上一页
+          </button>
+          <button v-for="p in pageNumbers" :key="p"
+                  class="page-btn" :class="{ active: p === currentPage }"
+                  @click="goToPage(p)">
+            {{ p }}
+          </button>
+          <button class="page-btn" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">
+            下一页 ›
+          </button>
         </div>
       </div>
     </section>
@@ -119,15 +160,16 @@
     <div class="cart-overlay" :class="{ open: showCart }" @click="showCart = false"></div>
     <div class="cart-sidebar" :class="{ open: showCart }">
       <div class="cart-header">
-        <h3>购物车</h3>
+        <h3>购物车 ({{ cartTotalCount }})</h3>
         <button class="cart-close" @click="showCart = false">✕</button>
       </div>
       <div class="cart-body" v-if="cart.length > 0">
         <div v-for="(item, idx) in cart" :key="idx" class="cart-item">
-          <img :src="item.mainImageUrl || item.image" :alt="item.productName" class="cart-item-img">
+          <img :src="item.mainImageUrl || item.image || '/uploads/hero/hero-1.jpg'"
+               :alt="item.productName" class="cart-item-img">
           <div class="cart-item-info">
             <h4>{{ item.productName }}</h4>
-            <p class="cart-item-price">¥{{ item.price.toFixed(2) }}</p>
+            <p class="cart-item-price">¥{{ (item.price || 0).toFixed(2) }}</p>
           </div>
           <div class="cart-item-qty">
             <button @click="decreaseQty(idx)" :disabled="item.qty <= 1">−</button>
@@ -147,7 +189,7 @@
           <span>合计</span>
           <span class="cart-total-price">¥{{ cartTotal.toFixed(2) }}</span>
         </div>
-        <button class="checkout-btn">去结算</button>
+        <button class="checkout-btn" @click="goToCheckout">去结算</button>
       </div>
     </div>
 
@@ -156,9 +198,9 @@
       <div class="footer-inner">
         <div class="footer-logo">ZuiMShop</div>
         <div class="footer-links">
-          <a href="#hero">首页</a>
-          <a href="#products">商品</a>
-          <a href="#categories">分类</a>
+          <a href="#hero" @click.prevent="scrollTo('#hero')">首页</a>
+          <a href="#products" @click.prevent="scrollTo('#products')">商品</a>
+          <a href="#categories" @click.prevent="scrollTo('#categories')">分类</a>
           <a href="javascript:void(0)" @click="goProfile">我的</a>
         </div>
         <div class="footer-copy">© 2026 ZuiMShop. All rights reserved.</div>
@@ -170,49 +212,68 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { request } from '../utils/request.js'
+import { getProductPage, getCategories } from '../api/index.js'
+import { getCachedRoles } from '../utils/auth.js'
 
 const router = useRouter()
 const nickname = ref(localStorage.getItem('nickname') || '用户')
 const scrolled = ref(false)
 const menuOpen = ref(false)
 const showCart = ref(false)
-const activeCategory = ref('全部')
-const loading = ref(true)
 
-// ===== 商品数据（从后端 API 获取） =====
+// ===== 角色判断（用于导航中显示按钮） =====
+const cachedRoles = getCachedRoles()
+const isAdminUser = computed(() => cachedRoles.includes('ROLE_ADMIN'))
+const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
+
+// ===== 商品数据（分页） =====
 const products = ref([])
+const loading = ref(true)
+const error = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(12)
+const totalProducts = ref(0)
+const totalPages = ref(0)
+const activeCategory = ref('全部')
 
 /**
- * 从后端 API 获取商品列表
- * 1.调用 GET /api/product/list 获取所有已上架商品
- * 2.按返回数据渲染，不再使用 mock 数据
- * 3.加载失败时显示空列表，不阻塞页面
- * <p>
- * @author ZuiM
+ * 从后端 API 获取商品分页列表
+ * 调用 GET /api/product/page?page=&size=&category=
+ * 支持分类筛选
  */
 async function fetchProducts() {
   loading.value = true
+  error.value = false
   try {
-    const res = await request('/product/list')
-    if (res && res.code === 200) {
-      products.value = res.data || []
+    const category = activeCategory.value === '全部' ? '' : activeCategory.value
+    const res = await getProductPage(currentPage.value, pageSize.value, category)
+    if (res && res.code === 200 && res.data) {
+      products.value = res.data.records || []
+      totalProducts.value = res.data.total || 0
+      totalPages.value = res.data.pages || 0
     } else {
       console.error('获取商品列表失败:', res?.mes)
       products.value = []
+      totalProducts.value = 0
+      totalPages.value = 0
     }
   } catch (e) {
     console.error('获取商品列表异常:', e)
+    error.value = true
     products.value = []
+    totalProducts.value = 0
+    totalPages.value = 0
   } finally {
     loading.value = false
-    // 商品/分类卡片是异步渲染的（数据返回前 v-for 卡片不存在），
-    // 数据就绪后必须重新观察，否则卡片永远拿不到 .visible、保持 opacity:0 不可见
     nextTick(() => observeCards())
   }
 }
 
-// ===== 分类数据（从商品数据中提取） =====
+// ===== 分类数据（从后端 API 获取） =====
+const categories = ref([])
+const categoriesLoading = ref(true)
+const categoriesError = ref(false)
+
 const categoryIcons = {
   '手机配件': '📱',
   '电脑外设': '💻',
@@ -223,67 +284,86 @@ const categoryIcons = {
 }
 
 /**
- * 从商品数据中动态提取分类列表
- * 1.按分类名称去重
- * 2.统计每个分类的商品数量
- * 3.映射图标
- * <p>
- * @author ZuiM
+ * 从后端获取分类列表
+ * 调用 GET /api/product/categories
  */
-const categories = computed(() => {
-  const catMap = {}
-  products.value.forEach(p => {
-    if (p.category) {
-      if (!catMap[p.category]) {
-        catMap[p.category] = 0
-      }
-      catMap[p.category]++
+async function fetchCategories() {
+  categoriesLoading.value = true
+  categoriesError.value = false
+  try {
+    const res = await getCategories()
+    if (res && res.code === 200 && res.data) {
+      // 后端返回分类名称数组，映射为对象格式
+      const catNames = Array.isArray(res.data) ? res.data : []
+      categories.value = catNames.map(name => ({
+        name,
+        count: 0, // 分页接口不返回分类数量，暂不显示
+        icon: categoryIcons[name] || '📦'
+      }))
+    } else {
+      categories.value = []
     }
-  })
-  return Object.entries(catMap).map(([name, count]) => ({
-    name,
-    count,
-    icon: categoryIcons[name] || '📦'
-  }))
-})
+  } catch (e) {
+    console.error('获取分类列表异常:', e)
+    categoriesError.value = true
+    categories.value = []
+  } finally {
+    categoriesLoading.value = false
+    nextTick(() => observeCards())
+  }
+}
 
 /**
  * 所有分类名称（含"全部"）
- * <p>
- * @author ZuiM
  */
 const allCategoryNames = computed(() => {
   return ['全部', ...categories.value.map(c => c.name)]
 })
 
 /**
- * 按当前分类筛选后的商品列表
- * <p>
- * @author ZuiM
- */
-const filteredProducts = computed(() => {
-  if (activeCategory.value === '全部') return products.value
-  return products.value.filter(p => p.category === activeCategory.value)
-})
-
-/**
  * 切换分类筛选
- * 1.更新 activeCategory
- * 2.滚动到商品区域
- * <p>
- * @author ZuiM
- * @param name 分类名称
+ * 调用后端 API 获取该分类下的商品（分页）
  */
 function filterByCategory(name) {
   activeCategory.value = name
+  currentPage.value = 1
+  fetchProducts()
   setTimeout(() => scrollTo('#products'), 100)
 }
 
 /**
+ * 分页跳转
+ */
+function goToPage(page) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  fetchProducts()
+  scrollTo('#products')
+}
+
+/**
+ * 计算分页器显示的页码
+ */
+const pageNumbers = computed(() => {
+  const pages = []
+  const total = totalPages.value
+  const current = currentPage.value
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) pages.push(i)
+  } else {
+    pages.push(1)
+    if (current > 3) pages.push('...')
+    const start = Math.max(2, current - 1)
+    const end = Math.min(total - 1, current + 1)
+    for (let i = start; i <= end; i++) pages.push(i)
+    if (current < total - 2) pages.push('...')
+    pages.push(total)
+  }
+  return pages
+})
+
+/**
  * 跳转商品详情页
- * <p>
- * @author ZuiM
- * @param id 商品ID
  */
 function goToProductDetail(id) {
   router.push(`/product/${id}`)
@@ -293,11 +373,14 @@ function goToProductDetail(id) {
 function handleLogout() {
   localStorage.removeItem('token')
   localStorage.removeItem('nickname')
+  localStorage.removeItem('roles')
   router.push('/login')
 }
 function closeMenu() { menuOpen.value = false }
 function goProfile() { router.push('/profile') }
-function goAdmin() { router.push('/admin/users') }
+function goAdmin() { router.push('/admin/dashboard') }
+function goSeller() { router.push('/seller/products') }
+function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
 // ===== 轮播数据 =====
 const slides = [
@@ -315,7 +398,11 @@ function resetCarousel() { clearInterval(carouselTimer); carouselTimer = setInte
 const cart = ref(JSON.parse(localStorage.getItem('cart') || '[]'))
 
 const cartTotal = computed(() => {
-  return cart.value.reduce((sum, item) => sum + item.price * item.qty, 0)
+  return cart.value.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0)
+})
+
+const cartTotalCount = computed(() => {
+  return cart.value.reduce((sum, item) => sum + item.qty, 0)
 })
 
 function addToCart(prod) {
@@ -350,6 +437,18 @@ function saveCart() {
   localStorage.setItem('cart', JSON.stringify(cart.value))
 }
 
+function goToCheckout() {
+  // 检查是否登录
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  // 跳转到订单创建页面（或直接跳转到订单列表）
+  router.push('/orders')
+  showCart.value = false
+}
+
 // ===== 滚动动画 =====
 const catHeader = ref(null)
 const prodHeader = ref(null)
@@ -358,8 +457,9 @@ const prodRefs = reactive({})
 let observer = null
 
 onMounted(() => {
-  // 加载商品数据
+  // 加载商品和分类数据
   fetchProducts()
+  fetchCategories()
 
   window.addEventListener('scroll', onScroll)
   carouselTimer = setInterval(nextSlide, 5000)
@@ -373,22 +473,11 @@ onMounted(() => {
     })
   }, { threshold: 0.10, rootMargin: '0px 0px -60px 0px' })
 
-  // 观察滚动动画目标（静态 header；商品/分类卡片异步渲染后由 observeCards 再次调用）
   observeCards()
 })
 
-/**
- * 观察所有滚动动画目标（section-header / 分类卡片 / 商品卡片）
- * 1.商品与分类是异步渲染的（fetchProducts 完成前 v-for 卡片不存在），
- *   数据就绪后必须重新调用本方法，否则卡片永远拿不到 .visible、保持 opacity:0 不可见
- * 2.已在视口内的元素直接加 .visible，不依赖滚动触发
- * 3.不支持 IntersectionObserver 时全部直接显示，避免内容永远隐藏
- * <p>
- * @author ZuiM
- */
 function observeCards() {
   if (!observer) return
-  // 不支持 IntersectionObserver（老浏览器）：全部直接显示
   if (typeof IntersectionObserver === 'undefined') {
     document.querySelectorAll('.section-header, .cat-card, .product-card')
       .forEach(el => el.classList.add('visible'))
@@ -401,7 +490,6 @@ function observeCards() {
   targets.forEach(el => {
     const rect = el.getBoundingClientRect()
     if (rect.top < window.innerHeight && rect.bottom > 0) {
-      // 已在视口内：直接显示，避免依赖滚动触发
       el.classList.add('visible')
       observer.unobserve(el)
     } else {
@@ -456,7 +544,7 @@ a { text-decoration: none; color: inherit; }
   font-size: 1.6rem; font-weight: 700;
   background: linear-gradient(135deg, #2b6cb0 0%, #4a9eff 50%, #7c3aed 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.03em; cursor: pointer;
 }
 .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; margin: 0; padding: 0; }
 .nav-links a {
@@ -496,6 +584,8 @@ a { text-decoration: none; color: inherit; }
   border: 1px solid #dee2e6; background: transparent; color: #2b6cb0;
 }
 .nav-profile-btn:hover { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
+.nav-admin-btn { color: #7c3aed; border-color: rgba(124,58,237,0.2); }
+.nav-admin-btn:hover { border-color: #7c3aed; background: rgba(124,58,237,0.04); }
 .nav-logout {
   border: 1px solid #dee2e6; background: transparent; color: #868e96;
 }
@@ -688,7 +778,29 @@ a { text-decoration: none; color: inherit; }
 }
 .add-cart-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(43,108,176,0.30); }
 
-/* ===== Loading & Empty ===== */
+/* ===== Pagination ===== */
+.pagination {
+  display: flex; justify-content: center; align-items: center;
+  gap: 8px; margin-top: 48px; flex-wrap: wrap;
+}
+.page-btn {
+  padding: 10px 18px; border: 1px solid #dee2e6; border-radius: 10px;
+  background: transparent; color: #495057; font-size: 0.85rem; font-weight: 500;
+  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+  min-width: 44px; text-align: center;
+}
+.page-btn:hover:not(:disabled):not(.active) {
+  border-color: #4a9eff; color: #4a9eff;
+}
+.page-btn.active {
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
+  border-color: transparent; color: white;
+}
+.page-btn:disabled {
+  opacity: 0.4; cursor: not-allowed;
+}
+
+/* ===== Loading & Empty & Error ===== */
 .loading-state, .empty-state {
   text-align: center; padding: 80px 0; color: #868e96;
 }
@@ -698,6 +810,15 @@ a { text-decoration: none; color: inherit; }
   border-radius: 50%; animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.error-icon, .empty-icon { font-size: 3rem; margin-bottom: 16px; }
+.empty-hint { font-size: 0.85rem; color: #adb5bd; margin-top: 8px; }
+.retry-btn {
+  margin-top: 16px; padding: 10px 24px; border: 1px solid #2b6cb0;
+  border-radius: 50px; background: transparent; color: #2b6cb0;
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: all 0.3s;
+}
+.retry-btn:hover { background: rgba(43,108,176,0.06); }
 
 /* ===== Cart Sidebar ===== */
 .cart-overlay {
@@ -811,6 +932,8 @@ a { text-decoration: none; color: inherit; }
   .cats-grid { grid-template-columns: repeat(2, 1fr); }
   .products-grid { grid-template-columns: 1fr; }
   .carousel-dots { left: 24px; }
+  .pagination { gap: 4px; }
+  .page-btn { padding: 8px 14px; font-size: 0.8rem; min-width: 38px; }
   .footer { padding: 40px 24px; }
   .footer-inner { flex-direction: column; gap: 24px; text-align: center; }
   .footer-links { flex-wrap: wrap; justify-content: center; gap: 20px; }

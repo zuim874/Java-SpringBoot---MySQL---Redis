@@ -1,5 +1,6 @@
 package com.xuwenye.demo.Controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Product;
 import com.xuwenye.demo.Entity.ProductImage;
 import com.xuwenye.demo.Entity.Seller;
@@ -52,7 +53,34 @@ public class ProductController {
     // ======================== 公开接口（无需登录） ========================
 
     /**
-     * 获取所有上架商品
+     * 分页查询上架商品（支持按分类筛选）
+     * 1.IP限流：30次/60s
+     * 2.返回分页商品列表（含卖家信息、主图URL）
+     * <p>
+     * @author ZuiM
+     * @param page 页码（默认1）
+     * @param size 每页条数（默认10）
+     * @param category 商品分类（可选）
+     * @return Result 分页商品列表
+     */
+    @GetMapping("/page")
+    @RateLimit(window = 60, maxRequests = 30, message = "商品列表请求过于频繁，请稍后再试")
+    public Result<Page<Map<String, Object>>> getProductPage(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String category) {
+        Page<Product> productPage = productService.getOnShelfProductsPage(page, size, category);
+        Page<Map<String, Object>> resultPage = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
+        List<Map<String, Object>> records = new java.util.ArrayList<>();
+        for (Product product : productPage.getRecords()) {
+            records.add(buildProductResponse(product));
+        }
+        resultPage.setRecords(records);
+        return Result.ok(resultPage);
+    }
+
+    /**
+     * 获取所有上架商品（保留旧接口兼容）
      * 1.IP限流：30次/60s
      * 2.返回商品列表（含卖家信息、主图URL）
      * <p>
@@ -536,6 +564,189 @@ public class ProductController {
         return Result.error(400, "卖家删除失败");
     }
 
+    // ======================== 商家管理接口（需 SELLER 角色） ========================
+
+    /**
+     * 商家查看自己的商品列表（分页）
+     * 1.校验商家身份（userRole 包含 SELLER）
+     * 2.返回该卖家的商品列表（分页）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param page 页码
+     * @param size 每页条数
+     * @return Result 分页商品列表
+     */
+    @GetMapping("/seller/products")
+    @RateLimit(window = 60, maxRequests = 20, message = "商品列表请求过于频繁，请稍后再试")
+    public Result<?> getSellerProducts(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        // 校验商家身份
+        Long sellerId = validateSeller(token);
+        if (sellerId == null) {
+            return Result.error(403, "权限不足，仅商家可操作");
+        }
+
+        Page<Product> productPage = productService.getSellerProductsPage(page, size, sellerId);
+        return Result.ok(productPage);
+    }
+
+    /**
+     * 商家新增商品
+     * 1.校验商家身份
+     * 2.设置 sellerId 为当前商家
+     * 3.保存商品
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param product 商品实体
+     * @return Result 200 新增成功
+     */
+    @PostMapping("/seller/add")
+    @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
+    public Result<?> addSellerProduct(
+            @RequestHeader("Authorization") String token,
+            @RequestBody Product product) {
+        // 校验商家身份
+        Long sellerId = validateSeller(token);
+        if (sellerId == null) {
+            return Result.error(403, "权限不足，仅商家可操作");
+        }
+
+        // 设置卖家ID
+        product.setSellerId(sellerId);
+        // 新商品默认为下架状态
+        if (product.getStatus() == null) {
+            product.setStatus(0);
+        }
+
+        boolean success = productService.saveProduct(product);
+        if (success) {
+            return Result.ok("商品新增成功");
+        }
+        return Result.error(400, "商品新增失败");
+    }
+
+    /**
+     * 商家更新商品
+     * 1.校验商家身份
+     * 2.校验商品归属
+     * 3.更新商品信息
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 商品ID
+     * @param product 商品更新信息
+     * @return Result 200 更新成功
+     */
+    @PutMapping("/seller/update/{id}")
+    @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
+    public Result<?> updateSellerProduct(
+            @RequestHeader("Authorization") String token,
+            @PathVariable @Min(1) Long id,
+            @RequestBody Product product) {
+        // 校验商家身份
+        Long sellerId = validateSeller(token);
+        if (sellerId == null) {
+            return Result.error(403, "权限不足，仅商家可操作");
+        }
+
+        // 校验商品归属
+        Product existing = productService.getProductById(id);
+        if (existing == null) {
+            return Result.error(400, "商品不存在");
+        }
+        if (!existing.getSellerId().equals(sellerId)) {
+            return Result.error(403, "无权操作其他商家的商品");
+        }
+
+        product.setId(id);
+        product.setSellerId(null); // 不允许修改卖家ID
+        boolean success = productService.updateProduct(product);
+        if (success) {
+            return Result.ok("商品更新成功");
+        }
+        return Result.error(400, "商品更新失败");
+    }
+
+    /**
+     * 商家上架商品
+     * 1.校验商家身份
+     * 2.校验商品归属
+     * 3.上架商品
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 商品ID
+     * @return Result 200 上架成功
+     */
+    @PutMapping("/seller/onshelf/{id}")
+    @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
+    public Result<?> onShelfSellerProduct(
+            @RequestHeader("Authorization") String token,
+            @PathVariable @Min(1) Long id) {
+        // 校验商家身份
+        Long sellerId = validateSeller(token);
+        if (sellerId == null) {
+            return Result.error(403, "权限不足，仅商家可操作");
+        }
+
+        // 校验商品归属
+        Product existing = productService.getProductById(id);
+        if (existing == null) {
+            return Result.error(400, "商品不存在");
+        }
+        if (!existing.getSellerId().equals(sellerId)) {
+            return Result.error(403, "无权操作其他商家的商品");
+        }
+
+        boolean success = productService.onShelfProduct(id);
+        if (success) {
+            return Result.ok("商品上架成功");
+        }
+        return Result.error(400, "商品上架失败");
+    }
+
+    /**
+     * 商家下架商品
+     * 1.校验商家身份
+     * 2.校验商品归属
+     * 3.下架商品
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 商品ID
+     * @return Result 200 下架成功
+     */
+    @PutMapping("/seller/offshelf/{id}")
+    @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
+    public Result<?> offShelfSellerProduct(
+            @RequestHeader("Authorization") String token,
+            @PathVariable @Min(1) Long id) {
+        // 校验商家身份
+        Long sellerId = validateSeller(token);
+        if (sellerId == null) {
+            return Result.error(403, "权限不足，仅商家可操作");
+        }
+
+        // 校验商品归属
+        Product existing = productService.getProductById(id);
+        if (existing == null) {
+            return Result.error(400, "商品不存在");
+        }
+        if (!existing.getSellerId().equals(sellerId)) {
+            return Result.error(403, "无权操作其他商家的商品");
+        }
+
+        boolean success = productService.offShelfProduct(id);
+        if (success) {
+            return Result.ok("商品下架成功");
+        }
+        return Result.error(400, "商品下架失败");
+    }
+
     // ======================== 内部工具方法 ========================
 
     /**
@@ -563,6 +774,49 @@ public class ProductController {
             return null;
         }
         return username;
+    }
+
+    /**
+     * 校验商家身份
+     * 1.校验 token 有效性
+     * 2.校验用户角色包含 SELLER
+     * 3.返回 sellerId（用于后续商品归属校验）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌（Bearer xxx）
+     * @return Long sellerId（null表示校验失败）
+     */
+    private Long validateSeller(String token) {
+        // 校验 token
+        if (token == null || !token.startsWith("Bearer ")) {
+            return null;
+        }
+        String realToken = token.substring(7);
+        if (!jwtUtil.validate(realToken)) {
+            return null;
+        }
+        // 解析用户名
+        String username = jwtUtil.parseUsername(realToken);
+        // 查询用户信息
+        com.xuwenye.demo.Entity.User user = userService.findAllUser(username);
+        if (user == null) {
+            return null;
+        }
+        // 校验角色是否包含 SELLER
+        String userRole = user.getUserRole();
+        if (userRole == null || !userRole.contains("SELLER")) {
+            return null;
+        }
+        // 获取该用户关联的卖家ID
+        // 此处通过 SellerMapper 查询用户对应的卖家
+        // 由于用户和卖家目前没有直接关联字段，使用用户的用户名作为卖家名称查询
+        // 实际项目中可以通过 user_seller 关联表实现
+        com.xuwenye.demo.Entity.Seller seller = sellerService.getSellerBySellerName(username);
+        if (seller == null) {
+            // 如果找不到卖家，返回 0 表示无法操作
+            return 0L;
+        }
+        return seller.getId();
     }
 
     /**

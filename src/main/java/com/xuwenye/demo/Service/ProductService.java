@@ -1,6 +1,7 @@
 package com.xuwenye.demo.Service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Product;
 import com.xuwenye.demo.Entity.ProductImage;
 import com.xuwenye.demo.Entity.Seller;
@@ -415,5 +416,164 @@ public class ProductService {
             redisUtil.set(cacheKey, seller);
         }
         return seller;
+    }
+
+    // ======================== 分页查询 ========================
+
+    /**
+     * 分页查询上架商品（支持按分类筛选，Cache-Aside 缓存模式）
+     * 1.先从 Redis 查分页数据
+     * 2.未命中则查 MySQL
+     * 3.查到了写入 Redis
+     * <p>
+     * @author ZuiM
+     * @param page 页码
+     * @param size 每页条数
+     * @param category 商品分类（为null则查询全部）
+     * @return Page<Product> 分页商品列表
+     */
+    @SuppressWarnings("unchecked")
+    public Page<Product> getOnShelfProductsPage(int page, int size, String category) {
+        // 缓存 key 区分是否按分类查询
+        String cacheKey = (category != null && !category.isEmpty())
+                ? PRODUCT_CATEGORY_CACHE_PREFIX + "page:" + category + ":" + page + ":" + size
+                : PRODUCT_LIST_CACHE_KEY + ":page:" + page + ":" + size;
+
+        // 第 1 步：先从 Redis 查
+        Page<Product> cached = (Page<Product>) redisUtil.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        // 第 2 步：Redis 没有，查 MySQL
+        Page<Product> pageObj = new Page<>(page, size);
+        Page<Product> result = productMapper.selectOnShelfProductsPage(pageObj, category);
+
+        // 第 3 步：写入 Redis
+        if (result != null && !result.getRecords().isEmpty()) {
+            redisUtil.set(cacheKey, result);
+        }
+        return result;
+    }
+
+    /**
+     * 分页查询所有商品（包含已下架，管理员用）
+     * <p>
+     * @author ZuiM
+     * @param page 页码
+     * @param size 每页条数
+     * @return Page<Product> 分页商品列表
+     */
+    @SuppressWarnings("unchecked")
+    public Page<Product> getAllProductsPage(int page, int size) {
+        String cacheKey = "demo:product:admin:page:" + page + ":" + size;
+
+        // 第 1 步：先从 Redis 查
+        Page<Product> cached = (Page<Product>) redisUtil.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        // 第 2 步：Redis 没有，查 MySQL
+        Page<Product> pageObj = new Page<>(page, size);
+        Page<Product> result = productMapper.selectAllProductsPage(pageObj);
+
+        // 第 3 步：写入 Redis
+        if (result != null && !result.getRecords().isEmpty()) {
+            redisUtil.set(cacheKey, result);
+        }
+        return result;
+    }
+
+    /**
+     * 分页查询卖家自己的商品（包含已下架）
+     * <p>
+     * @author ZuiM
+     * @param page 页码
+     * @param size 每页条数
+     * @param sellerId 卖家ID
+     * @return Page<Product> 分页商品列表
+     */
+    @SuppressWarnings("unchecked")
+    public Page<Product> getSellerProductsPage(int page, int size, Long sellerId) {
+        String cacheKey = "demo:product:seller:" + sellerId + ":page:" + page + ":" + size;
+
+        // 第 1 步：先从 Redis 查
+        Page<Product> cached = (Page<Product>) redisUtil.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        // 第 2 步：Redis 没有，查 MySQL
+        Page<Product> pageObj = new Page<>(page, size);
+        Page<Product> result = productMapper.selectProductsBySellerIdPage(pageObj, sellerId);
+
+        // 第 3 步：写入 Redis
+        if (result != null && !result.getRecords().isEmpty()) {
+            redisUtil.set(cacheKey, result);
+        }
+        return result;
+    }
+
+    /**
+     * 恢复库存（取消订单／退款时使用，分布式锁保护）
+     * 1.获取分布式锁
+     * 2.查询商品当前库存
+     * 3.恢复库存并扣减销量
+     * 4.释放锁
+     * <p>
+     * @author ZuiM
+     * @param id 商品ID
+     * @param quantity 恢复数量
+     * @return boolean true=恢复成功
+     */
+    @Transactional
+    public boolean restoreStock(Long id, int quantity) {
+        String lockKey = "product:stock:" + id;
+        try {
+            // 获取分布式锁（看门狗模式）
+            boolean locked = redisLockHelper.tryLock(lockKey, 10, TimeUnit.SECONDS);
+            if (!locked) {
+                return false;
+            }
+
+            // 查询商品
+            Product product = productMapper.findProductById(id);
+            if (product == null) {
+                return false;
+            }
+
+            // 恢复库存，扣减销量
+            Product update = new Product();
+            update.setId(id);
+            update.setStock(product.getStock() + quantity);
+            update.setSold(Math.max(0, product.getSold() - quantity));
+            boolean result = productMapper.updateById(update) > 0;
+
+            if (result) {
+                // 更新成功，清除相关缓存
+                redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + id);
+                clearProductListCaches();
+            }
+
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            // 释放锁
+            redisLockHelper.unlock(lockKey);
+        }
+    }
+
+    /**
+     * 根据卖家ID查询卖家商品列表（非分页，为兼容旧接口保留）
+     * <p>
+     * @author ZuiM
+     * @param sellerId 卖家ID
+     * @return List<Product> 商品列表
+     */
+    public List<Product> getProductsBySellerId(Long sellerId) {
+        return productMapper.findProductsBySellerId(sellerId);
     }
 }

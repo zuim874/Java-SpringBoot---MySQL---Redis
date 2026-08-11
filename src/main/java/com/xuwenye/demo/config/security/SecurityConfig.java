@@ -67,8 +67,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/send-registercode",
                                 "/api/user/send-recovercode", "/api/user/recover_user", "/uploads/**").permitAll()
-                        // 商品公开接口（GET请求）
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/product/**").permitAll()
+                        // 商品公开接口（无需登录）
+                        .requestMatchers("/api/product/page", "/api/product/detail/**", "/api/product/categories",
+                                "/api/product/list", "/api/product/list/category",
+                                "/api/product/sellers").permitAll()
+                        // 卖家详情公开接口（GET请求）
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/product/seller/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 // 未认证访问返回 401 JSON（避免 Spring Security 默认 403 空响应导致前端 JSON 解析报错）

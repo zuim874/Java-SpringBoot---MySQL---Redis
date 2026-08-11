@@ -3,6 +3,7 @@ package com.xuwenye.demo.common;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -77,6 +78,18 @@ public class GlobalExceptionHandler {
     public Result<?> handleSqlErr(BadSqlGrammarException e) {
         log.error("疑似 SQL 注入攻击，SQL 语法异常", e);
         return Result.error(400, "参数非法，操作已拦截");
+    }
+
+    /**
+     * 客户端主动断开连接（浏览器关闭/切换页面/取消请求）
+     * 属于正常行为，无需记录 ERROR 日志，仅输出 DEBUG 级别
+     * <p>
+     * @author ZuiM
+     * @param e 客户端中断异常
+     */
+    @ExceptionHandler(ClientAbortException.class)
+    public void handleClientAbort(ClientAbortException e) {
+        log.debug("客户端断开连接：{}", e.getMessage());
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.xuwenye.demo.Service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Mapper.UserMapper;
 import org.springframework.stereotype.Service;
@@ -454,5 +455,63 @@ public class UserService {
         }
         // 4. 比较
         return "ROLE_ADMIN".equals(userRole);
+    }
+
+    /**
+     * 分页查询用户列表
+     * <p>
+     * @author ZuiM
+     * @param page 页码
+     * @param size 每页条数
+     * @return Page<User> 分页用户列表
+     */
+    public Page<User> getUserList(int page, int size) {
+        Page<User> pageObj = new Page<>(page, size);
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.orderByDesc("create_time");
+        return userMapper.selectPage(pageObj, wrapper);
+    }
+
+    /**
+     * 更新用户状态（启用/禁用）
+     * 1.更新数据库
+     * 2.清除关联缓存
+     * <p>
+     * @author ZuiM
+     * @param id 用户ID
+     * @param status 0禁用 1启用
+     * @return boolean true=更新成功
+     */
+    public boolean updateUserStatus(Long id, int status) {
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            return false;
+        }
+        User update = new User();
+        update.setId(id);
+        update.setStatus(status);
+        boolean result = userMapper.updateById(update) > 0;
+        if (result) {
+            clearUserCache(user);
+        }
+        return result;
+    }
+
+    /**
+     * 清除用户所有关联缓存
+     * <p>
+     * @author ZuiM
+     * @param user 用户实体
+     */
+    public void clearUserCache(User user) {
+        if (user == null) return;
+        String username = user.getUsername();
+        redisUtil.delete("demo:user:active:" + username);
+        redisUtil.delete("demo:user:all:" + username);
+        redisUtil.delete("demo:user:recover:" + username);
+        redisUtil.delete("demo:user:id:" + user.getId());
+        if (user.getEmail() != null) {
+            redisUtil.delete("demo:user:email:" + user.getEmail());
+        }
     }
 }

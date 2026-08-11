@@ -1,6 +1,7 @@
 package com.xuwenye.demo.Mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Product;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -66,4 +67,42 @@ public interface ProductMapper extends BaseMapper<Product> {
      */
     @Select("SELECT DISTINCT category FROM sys_product WHERE is_deleted = 0 AND category IS NOT NULL")
     List<String> findAllCategories();
+
+    // ======================== 分页查询方法 ========================
+
+    /**
+     * 分页查询上架商品（支持按分类筛选）
+     * <p>
+     * @author ZuiM
+     * @param page 分页参数
+     * @param category 商品分类（为null则查询全部）
+     * @return Page<Product> 分页商品列表
+     */
+    @Select("<script>" +
+            "SELECT * FROM sys_product WHERE status = 1 AND is_deleted = 0" +
+            "<if test='category != null and category != \"\"'> AND category = #{category}</if>" +
+            " ORDER BY create_time DESC" +
+            "</script>")
+    Page<Product> selectOnShelfProductsPage(Page<Product> page, @Param("category") String category);
+
+    /**
+     * 分页查询所有商品（包含已下架，管理员用）
+     * <p>
+     * @author ZuiM
+     * @param page 分页参数
+     * @return Page<Product> 分页商品列表
+     */
+    @Select("SELECT * FROM sys_product WHERE is_deleted = 0 ORDER BY create_time DESC")
+    Page<Product> selectAllProductsPage(Page<Product> page);
+
+    /**
+     * 分页查询卖家自己的商品（包含已下架）
+     * <p>
+     * @author ZuiM
+     * @param page 分页参数
+     * @param sellerId 卖家ID
+     * @return Page<Product> 分页商品列表
+     */
+    @Select("SELECT * FROM sys_product WHERE seller_id = #{sellerId} AND is_deleted = 0 ORDER BY create_time DESC")
+    Page<Product> selectProductsBySellerIdPage(Page<Product> page, @Param("sellerId") Long sellerId);
 }

@@ -131,7 +131,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { request } from '../utils/request.js'
+import { getProductDetail } from '../api/index.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -153,17 +153,16 @@ const currentImage = computed(() => {
   return product.value?.mainImageUrl || ''
 })
 
-// 获取商品详情
+// 获取商品详情（使用 axios API 服务）
 async function fetchProductDetail() {
   loading.value = true
   try {
-    // request 封装会自动拼接 /api 前缀，并携带 Token
-    const response = await request(`/product/detail/${productId.value}`)
-    if (response.code === 200) {
-      product.value = response.data
-      images.value = response.data.images || []
+    const res = await getProductDetail(productId.value)
+    if (res && res.code === 200) {
+      product.value = res.data
+      images.value = res.data.images || []
     } else {
-      console.error('获取商品详情失败:', response.mes)
+      console.error('获取商品详情失败:', res?.mes)
     }
   } catch (error) {
     console.error('获取商品详情错误:', error)

@@ -145,6 +145,32 @@ public class SellerService {
     }
 
     /**
+     * 按卖家名称查询卖家（含 Redis 缓存）
+     * 1.先从 Redis 查
+     * 2.未命中则查 MySQL
+     * 3.查到了写入 Redis
+     * <p>
+     * @author ZuiM
+     * @param sellerName 卖家名称
+     * @return Seller 卖家（可能为null）
+     */
+    public Seller getSellerBySellerName(String sellerName) {
+        String cacheKey = SELLER_DETAIL_CACHE_PREFIX + "name:" + sellerName;
+        // 第 1 步：先从 Redis 查
+        Seller cached = (Seller) redisUtil.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        // 第 2 步：Redis 没有，查 MySQL
+        Seller seller = sellerMapper.findSellerByName(sellerName);
+        // 第 3 步：写入 Redis
+        if (seller != null) {
+            redisUtil.set(cacheKey, seller);
+        }
+        return seller;
+    }
+
+    /**
      * 重新加载卖家详情缓存
      * <p>
      * @author ZuiM
