@@ -4,11 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Mapper.UserMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.sql.Time;
+import java.util.concurrent.TimeUnit;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.xuwenye.demo.util.redis.RedisLockHelper;
 import com.xuwenye.demo.util.redis.RedisUtil;
 
 /**
@@ -20,13 +24,17 @@ import com.xuwenye.demo.util.redis.RedisUtil;
  * @author ZuiM
  */
 @Service
+@Slf4j
 public class UserService {
     private final UserMapper userMapper;
     private final RedisUtil redisUtil;
+    private final RedisLockHelper redisLockHelper;
     public UserService(UserMapper userMapper,
-                       RedisUtil redisUtil) {
+                       RedisUtil redisUtil,
+                       RedisLockHelper redisLockHelper) {
         this.userMapper = userMapper;
         this.redisUtil = redisUtil;
+        this.redisLockHelper = redisLockHelper;
     }
 
     /**
@@ -512,6 +520,75 @@ public class UserService {
         redisUtil.delete("demo:user:id:" + user.getId());
         if (user.getEmail() != null) {
             redisUtil.delete("demo:user:email:" + user.getEmail());
+        }
+    }
+
+    /**
+     * 增加用户余额（管理员充值/退款回补，分布式锁 + 原子 SQL 双重保护）
+     * <p>
+     * @author ZuiM
+     * @param userId 用户ID
+     * @param amount 增加金额
+     * @return boolean true=成功
+     */
+    public boolean chargeBalance(Long userId, BigDecimal amount) {
+        return changeBalance(userId, amount, false);
+    }
+
+    /**
+     * 扣减用户余额（支付扣款，分布式锁 + 原子 SQL 防止超扣）
+     * <p>
+     * @author ZuiM
+     * @param userId 用户ID
+     * @param amount 扣减金额
+     * @return boolean true=成功（余额充足）
+     */
+    public boolean deductBalance(Long userId, BigDecimal amount) {
+        return changeBalance(userId, amount, true);
+    }
+
+    /**
+     * 变更余额（内部方法）
+     * 1.分布式锁：同一用户余额操作串行，避免并发读写
+     * 2.原子 SQL：扣减时余额充足才成功，防止超扣
+     * <p>
+     * @author ZuiM
+     * @param userId 用户ID
+     * @param amount 变更金额（正数）
+     * @param deduct true=扣减 false=增加
+     * @return boolean true=成功
+     */
+    private boolean changeBalance(Long userId, BigDecimal amount, boolean deduct) {
+        if (userId == null || amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        String lockKey = "demo:user:balance:" + userId;
+        try {
+            boolean locked = redisLockHelper.tryLock(lockKey, 3, TimeUnit.SECONDS);
+            if (!locked) {
+                log.error("获取余额锁失败，userId={}", userId);
+                return false;
+            }
+            int rows = deduct
+                    ? userMapper.deductBalance(userId, amount)
+                    : userMapper.addBalance(userId, amount);
+            if (rows > 0) {
+                // 清缓存，下次查询读到最新余额
+                User user = userMapper.selectById(userId);
+                if (user != null) {
+                    clearUserCache(user);
+                }
+            }
+            return rows > 0;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("余额操作被中断，userId={}", userId, e);
+            return false;
+        } catch (Exception e) {
+            log.error("余额操作异常，userId={}", userId, e);
+            return false;
+        } finally {
+            redisLockHelper.unlock(lockKey);
         }
     }
 }

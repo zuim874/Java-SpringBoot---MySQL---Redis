@@ -36,12 +36,13 @@ export async function fetchUserInfo() {
  */
 export async function fetchUserRoles() {
   const userInfo = await fetchUserInfo()
-  if (userInfo && userInfo.roles) {
-    // 后端可能返回 roles 数组或单个 role 字符串
-    if (Array.isArray(userInfo.roles)) {
-      return userInfo.roles
+  // 兼容两种返回：后端可能返回 roles 数组，也可能返回单字段 userRole（如 /user/me 返回 User 实体）
+  const roleField = userInfo && (userInfo.roles || userInfo.userRole)
+  if (roleField) {
+    if (Array.isArray(roleField)) {
+      return roleField
     }
-    return [userInfo.roles]
+    return [roleField]
   }
   // 降级：尝试从 JWT 中解析角色
   const token = localStorage.getItem('token')

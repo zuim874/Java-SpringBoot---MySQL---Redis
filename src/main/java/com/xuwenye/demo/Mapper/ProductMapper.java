@@ -81,9 +81,12 @@ public interface ProductMapper extends BaseMapper<Product> {
     @Select("<script>" +
             "SELECT * FROM sys_product WHERE status = 1 AND is_deleted = 0" +
             "<if test='category != null and category != \"\"'> AND category = #{category}</if>" +
+            "<if test='keyword != null and keyword != \"\"'> AND (product_name LIKE CONCAT('%', #{keyword}, '%') OR description LIKE CONCAT('%', #{keyword}, '%'))</if>" +
             " ORDER BY create_time DESC" +
             "</script>")
-    Page<Product> selectOnShelfProductsPage(Page<Product> page, @Param("category") String category);
+    Page<Product> selectOnShelfProductsPage(Page<Product> page,
+                                           @Param("category") String category,
+                                           @Param("keyword") String keyword);
 
     /**
      * 分页查询所有商品（包含已下架，管理员用）

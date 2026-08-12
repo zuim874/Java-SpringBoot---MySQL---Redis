@@ -1,4 +1,4 @@
-package com.xuwenye.demo.Controller;
+package com.xuwenye.demo.Controller.Product;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Product;
@@ -61,6 +61,7 @@ public class ProductController {
      * @param page 页码（默认1）
      * @param size 每页条数（默认10）
      * @param category 商品分类（可选）
+     * @param keyword 搜索关键词（可选，模糊匹配商品名/描述）
      * @return Result 分页商品列表
      */
     @GetMapping("/page")
@@ -68,8 +69,9 @@ public class ProductController {
     public Result<Page<Map<String, Object>>> getProductPage(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String category) {
-        Page<Product> productPage = productService.getOnShelfProductsPage(page, size, category);
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String keyword) {
+        Page<Product> productPage = productService.getOnShelfProductsPage(page, size, category, keyword);
         Page<Map<String, Object>> resultPage = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
         List<Map<String, Object>> records = new java.util.ArrayList<>();
         for (Product product : productPage.getRecords()) {

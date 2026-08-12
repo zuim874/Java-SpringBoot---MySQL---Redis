@@ -1,4 +1,4 @@
-package com.xuwenye.demo.Controller;
+package com.xuwenye.demo.Controller.User;
 
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.FileStorageService;

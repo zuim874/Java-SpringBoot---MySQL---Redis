@@ -2,6 +2,7 @@ package com.xuwenye.demo.Mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xuwenye.demo.Entity.User;
+import java.math.BigDecimal;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -72,7 +73,38 @@ public interface UserMapper extends BaseMapper<User> {
     @Select("SELECT * FROM sys_user WHERE username = #{username} AND is_deleted = 1")
     User findDeletedUserByUsername(@Param("username") String username);
 
+    /**
+     * 按邮箱查询已逻辑删除的用户（用于账号恢复时校验身份）
+     * <p>
+     * @author ZuiM
+     * @param email 邮箱
+     * @return User 已删除用户（可能为 null）
+     */
+    // 按邮箱查询已逻辑删除的用户（用于账号恢复时校验身份）
     @Select("SELECT * FROM sys_user WHERE email = #{email} AND is_deleted = 1")
     User findDeletedUserByEmail(@Param("email") String email);
+
+    /**
+     * 扣减余额（原子操作：余额充足才扣减，防止超扣）
+     * <p>
+     * @author ZuiM
+     * @param id 用户ID
+     * @param amount 扣减金额
+     * @return int 受影响行数（0=余额不足或用户不存在）
+     */
+    // 扣减余额（原子操作：余额充足才扣减，防止超扣）
+    @Update("UPDATE sys_user SET balance = balance - #{amount} WHERE id = #{id} AND balance >= #{amount}")
+    int deductBalance(@Param("id") Long id, @Param("amount") BigDecimal amount);
+
+    /**
+     * 增加余额（充值/退款回补）
+     * <p>
+     * @author ZuiM
+     * @param id 用户ID
+     * @param amount 增加金额
+     * @return int 受影响行数
+     */
+    @Update("UPDATE sys_user SET balance = balance + #{amount} WHERE id = #{id}")
+    int addBalance(@Param("id") Long id, @Param("amount") BigDecimal amount);
 
 }

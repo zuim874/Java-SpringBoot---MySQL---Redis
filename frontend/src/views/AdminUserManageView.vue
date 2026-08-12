@@ -111,12 +111,14 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
+import { chargeUserBalance } from '../api/index.js'
 import { parseJWT } from '../utils/token'
 
 const router = useRouter()
 
 const adminCode = ref('')
 const targetUserId = ref('')
+const chargeAmount = ref('')
 const loading = ref(false)
 const message = ref('')
 const msgSuccess = ref(false)
@@ -208,6 +210,37 @@ async function handleRecoverUser() {
   }
 }
 
+async function handleCharge() {
+  if (!targetUserId.value) {
+    message.value = '请先输入目标用户ID'
+    msgSuccess.value = false
+    return
+  }
+  const amount = Number(chargeAmount.value)
+  if (!amount || amount <= 0) {
+    message.value = '请输入有效的充值金额'
+    msgSuccess.value = false
+    return
+  }
+  loading.value = true
+  message.value = ''
+  try {
+    const res = await chargeUserBalance(targetUserId.value, amount)
+    if (res && res.code === 200) {
+      msgSuccess.value = true
+      message.value = res.mes || '充值成功'
+      chargeAmount.value = ''
+    } else {
+      msgSuccess.value = false
+      message.value = (res && res.mes) || '充值失败'
+    }
+  } catch (err) {
+    msgSuccess.value = false
+    message.value = '充值失败：' + ((err && err.message) || '网络错误')
+  } finally {
+    loading.value = false
+  }
+}
 function validateInput() {
   if (!adminCode.value.trim()) {
     message.value = '请输入管理员权限码'

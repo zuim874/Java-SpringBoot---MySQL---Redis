@@ -380,6 +380,8 @@ public class ProductService {
         for (String category : new String[]{"手机配件", "电脑外设", "音频设备", "智能家居", "穿戴设备", "摄影器材", "其他"}) {
             redisUtil.delete(PRODUCT_CATEGORY_CACHE_PREFIX + category);
         }
+        // 清除分页缓存（含关键词搜索）
+        redisUtil.delete("demo:product:page:*");
     }
 
     /**
@@ -433,11 +435,11 @@ public class ProductService {
      * @return Page<Product> 分页商品列表
      */
     @SuppressWarnings("unchecked")
-    public Page<Product> getOnShelfProductsPage(int page, int size, String category) {
-        // 缓存 key 区分是否按分类查询
-        String cacheKey = (category != null && !category.isEmpty())
-                ? PRODUCT_CATEGORY_CACHE_PREFIX + "page:" + category + ":" + page + ":" + size
-                : PRODUCT_LIST_CACHE_KEY + ":page:" + page + ":" + size;
+    public Page<Product> getOnShelfProductsPage(int page, int size, String category, String keyword) {
+        // 缓存 key 区分按分类/关键词查询
+        String cacheKey = "demo:product:page:" + page + ":" + size + ":" +
+                (category != null ? category : "") + ":" +
+                (keyword != null ? keyword : "");
 
         // 第 1 步：先从 Redis 查
         Page<Product> cached = (Page<Product>) redisUtil.get(cacheKey);
@@ -447,7 +449,7 @@ public class ProductService {
 
         // 第 2 步：Redis 没有，查 MySQL
         Page<Product> pageObj = new Page<>(page, size);
-        Page<Product> result = productMapper.selectOnShelfProductsPage(pageObj, category);
+        Page<Product> result = productMapper.selectOnShelfProductsPage(pageObj, category, keyword);
 
         // 第 3 步：写入 Redis
         if (result != null && !result.getRecords().isEmpty()) {

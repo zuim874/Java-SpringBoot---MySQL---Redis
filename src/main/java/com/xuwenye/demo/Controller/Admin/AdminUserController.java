@@ -1,4 +1,4 @@
-package com.xuwenye.demo.Controller;
+package com.xuwenye.demo.Controller.Admin;
 
 import com.xuwenye.demo.Service.UserService;
 import com.xuwenye.demo.common.Result;

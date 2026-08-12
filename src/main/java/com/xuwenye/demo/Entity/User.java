@@ -2,6 +2,7 @@ package com.xuwenye.demo.Entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -9,6 +10,7 @@ import java.time.LocalDateTime;
  * 1.主键自增（IdType.AUTO）
  * 2.Java 字段用驼峰命名，@TableField 映射数据库蛇形列名
  * 3.逻辑删除字段 is_deleted（配合 @TableLogic）
+ * 4.balance 账户余额（充值/支付用，默认 0）
  * <p>
  * @author ZuiM
  */
@@ -25,6 +27,8 @@ public class User {
     private Integer status;                 // 0禁用，1启用
     @TableField("user_role")
     private String userRole;
+    /** 账户余额（元，默认 0；充值增加、支付扣减） */
+    private BigDecimal balance;
     @TableField("create_time")
     private LocalDateTime createTime;      // 创建账号时间
     @TableField("update_time")

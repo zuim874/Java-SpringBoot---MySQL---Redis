@@ -1,4 +1,4 @@
-package com.xuwenye.demo.Controller;
+package com.xuwenye.demo.Controller.Order;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Order;

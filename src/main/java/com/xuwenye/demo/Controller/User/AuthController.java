@@ -1,4 +1,4 @@
-package com.xuwenye.demo.Controller;
+package com.xuwenye.demo.Controller.User;
 
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.MQProducer;
@@ -97,7 +97,7 @@ public class AuthController {
         // 更新活跃时间
         userService.updateLastLoginTime(user.getId(), LocalDateTime.now());
         String token = jwtUtil.generateToken(username);
-        return Result.ok(new LoginResponse(token, user.getNickname()));
+        return Result.ok(new LoginResponse(token, user.getNickname(), user.getUserRole()));
     }
 
     /**

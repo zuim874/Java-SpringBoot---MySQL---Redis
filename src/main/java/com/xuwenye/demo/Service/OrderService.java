@@ -34,6 +34,7 @@ public class OrderService {
     private final ProductService productService;
     private final RedisUtil redisUtil;
     private final RedisLockHelper redisLockHelper;
+    private final UserService userService;
 
     // Redis 缓存 Key 前缀
     private static final String ORDER_CACHE_PREFIX = "demo:order:";
@@ -45,12 +46,14 @@ public class OrderService {
                         OrderItemMapper orderItemMapper,
                         ProductService productService,
                         RedisUtil redisUtil,
-                        RedisLockHelper redisLockHelper) {
+                        RedisLockHelper redisLockHelper,
+                        UserService userService) {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.productService = productService;
         this.redisUtil = redisUtil;
         this.redisLockHelper = redisLockHelper;
+        this.userService = userService;
     }
 
     /**
@@ -167,8 +170,13 @@ public class OrderService {
             throw new IllegalArgumentException("订单状态不允许支付，当前状态：" + order.getStatus());
         }
 
-        Order update = new Order();
-        update.setId(orderId);
+        // 真实扣减余额（分布式锁 + 原子 SQL 防超扣）
+        boolean deducted = userService.deductBalance(order.getUserId(), order.getTotalAmount());
+        if (!deducted) {
+            throw new IllegalArgumentException("余额不足，请先充值");
+        }
+
+        Order update = new Order();        update.setId(orderId);
         update.setStatus(1); // 已支付
         update.setPayTime(LocalDateTime.now());
         boolean result = orderMapper.updateById(update) > 0;
@@ -210,10 +218,15 @@ public class OrderService {
             }
         }
 
+        // 已支付订单取消时退回余额
+        if (order.getStatus() == 1) {
+            userService.chargeBalance(order.getUserId(), order.getTotalAmount());
+        }
+
         // 更新订单状态
         Order update = new Order();
         update.setId(orderId);
-        update.setStatus(4); // 已取消
+        update.setStatus(4); // 已取消 // 已取消
         update.setCancelTime(LocalDateTime.now());
         boolean result = orderMapper.updateById(update) > 0;
 
@@ -254,10 +267,13 @@ public class OrderService {
             }
         }
 
+        // 退款退回余额（1/2 状态均已支付）
+        userService.chargeBalance(order.getUserId(), order.getTotalAmount());
+
         // 更新订单状态
         Order update = new Order();
         update.setId(orderId);
-        update.setStatus(5); // 已退款
+        update.setStatus(5); // 已退款 // 已退款
         update.setCompleteTime(LocalDateTime.now());
         boolean result = orderMapper.updateById(update) > 0;
 

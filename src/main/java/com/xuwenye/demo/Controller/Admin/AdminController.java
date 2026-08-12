@@ -1,4 +1,4 @@
-package com.xuwenye.demo.Controller;
+package com.xuwenye.demo.Controller.Admin;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Order;
@@ -16,6 +16,7 @@ import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -167,6 +168,36 @@ public class AdminController {
             return Result.ok("用户恢复成功");
         }
         return Result.error(400, "恢复失败，用户不存在");
+    }
+
+    /**
+     * 管理员为用户充值（模拟货币，增加账户余额）
+     * 1.校验管理员权限
+     * 2.增加用户余额（分布式锁 + 原子 SQL）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌（Bearer xxx）
+     * @param userId 目标用户ID
+     * @param amount 充值金额（必须大于0）
+     * @return Result 200 充值成功；400 参数错误/失败；403 权限不足
+     */
+    @PostMapping("/user/charge")
+    @RateLimit(window = 60, maxRequests = 10, message = "充值操作过于频繁，请稍后再试")
+    public Result<?> chargeUser(
+            @RequestHeader("Authorization") String token,
+            @RequestParam @Min(1) Long userId,
+            @RequestParam BigDecimal amount) {
+        if (!validateAdmin(token)) {
+            return Result.error(403, "权限不足，仅管理员可操作");
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return Result.error(400, "充值金额必须大于0");
+        }
+        boolean success = userService.chargeBalance(userId, amount);
+        if (success) {
+            return Result.ok("充值成功");
+        }
+        return Result.error(400, "充值失败，请重试");
     }
 
     // ======================== 商品管理 ========================

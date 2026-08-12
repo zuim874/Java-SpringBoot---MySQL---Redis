@@ -6,7 +6,21 @@
       <ul class="nav-links" :class="{ open: menuOpen }">
         <li><a href="#hero" @click.prevent="closeMenu; scrollTo('#hero')">首页</a></li>
         <li><a href="#products" @click.prevent="closeMenu; scrollTo('#products')">商品</a></li>
-        <li><a href="#categories" @click.prevent="closeMenu; scrollTo('#categories')">分类</a></li>
+        <!-- 分类下拉菜单：点击/悬停弹出商品种类列表 -->
+        <li class="nav-dropdown"
+            @mouseenter="catMenuOpen = true"
+            @mouseleave="catMenuOpen = false">
+          <a href="javascript:void(0)" @click.prevent="catMenuOpen = !catMenuOpen">
+            分类 <span class="dropdown-caret">▾</span>
+          </a>
+          <transition name="dropdown">
+            <div class="dropdown-menu" v-if="catMenuOpen">
+              <button v-for="cat in allCategoryNames" :key="cat"
+                      class="dropdown-item" :class="{ active: activeCategory === cat }"
+                      @click="selectCategory(cat)">{{ cat }}</button>
+            </div>
+          </transition>
+        </li>
         <li class="nav-user">
           <button class="nav-cart-btn" @click="showCart = true" aria-label="购物车">
             <span class="cart-icon">🛒</span>
@@ -37,44 +51,13 @@
         <p class="hero-sub">精选全球优质科技产品，从数码配件到智能家居，一站式购齐。</p>
         <div class="hero-actions">
           <button class="btn-primary" @click="scrollTo('#products')">立即选购</button>
-          <button class="btn-outline" @click="scrollTo('#categories')">浏览分类</button>
+          <button class="btn-outline" @click="scrollTo('#products')">浏览商品</button>
         </div>
       </div>
       <div class="carousel-dots">
         <button v-for="(_, idx) in slides" :key="idx"
                 class="carousel-dot" :class="{ active: currentSlide === idx }"
                 @click="goToSlide(idx)" :aria-label="'Slide ' + (idx+1)"></button>
-      </div>
-    </section>
-
-    <!-- ===== 分类导航 ===== -->
-    <section class="section categories" id="categories">
-      <div class="container">
-        <div class="section-header" ref="catHeader">
-          <span class="section-tag">商品分类</span>
-          <h2 class="section-title">一站式<span class="highlight">科技购物</span></h2>
-          <p class="section-desc">覆盖数码配件、智能家居、办公设备等热门品类，满足你的所有需求。</p>
-        </div>
-        <!-- 分类加载中 -->
-        <div class="loading-state" v-if="categoriesLoading">
-          <div class="loading-spinner"></div>
-          <p>加载分类中...</p>
-        </div>
-        <!-- 分类错误 -->
-        <div class="empty-state" v-else-if="categoriesError">
-          <p>分类加载失败</p>
-          <button class="retry-btn" @click="fetchCategories">重试</button>
-        </div>
-        <!-- 分类网格 -->
-        <div class="cats-grid" v-else>
-          <div v-for="(cat, idx) in categories" :key="idx"
-               class="cat-card" :ref="el => { if(el) catRefs[idx] = el }"
-               @click="filterByCategory(cat.name)">
-            <div class="cat-icon" v-html="cat.icon"></div>
-            <h3 class="cat-name">{{ cat.name }}</h3>
-            <span class="cat-count">{{ cat.count }} 件商品</span>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -86,13 +69,13 @@
           <h2 class="section-title">热门<span class="highlight">推荐</span></h2>
           <p class="section-desc">{{ activeCategory === '全部' ? '所有商品' : activeCategory }} · 共 {{ totalProducts }} 件</p>
         </div>
-        <!-- 分类筛选标签 -->
-        <div class="filter-tabs">
-          <button v-for="cat in allCategoryNames" :key="cat"
-                  class="filter-tab" :class="{ active: activeCategory === cat }"
-                  @click="filterByCategory(cat)">{{ cat }}</button>
+        <!-- 搜索栏：关键词模糊搜索商品名/描述 -->
+        <div class="search-bar">
+          <input v-model="searchInput" type="text" placeholder="搜索商品名称或描述..." maxlength="50"
+                 @keyup.enter="handleSearch" class="search-input" />
+          <button class="search-btn" @click="handleSearch">搜索</button>
+          <button v-if="searchKeyword" class="search-clear" @click="clearSearch">✕ 清除</button>
         </div>
-
         <!-- 商品加载中 -->
         <div class="loading-state" v-if="loading">
           <div class="loading-spinner"></div>
@@ -200,7 +183,6 @@
         <div class="footer-links">
           <a href="#hero" @click.prevent="scrollTo('#hero')">首页</a>
           <a href="#products" @click.prevent="scrollTo('#products')">商品</a>
-          <a href="#categories" @click.prevent="scrollTo('#categories')">分类</a>
           <a href="javascript:void(0)" @click="goProfile">我的</a>
         </div>
         <div class="footer-copy">© 2026 ZuiMShop. All rights reserved.</div>
@@ -212,7 +194,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { getProductPage, getCategories } from '../api/index.js'
+import { getProductPage, getCategories, createOrder } from '../api/index.js'
 import { getCachedRoles } from '../utils/auth.js'
 
 const router = useRouter()
@@ -220,6 +202,7 @@ const nickname = ref(localStorage.getItem('nickname') || '用户')
 const scrolled = ref(false)
 const menuOpen = ref(false)
 const showCart = ref(false)
+const catMenuOpen = ref(false)
 
 // ===== 角色判断（用于导航中显示按钮） =====
 const cachedRoles = getCachedRoles()
@@ -246,7 +229,7 @@ async function fetchProducts() {
   error.value = false
   try {
     const category = activeCategory.value === '全部' ? '' : activeCategory.value
-    const res = await getProductPage(currentPage.value, pageSize.value, category)
+    const res = await getProductPage(currentPage.value, pageSize.value, category, searchKeyword.value)
     if (res && res.code === 200 && res.data) {
       products.value = res.data.records || []
       totalProducts.value = res.data.total || 0
@@ -269,47 +252,24 @@ async function fetchProducts() {
   }
 }
 
-// ===== 分类数据（从后端 API 获取） =====
+// ===== 分类数据（从后端 API 获取，供导航栏下拉菜单使用） =====
 const categories = ref([])
-const categoriesLoading = ref(true)
-const categoriesError = ref(false)
-
-const categoryIcons = {
-  '手机配件': '📱',
-  '电脑外设': '💻',
-  '音频设备': '🎧',
-  '智能家居': '🏠',
-  '穿戴设备': '⌚',
-  '摄影器材': '📷'
-}
 
 /**
- * 从后端获取分类列表
+ * 从后端获取分类列表（导航栏下拉菜单数据源）
  * 调用 GET /api/product/categories
  */
 async function fetchCategories() {
-  categoriesLoading.value = true
-  categoriesError.value = false
   try {
     const res = await getCategories()
     if (res && res.code === 200 && res.data) {
-      // 后端返回分类名称数组，映射为对象格式
-      const catNames = Array.isArray(res.data) ? res.data : []
-      categories.value = catNames.map(name => ({
-        name,
-        count: 0, // 分页接口不返回分类数量，暂不显示
-        icon: categoryIcons[name] || '📦'
-      }))
+      categories.value = Array.isArray(res.data) ? res.data : []
     } else {
       categories.value = []
     }
   } catch (e) {
     console.error('获取分类列表异常:', e)
-    categoriesError.value = true
     categories.value = []
-  } finally {
-    categoriesLoading.value = false
-    nextTick(() => observeCards())
   }
 }
 
@@ -317,7 +277,7 @@ async function fetchCategories() {
  * 所有分类名称（含"全部"）
  */
 const allCategoryNames = computed(() => {
-  return ['全部', ...categories.value.map(c => c.name)]
+  return ['全部', ...categories.value]
 })
 
 /**
@@ -329,6 +289,47 @@ function filterByCategory(name) {
   currentPage.value = 1
   fetchProducts()
   setTimeout(() => scrollTo('#products'), 100)
+}
+
+/**
+ * 导航栏分类下拉菜单选中项
+ * 1.按分类筛选商品并滚动到商品区
+ * 2.关闭下拉菜单与移动端折叠菜单
+ */
+function selectCategory(name) {
+  catMenuOpen.value = false
+  closeMenu()
+  filterByCategory(name)
+}
+
+// ===== 关键词搜索（模糊匹配商品名/描述） =====
+// 输入框临时值 searchInput，生效值 searchKeyword（提交后固定，便于清除）
+const searchInput = ref('')
+const searchKeyword = ref('')
+
+/**
+ * 执行搜索
+ * 1.取输入框关键词
+ * 2.重置到第一页
+ * 3.重新拉取商品列表（可与分类组合筛选）
+ */
+function handleSearch() {
+  searchKeyword.value = searchInput.value.trim()
+  currentPage.value = 1
+  fetchProducts()
+  setTimeout(() => scrollTo('#products'), 100)
+}
+
+/**
+ * 清除搜索
+ * 1.清空输入框与生效关键词
+ * 2.重置到第一页并重新拉取
+ */
+function clearSearch() {
+  searchInput.value = ''
+  searchKeyword.value = ''
+  currentPage.value = 1
+  fetchProducts()
 }
 
 /**
@@ -437,22 +438,63 @@ function saveCart() {
   localStorage.setItem('cart', JSON.stringify(cart.value))
 }
 
-function goToCheckout() {
+/**
+ * 购物车结算：用购物车中的商品创建订单
+ * 1.检查登录状态
+ * 2.收集收货信息（与商品详情页一致的简单弹窗方式）
+ * 3.调用后端创建订单接口
+ * 4.成功后清空购物车并跳转订单列表
+ */
+async function goToCheckout() {
   // 检查是否登录
   const token = localStorage.getItem('token')
   if (!token) {
     router.push('/login')
     return
   }
-  // 跳转到订单创建页面（或直接跳转到订单列表）
-  router.push('/orders')
-  showCart.value = false
+  // 检查购物车是否为空
+  if (cart.value.length === 0) {
+    alert('购物车是空的，先去挑选商品吧')
+    return
+  }
+  // 收集收货信息
+  const receiverName = prompt('收货人姓名：', (localStorage.getItem('nickname') || ''))
+  if (!receiverName) return
+  const receiverPhone = prompt('收货人电话：')
+  if (!receiverPhone) return
+  const receiverAddress = prompt('收货地址：')
+  if (!receiverAddress) return
+
+  try {
+    // 组装订单项：购物车中每个商品转为 { productId, quantity }
+    const items = cart.value.map(item => ({
+      productId: item.id,
+      quantity: item.qty
+    }))
+    const res = await createOrder({
+      items,
+      receiverName,
+      receiverPhone,
+      receiverAddress,
+      remark: ''
+    })
+    if (res && res.code === 200) {
+      // 下单成功：清空购物车并跳转订单列表
+      cart.value = []
+      saveCart()
+      showCart.value = false
+      alert('下单成功，请前往订单页支付')
+      router.push('/orders')
+    } else {
+      alert((res && res.mes) || '下单失败')
+    }
+  } catch (err) {
+    alert('下单失败：' + ((err && err.message) || '网络错误'))
+  }
 }
 
 // ===== 滚动动画 =====
-const catHeader = ref(null)
 const prodHeader = ref(null)
-const catRefs = reactive({})
 const prodRefs = reactive({})
 let observer = null
 
@@ -479,13 +521,13 @@ onMounted(() => {
 function observeCards() {
   if (!observer) return
   if (typeof IntersectionObserver === 'undefined') {
-    document.querySelectorAll('.section-header, .cat-card, .product-card')
+    document.querySelectorAll('.section-header, .product-card')
       .forEach(el => el.classList.add('visible'))
     return
   }
   const targets = [
-    catHeader.value, prodHeader.value,
-    ...Object.values(catRefs), ...Object.values(prodRefs)
+    prodHeader.value,
+    ...Object.values(prodRefs)
   ].filter(Boolean)
   targets.forEach(el => {
     const rect = el.getBoundingClientRect()
@@ -590,6 +632,47 @@ a { text-decoration: none; color: inherit; }
   border: 1px solid #dee2e6; background: transparent; color: #868e96;
 }
 .nav-logout:hover { border-color: #dc3545; color: #dc3545; }
+
+/* ===== 导航栏分类下拉菜单 ===== */
+.nav-dropdown { position: relative; }
+.dropdown-caret {
+  display: inline-block; font-size: 0.7rem; margin-left: 4px;
+  transition: transform 0.3s; color: inherit;
+}
+.nav-dropdown:hover .dropdown-caret { transform: rotate(180deg); }
+.dropdown-menu {
+  position: absolute; top: calc(100% + 14px); left: 50%;
+  transform: translateX(-50%);
+  /* 多列网格布局：种类较多时分列展示，避免单列过长超出屏幕 */
+  display: grid; grid-template-columns: repeat(3, minmax(96px, 1fr));
+  gap: 2px;
+  min-width: 360px; max-width: 480px;
+  /* 种类过多时限制最大高度并滚动，防止超出视口 */
+  max-height: 70vh; overflow-y: auto;
+  padding: 8px;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid rgba(255,255,255,0.60);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.10);
+}
+/* 下拉滚动条美化 */
+.dropdown-menu::-webkit-scrollbar { width: 6px; }
+.dropdown-menu::-webkit-scrollbar-thumb { background: #ced4da; border-radius: 3px; }
+.dropdown-menu::-webkit-scrollbar-thumb:hover { background: #adb5bd; }
+/* 下拉动画 */
+.dropdown-enter-active, .dropdown-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+.dropdown-item {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 14px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+  color: #495057; transition: all 0.2s;
+}
+.dropdown-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
+.dropdown-item.active { background: linear-gradient(135deg, rgba(43,108,176,0.10), rgba(124,58,237,0.10)); color: #2b6cb0; font-weight: 600; }
 .nav-toggle { display: none; flex-direction: column; gap: 5px; cursor: pointer; background: none; border: none; padding: 4px; }
 .nav-toggle span { display: block; width: 24px; height: 2px; background: #212529; border-radius: 2px; transition: all 0.3s; }
 
@@ -682,43 +765,42 @@ a { text-decoration: none; color: inherit; }
 }
 .section-desc { font-size: 1.05rem; color: #868e96; margin-top: 16px; line-height: 1.7; }
 
-/* ===== Categories ===== */
-.categories { background: #f8f9fa; }
-.cats-grid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px;
-}
-.cat-card {
-  background: #ffffff; border: 1px solid #dee2e6; border-radius: 20px;
-  padding: 32px 20px; text-align: center; cursor: pointer;
-  transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  opacity: 0; transform: translateY(40px);
-}
-.cat-card.visible { opacity: 1; transform: translateY(0); }
-.cat-card:hover {
-  transform: translateY(-6px); box-shadow: 0 16px 48px rgba(0,0,0,0.08);
-  border-color: transparent;
-  background: linear-gradient(135deg, #f8f9ff, #ffffff);
-}
-.cat-card.visible:hover { transform: translateY(-6px); }
-.cat-icon { font-size: 2.4rem; margin-bottom: 12px; }
-.cat-name { font-size: 0.9rem; font-weight: 600; color: #212529; margin-bottom: 4px; }
-.cat-count { font-size: 0.75rem; color: #adb5bd; }
-
 /* ===== Products ===== */
 .products { background: #ffffff; }
-.filter-tabs {
-  display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;
-  margin-bottom: 40px;
+/* 搜索栏 */
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
 }
-.filter-tab {
-  padding: 8px 20px; border: 1px solid #dee2e6; border-radius: 50px;
-  background: transparent; color: #868e96; font-size: 0.8rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+.search-input {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
 }
-.filter-tab:hover { border-color: #4a9eff; color: #4a9eff; }
-.filter-tab.active {
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  border-color: transparent; color: white;
+.search-input:focus { border-color: #4a9eff; }
+.search-btn {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, #4a9eff, #1c7ed6);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+.search-clear {
+  padding: 10px 16px;
+  background: transparent;
+  color: #868e96;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 .products-grid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
@@ -910,7 +992,6 @@ a { text-decoration: none; color: inherit; }
 
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
-  .cats-grid { grid-template-columns: repeat(3, 1fr); }
   .products-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
@@ -924,12 +1005,22 @@ a { text-decoration: none; color: inherit; }
   }
   .nav-links.open { display: flex; }
   .nav-toggle { display: flex; }
+  /* 移动端：分类下拉改为静态单列展开，避免浮层遮挡与宽度溢出 */
+  .nav-dropdown { width: 100%; }
+  .dropdown-menu {
+    position: static; transform: none;
+    width: 100%; min-width: 0; max-width: none;
+    grid-template-columns: 1fr;
+    max-height: none; overflow-y: visible;
+    margin-top: 8px;
+    box-shadow: none; border: 1px solid #dee2e6;
+  }
+  .dropdown-enter-from, .dropdown-leave-to { transform: translateY(-6px); }
   .nav-user { margin-top: 8px; padding-top: 16px; border-top: 1px solid #dee2e6; width: 100%; justify-content: space-between; flex-wrap: wrap; }
   .hero-content { padding: 0 24px; bottom: 20%; }
   .hero-actions { flex-direction: column; gap: 12px; }
   .section { padding: 80px 0; }
   .container { padding: 0 24px; }
-  .cats-grid { grid-template-columns: repeat(2, 1fr); }
   .products-grid { grid-template-columns: 1fr; }
   .carousel-dots { left: 24px; }
   .pagination { gap: 4px; }

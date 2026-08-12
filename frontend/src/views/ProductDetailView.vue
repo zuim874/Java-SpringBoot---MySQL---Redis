@@ -131,7 +131,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getProductDetail } from '../api/index.js'
+import { getProductDetail, createOrder } from '../api/index.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -212,10 +212,32 @@ function addToCart() {
   showToast('已加入购物车')
 }
 
-// 立即购买
-function buyNow() {
-  addToCart()
-  showToast('已添加到购物车，请前往结算')
+// 立即购买：直接创建订单（需登录，收货信息用简单弹窗收集）
+async function buyNow() {
+  const qty = quantity.value
+  const receiverName = prompt('收货人姓名：', (localStorage.getItem('nickname') || ''))
+  if (!receiverName) return
+  const receiverPhone = prompt('收货人电话：')
+  if (!receiverPhone) return
+  const receiverAddress = prompt('收货地址：')
+  if (!receiverAddress) return
+  try {
+    const res = await createOrder({
+      items: [{ productId: product.value.id, quantity: qty }],
+      receiverName,
+      receiverPhone,
+      receiverAddress,
+      remark: ''
+    })
+    if (res && res.code === 200) {
+      showToast('下单成功，请前往订单页支付')
+      router.push('/orders')
+    } else {
+      showToast((res && res.mes) || '下单失败')
+    }
+  } catch (err) {
+    showToast('下单失败：' + ((err && err.message) || '网络错误'))
+  }
 }
 
 // 显示提示

@@ -65,11 +65,13 @@ api.interceptors.response.use(
  * @param {number} page - 页码（从1开始）
  * @param {number} size - 每页数量
  * @param {string} category - 分类名称（可选）
+ * @param {string} keyword - 搜索关键词（可选，模糊匹配商品名/描述）
  * @returns {Promise<{code, mes, data: {records, total, pages, current}}>}
  */
-export function getProductPage(page = 1, size = 12, category = '') {
+export function getProductPage(page = 1, size = 12, category = '', keyword = '') {
   const params = { page, size }
   if (category) params.category = category
+  if (keyword) params.keyword = keyword
   return api.get('/product/page', { params })
 }
 
@@ -222,6 +224,15 @@ export function recoverUser(id) {
   return api.put(`/admin/user/recover/${id}`)
 }
 
+/**
+ * 管理员为用户充值（模拟货币，增加余额）
+ * @param {number|string} userId - 用户ID
+ * @param {number} amount - 充值金额（元）
+ * @returns {Promise}
+ */
+export function chargeUserBalance(userId, amount) {
+  return api.post('/admin/user/charge', null, { params: { userId, amount } })
+}
 // ==================== 管理员商品 API ====================
 
 /**
