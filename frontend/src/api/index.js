@@ -233,6 +233,115 @@ export function recoverUser(id) {
 export function chargeUserBalance(userId, amount) {
   return api.post('/admin/user/charge', null, { params: { userId, amount } })
 }
+
+/**
+ * 用户申请充值（给自己充值，等待管理员处理）
+ * @param {number} amount - 申请充值金额
+ * @returns {Promise}
+ */
+export function applyRecharge(amount) {
+  return api.post('/user/recharge/apply', null, { params: { amount } })
+}
+// ==================== 用户地址 API ====================
+
+/**
+ * 获取当前用户的所有收货地址
+ * @returns {Promise}
+ */
+export function getUserAddresses() {
+  return api.get('/user/address/list')
+}
+
+/**
+ * 获取默认地址
+ * @returns {Promise}
+ */
+export function getDefaultAddress() {
+  return api.get('/user/address/default')
+}
+
+/**
+ * 新增收货地址
+ * @param {object} address - 地址信息 { receiverName, receiverPhone, receiverAddress, isDefault }
+ * @returns {Promise}
+ */
+export function addAddress(address) {
+  return api.post('/user/address/add', address)
+}
+
+/**
+ * 更新收货地址
+ * @param {object} address - 地址信息 { id, receiverName, receiverPhone, receiverAddress, isDefault }
+ * @returns {Promise}
+ */
+export function updateAddress(address) {
+  return api.put('/user/address/update', address)
+}
+
+/**
+ * 删除收货地址
+ * @param {number} id - 地址ID
+ * @returns {Promise}
+ */
+export function deleteAddress(id) {
+  return api.delete(`/user/address/delete/${id}`)
+}
+
+/**
+ * 设置默认地址
+ * @param {number} id - 地址ID
+ * @returns {Promise}
+ */
+export function setDefaultAddress(id) {
+  return api.put(`/user/address/default/${id}`)
+}
+// ==================== 用户充值申请 API ====================
+
+/**
+ * 用户提交充值申请
+ * @param {number} amount - 充值金额
+ * @returns {Promise}
+ */
+export function submitRecharge(amount) {
+  return api.post('/user/recharge/apply', null, { params: { amount } })
+}
+
+/**
+ * 查询当前用户的充值申请记录
+ * @returns {Promise}
+ */
+export function getRechargeRecords() {
+  return api.get('/user/recharge/records')
+}
+
+/**
+ * 管理员获取充值申请列表（分页）
+ * @param {number} page - 页码
+ * @param {number} size - 每页条数
+ * @returns {Promise}
+ */
+export function getAdminRechargeRequests(page, size) {
+  return api.get('/admin/recharge-requests', { params: { page, size } })
+}
+
+/**
+ * 管理员审核通过充值申请
+ * @param {number} id - 申请ID
+ * @returns {Promise}
+ */
+export function approveRechargeRequest(id) {
+  return api.post(`/admin/recharge-requests/${id}/approve`)
+}
+
+/**
+ * 管理员拒绝充值申请
+ * @param {number} id - 申请ID
+ * @param {string} reason - 拒绝原因（可选）
+ * @returns {Promise}
+ */
+export function rejectRechargeRequest(id, reason) {
+  return api.post(`/admin/recharge-requests/${id}/reject`, null, { params: { reason } })
+}
 // ==================== 管理员商品 API ====================
 
 /**
@@ -248,11 +357,13 @@ export function getAdminProducts(page = 1, size = 10) {
 // ==================== 管理员卖家 API ====================
 
 /**
- * 获取所有卖家列表
+ * 获取所有卖家列表（分页）
+ * @param {number} page
+ * @param {number} size
  * @returns {Promise}
  */
-export function getAdminSellers() {
-  return api.get('/admin/sellers')
+export function getAdminSellers(page = 1, size = 10) {
+  return api.get('/admin/sellers', { params: { page, size } })
 }
 
 // ==================== 商家商品 API ====================

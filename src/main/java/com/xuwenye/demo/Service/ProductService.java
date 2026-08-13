@@ -13,6 +13,7 @@ import com.xuwenye.demo.util.redis.RedisUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -31,6 +32,7 @@ public class ProductService {
     private final SellerMapper sellerMapper;
     private final RedisUtil redisUtil;
     private final RedisLockHelper redisLockHelper;
+    private final MQProducer mqProducer;
 
     // Redis缓存Key前缀
     private static final String PRODUCT_CACHE_PREFIX = "demo:product:";
@@ -44,12 +46,14 @@ public class ProductService {
                           ProductImageMapper productImageMapper,
                           SellerMapper sellerMapper,
                           RedisUtil redisUtil,
-                          RedisLockHelper redisLockHelper) {
+                          RedisLockHelper redisLockHelper,
+                          MQProducer mqProducer) {
         this.productMapper = productMapper;
         this.productImageMapper = productImageMapper;
         this.sellerMapper = sellerMapper;
         this.redisUtil = redisUtil;
         this.redisLockHelper = redisLockHelper;
+        this.mqProducer = mqProducer;
     }
 
     /**
@@ -190,10 +194,11 @@ public class ProductService {
     public boolean saveProduct(Product product) {
         boolean result = productMapper.insert(product) > 0;
         if (result) {
-            // 清除列表和分类缓存
-            clearProductListCaches();
-            // 清除详情缓存（如果之前有）
-            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + product.getId());
+            // 异步发送缓存刷新任务（不阻塞主流程）
+            sendProductCacheRefreshTask();
+            List<String> keys = new ArrayList<>();
+            keys.add(PRODUCT_DETAIL_CACHE_PREFIX + product.getId());
+            mqProducer.sendCacheRefreshTask("product", "delete", keys);
         }
         return result;
     }
@@ -211,12 +216,11 @@ public class ProductService {
     public boolean updateProduct(Product product) {
         boolean result = productMapper.updateById(product) > 0;
         if (result) {
-            // 清除详情缓存
-            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + product.getId());
-            // 清除列表和分类缓存
-            clearProductListCaches();
-            // 重新加载详情缓存
-            reloadProductDetail(product.getId());
+            // 异步发送缓存刷新任务（不阻塞主流程）
+            sendProductCacheRefreshTask();
+            List<String> keys = new ArrayList<>();
+            keys.add(PRODUCT_DETAIL_CACHE_PREFIX + product.getId());
+            mqProducer.sendCacheRefreshTask("product", "refresh", keys);
         }
         return result;
     }
@@ -232,13 +236,13 @@ public class ProductService {
      */
     @Transactional
     public boolean deleteProduct(Long id) {
-        Product product = productMapper.findProductById(id);
         boolean result = productMapper.deleteById(id) > 0;
-        if (result && product != null) {
-            // 清除详情缓存
-            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + id);
-            // 清除列表和分类缓存
-            clearProductListCaches();
+        if (result) {
+            // 异步发送缓存刷新任务
+            sendProductCacheRefreshTask();
+            List<String> keys = new ArrayList<>();
+            keys.add(PRODUCT_DETAIL_CACHE_PREFIX + id);
+            mqProducer.sendCacheRefreshTask("product", "delete", keys);
         }
         return result;
     }
@@ -257,10 +261,11 @@ public class ProductService {
         product.setStatus(1);
         boolean result = productMapper.updateById(product) > 0;
         if (result) {
-            // 清除所有商品列表和分类缓存
-            clearProductListCaches();
-            // 重新加载详情缓存
-            reloadProductDetail(id);
+            // 异步发送缓存刷新任务
+            sendProductCacheRefreshTask();
+            List<String> keys = new ArrayList<>();
+            keys.add(PRODUCT_DETAIL_CACHE_PREFIX + id);
+            mqProducer.sendCacheRefreshTask("product", "refresh", keys);
         }
         return result;
     }
@@ -279,10 +284,11 @@ public class ProductService {
         product.setStatus(0);
         boolean result = productMapper.updateById(product) > 0;
         if (result) {
-            // 清除所有商品列表和分类缓存
-            clearProductListCaches();
-            // 重新加载详情缓存
-            reloadProductDetail(id);
+            // 异步发送缓存刷新任务
+            sendProductCacheRefreshTask();
+            List<String> keys = new ArrayList<>();
+            keys.add(PRODUCT_DETAIL_CACHE_PREFIX + id);
+            mqProducer.sendCacheRefreshTask("product", "refresh", keys);
         }
         return result;
     }
@@ -323,9 +329,11 @@ public class ProductService {
             boolean result = productMapper.updateById(update) > 0;
 
             if (result) {
-                // 更新成功，清除相关缓存
-                redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + id);
-                clearProductListCaches();
+                // 更新成功，异步发送缓存刷新任务
+                sendProductCacheRefreshTask();
+                List<String> keys = new ArrayList<>();
+                keys.add(PRODUCT_DETAIL_CACHE_PREFIX + id);
+                mqProducer.sendCacheRefreshTask("product", "refresh", keys);
             }
 
             return result;
@@ -362,39 +370,39 @@ public class ProductService {
     public boolean deleteProductImage(Long imageId, Long productId) {
         boolean result = productImageMapper.deleteById(imageId) > 0;
         if (result) {
-            // 清除商品详情缓存
-            redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + productId);
+            // 异步发送缓存刷新任务
+            List<String> keys = new ArrayList<>();
+            keys.add(PRODUCT_DETAIL_CACHE_PREFIX + productId);
+            mqProducer.sendCacheRefreshTask("product", "delete", keys);
         }
         return result;
     }
 
     /**
-     * 清除所有商品列表和分类缓存
+     * 发送商品缓存刷新任务（异步，通过 MQ）
+     * 1.清除所有商品列表缓存
+     * 2.清除所有分类缓存
+     * 3.清除分页缓存
      * <p>
      * @author ZuiM
      */
-    private void clearProductListCaches() {
-        redisUtil.delete(PRODUCT_LIST_CACHE_KEY);
-        redisUtil.delete(ALL_CATEGORIES_CACHE_KEY);
+    private void sendProductCacheRefreshTask() {
+        List<String> keys = new ArrayList<>();
+        keys.add(PRODUCT_LIST_CACHE_KEY);
+        keys.add(ALL_CATEGORIES_CACHE_KEY);
         // 清除所有分类缓存
-        for (String category : new String[]{"手机配件", "电脑外设", "音频设备", "智能家居", "穿戴设备", "摄影器材", "其他"}) {
-            redisUtil.delete(PRODUCT_CATEGORY_CACHE_PREFIX + category);
-        }
-        // 清除分页缓存（含关键词搜索）
-        redisUtil.delete("demo:product:page:*");
-    }
-
-    /**
-     * 重新加载商品详情缓存
-     * <p>
-     * @author ZuiM
-     * @param id 商品ID
-     */
-    private void reloadProductDetail(Long id) {
-        Product product = productMapper.findProductById(id);
-        if (product != null) {
-            redisUtil.set(PRODUCT_DETAIL_CACHE_PREFIX + id, product);
-        }
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "手机配件");
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "电脑外设");
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "音频设备");
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "智能家居");
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "穿戴设备");
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "摄影器材");
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "其他");
+        // 清除分页缓存（模糊匹配）
+        keys.add("demo:product:page:*");
+        keys.add("demo:product:admin:page:*");
+        keys.add("demo:product:seller:*");
+        mqProducer.sendCacheRefreshTask("product", "clear", keys);
     }
 
     /**
@@ -553,9 +561,11 @@ public class ProductService {
             boolean result = productMapper.updateById(update) > 0;
 
             if (result) {
-                // 更新成功，清除相关缓存
-                redisUtil.delete(PRODUCT_DETAIL_CACHE_PREFIX + id);
-                clearProductListCaches();
+                // 更新成功，异步发送缓存刷新任务
+                sendProductCacheRefreshTask();
+                List<String> keys = new ArrayList<>();
+                keys.add(PRODUCT_DETAIL_CACHE_PREFIX + id);
+                mqProducer.sendCacheRefreshTask("product", "refresh", keys);
             }
 
             return result;

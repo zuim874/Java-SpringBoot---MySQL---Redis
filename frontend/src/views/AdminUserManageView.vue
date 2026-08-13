@@ -93,6 +93,40 @@
           </div>
         </div>
 
+        <!-- 用户余额充值 -->
+        <div class="section">
+          <h3 class="section-title">用户余额充值</h3>
+          <div class="operation-row">
+            <div class="form-group operation-input">
+              <label>目标用户 ID</label>
+              <div class="input-wrap">
+                <span class="input-icon">#</span>
+                <input
+                  v-model="targetUserId"
+                  type="number"
+                  placeholder="请输入用户ID"
+                />
+              </div>
+            </div>
+            <div class="form-group operation-input">
+              <label>充值金额</label>
+              <div class="input-wrap">
+                <span class="input-icon">💰</span>
+                <input
+                  v-model="chargeAmount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="请输入充值金额"
+                />
+              </div>
+            </div>
+            <div class="operation-btns">
+              <button class="op-btn op-btn--charge" :disabled="loading" @click="handleCharge">确认充值</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 消息提示 -->
         <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">
           {{ message }}
@@ -576,6 +610,14 @@ input[type="number"] {
 .op-btn--recover:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(43,138,62,0.30);
+}
+.op-btn--charge {
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
+  color: white;
+}
+.op-btn--charge:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(43,108,176,0.30);
 }
 
 /* ===== 消息提示 ===== */

@@ -66,8 +66,8 @@
                   <td>{{ user.nickname }}</td>
                   <td>{{ user.email || '-' }}</td>
                   <td>
-                    <span class="role-badge" :class="getRoleClass(user.roles)">
-                      {{ formatRole(user.roles) }}
+                    <span class="role-badge" :class="getRoleClass(user.userRole)">
+                      {{ formatRole(user.userRole) }}
                     </span>
                   </td>
                   <td>
@@ -98,6 +98,22 @@
             <button class="page-btn" :disabled="userPage <= 1" @click="userPage--; fetchUsers()">‹</button>
             <span class="page-info">{{ userPage }} / {{ userTotalPages }}</span>
             <button class="page-btn" :disabled="userPage >= userTotalPages" @click="userPage++; fetchUsers()">›</button>
+          </div>
+
+          <!-- 用户余额充值 -->
+          <div class="charge-section">
+            <h4 class="charge-title">用户余额充值</h4>
+            <div class="charge-row">
+              <div class="charge-field">
+                <label>用户 ID</label>
+                <input v-model="chargeUserId" type="number" min="1" placeholder="请输入用户ID" class="charge-input" />
+              </div>
+              <div class="charge-field">
+                <label>充值金额</label>
+                <input v-model="chargeAmount" type="number" step="0.01" min="0.01" placeholder="请输入金额" class="charge-input" />
+              </div>
+              <button class="charge-btn" :disabled="actionLoading" @click="handleCharge">确认充值</button>
+            </div>
           </div>
         </div>
 
@@ -186,19 +202,19 @@
               <tbody>
                 <tr v-for="order in orders" :key="order.id">
                   <td>{{ order.orderNo || order.id }}</td>
-                  <td>{{ order.username || order.userId }}</td>
+                  <td>{{ order.userId }}</td>
                   <td>¥{{ (order.totalAmount || 0).toFixed(2) }}</td>
                   <td>
-                    <span class="order-status" :class="'status--' + (order.status || 'UNKNOWN')">
+                    <span class="order-status" :class="getOrderStatusClass(order.status)">
                       {{ getOrderStatusText(order.status) }}
                     </span>
                   </td>
                   <td>{{ formatDate(order.createTime) }}</td>
                   <td class="action-cell">
                     <button class="action-btn" @click="handleShipOrder(order)"
-                            :disabled="actionLoading || order.status !== 'PAID'">发货</button>
+                            :disabled="actionLoading || order.status !== 1">发货</button>
                     <button class="action-btn action-btn--complete" @click="handleCompleteOrder(order)"
-                            :disabled="actionLoading || order.status !== 'SHIPPED'">完成</button>
+                            :disabled="actionLoading || order.status !== 2">完成</button>
                   </td>
                 </tr>
               </tbody>
@@ -249,7 +265,67 @@
           <div class="empty-state" v-else>
             <p>暂无卖家数据</p>
           </div>
+          <div class="pagination" v-if="sellerTotalPages > 1">
+            <button class="page-btn" :disabled="sellerPage <= 1" @click="sellerPage--; fetchSellers()">‹</button>
+            <span class="page-info">{{ sellerPage }} / {{ sellerTotalPages }}</span>
+            <button class="page-btn" :disabled="sellerPage >= sellerTotalPages" @click="sellerPage++; fetchSellers()">›</button>
+          </div>
           <button class="add-btn" @click="showSellerForm = true">新增卖家</button>
+        </div>
+
+        <!-- ===== 充值审核标签 ===== -->
+        <div v-if="activeTab === 'recharge'" class="section">
+          <h3 class="section-title">充值申请审核</h3>
+          <div class="table-loading" v-if="rechargeLoading">
+            <div class="loading-spinner"></div>
+            <p>加载充值申请...</p>
+          </div>
+          <div class="table-wrap" v-else-if="rechargeRequests.length > 0">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>用户名</th>
+                  <th>金额</th>
+                  <th>状态</th>
+                  <th>申请时间</th>
+                  <th>备注</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="req in rechargeRequests" :key="req.id">
+                  <td>{{ req.id }}</td>
+                  <td>{{ req.username }}</td>
+                  <td style="color:#2b6cb0;font-weight:700;">¥{{ req.amount.toFixed(2) }}</td>
+                  <td>
+                    <span :class="['status-badge',
+                      req.status === 0 ? 'status--pending' :
+                      req.status === 1 ? 'status--active' : 'status--disabled']">
+                      {{ req.status === 0 ? '待审核' : req.status === 1 ? '已通过' : '已拒绝' }}
+                    </span>
+                  </td>
+                  <td>{{ formatDate(req.createTime) }}</td>
+                  <td>{{ req.remark || '-' }}</td>
+                  <td class="action-cell">
+                    <template v-if="req.status === 0">
+                      <button class="action-btn action-btn--complete" @click="handleApproveRecharge(req.id)">通过</button>
+                      <button class="action-btn action-btn--delete" @click="handleRejectRecharge(req.id)">拒绝</button>
+                    </template>
+                    <span v-else style="color:#adb5bd;font-size:0.75rem;">已处理</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="empty-state" v-else-if="!rechargeLoading">
+            <p>暂无充值申请</p>
+          </div>
+          <div class="pagination" v-if="rechargeTotalPages > 1">
+            <button class="page-btn" :disabled="rechargePage <= 1" @click="rechargePage--; fetchRechargeRequests()">‹</button>
+            <span class="page-info">{{ rechargePage }} / {{ rechargeTotalPages }}</span>
+            <button class="page-btn" :disabled="rechargePage >= rechargeTotalPages" @click="rechargePage++; fetchRechargeRequests()">›</button>
+          </div>
         </div>
 
         <!-- 消息提示 -->
@@ -303,14 +379,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   getAdminUsers, toggleUserStatus as apiToggleUserStatus, deleteUser, recoverUser,
   getAdminProducts,
   getAdminOrders, shipOrder, completeOrder,
   getAdminSellers,
-  onshelfProduct, offshelfProduct
+  onshelfProduct, offshelfProduct,
+  chargeUserBalance,
+  getAdminRechargeRequests, approveRechargeRequest, rejectRechargeRequest
 } from '../api/index.js'
 
 const router = useRouter()
@@ -321,7 +399,8 @@ const tabs = [
   { key: 'users', label: '用户管理', icon: '👥' },
   { key: 'products', label: '商品管理', icon: '📦' },
   { key: 'orders', label: '订单管理', icon: '📋' },
-  { key: 'sellers', label: '卖家管理', icon: '🏪' }
+  { key: 'sellers', label: '卖家管理', icon: '🏪' },
+  { key: 'recharge', label: '充值审核', icon: '💰' }
 ]
 
 // ===== 通用状态 =====
@@ -403,6 +482,37 @@ async function handleRecoverUser(user) {
   }
 }
 
+// ===== 用户充值 =====
+const chargeUserId = ref('')
+const chargeAmount = ref('')
+
+async function handleCharge() {
+  if (!chargeUserId.value) {
+    showMessage('请先输入用户 ID', false)
+    return
+  }
+  const amount = Number(chargeAmount.value)
+  if (!amount || amount <= 0) {
+    showMessage('请输入有效的充值金额', false)
+    return
+  }
+  actionLoading.value = true
+  try {
+    const res = await chargeUserBalance(chargeUserId.value, amount)
+    if (res && res.code === 200) {
+      showMessage('充值成功', true)
+      chargeUserId.value = ''
+      chargeAmount.value = ''
+    } else {
+      showMessage(res?.mes || '充值失败', false)
+    }
+  } catch {
+    showMessage('网络错误', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 // ===== 商品管理 =====
 const products = ref([])
 const productsLoading = ref(false)
@@ -455,12 +565,12 @@ const orderTotalPages = ref(1)
 const orderStatusFilter = ref('')
 const orderStatusOptions = [
   { value: '', label: '全部' },
-  { value: 'PENDING', label: '待支付' },
-  { value: 'PAID', label: '已支付' },
-  { value: 'SHIPPED', label: '已发货' },
-  { value: 'COMPLETED', label: '已完成' },
-  { value: 'CANCELLED', label: '已取消' },
-  { value: 'REFUNDING', label: '退款中' }
+  { value: 0, label: '待支付' },
+  { value: 1, label: '已支付' },
+  { value: 2, label: '已发货' },
+  { value: 3, label: '已完成' },
+  { value: 4, label: '已取消' },
+  { value: 5, label: '退款中' }
 ]
 
 async function fetchOrders() {
@@ -515,6 +625,8 @@ async function handleCompleteOrder(order) {
 // ===== 卖家管理 =====
 const sellers = ref([])
 const sellersLoading = ref(false)
+const sellerPage = ref(1)
+const sellerTotalPages = ref(1)
 const showSellerForm = ref(false)
 const editingSeller = ref(null)
 const sellerForm = ref({ sellerName: '', address: '', sellerContact: '' })
@@ -522,9 +634,10 @@ const sellerForm = ref({ sellerName: '', address: '', sellerContact: '' })
 async function fetchSellers() {
   sellersLoading.value = true
   try {
-    const res = await getAdminSellers()
+    const res = await getAdminSellers(sellerPage.value, 10)
     if (res && res.code === 200 && res.data) {
-      sellers.value = Array.isArray(res.data) ? res.data : []
+      sellers.value = res.data.records || []
+      sellerTotalPages.value = res.data.pages || 1
     }
   } catch (e) {
     console.error('获取卖家列表失败:', e)
@@ -562,6 +675,58 @@ function handleDeleteSeller(seller) {
   showMessage('卖家删除功能依赖后端接口', true)
 }
 
+// ===== 充值审核管理 =====
+const rechargeRequests = ref([])
+const rechargeLoading = ref(false)
+const rechargePage = ref(1)
+const rechargeTotalPages = ref(1)
+
+async function fetchRechargeRequests() {
+  rechargeLoading.value = true
+  try {
+    const res = await getAdminRechargeRequests(rechargePage.value, 10)
+    if (res && res.code === 200 && res.data) {
+      rechargeRequests.value = res.data.records || []
+      rechargeTotalPages.value = res.data.pages || 1
+    }
+  } catch (e) {
+    console.error('获取充值申请列表失败:', e)
+  } finally {
+    rechargeLoading.value = false
+  }
+}
+
+async function handleApproveRecharge(id) {
+  if (!confirm('确定要通过该充值申请吗？通过后余额将自动增加到用户账户')) return
+  try {
+    const res = await approveRechargeRequest(id)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '已通过该充值申请', true)
+      fetchRechargeRequests()
+    } else {
+      showMessage((res && res.mes) || '操作失败', false)
+    }
+  } catch (e) {
+    showMessage('操作失败', false)
+  }
+}
+
+async function handleRejectRecharge(id) {
+  const reason = prompt('请输入拒绝原因（可选）：', '')
+  if (reason === null) return
+  try {
+    const res = await rejectRechargeRequest(id, reason)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '已拒绝该充值申请', true)
+      fetchRechargeRequests()
+    } else {
+      showMessage((res && res.mes) || '操作失败', false)
+    }
+  } catch (e) {
+    showMessage('操作失败', false)
+  }
+}
+
 // ===== 工具函数 =====
 function formatRole(roles) {
   if (!roles) return '用户'
@@ -579,10 +744,18 @@ function getRoleClass(roles) {
 
 function getOrderStatusText(status) {
   const map = {
-    'PENDING': '待支付', 'PAID': '已支付', 'SHIPPED': '已发货',
-    'COMPLETED': '已完成', 'CANCELLED': '已取消', 'REFUNDING': '退款中'
+    0: '待支付', 1: '已支付', 2: '已发货',
+    3: '已完成', 4: '已取消', 5: '已退款'
   }
-  return map[status] || status || '未知'
+  return map[status] !== undefined ? map[status] : '未知'
+}
+
+function getOrderStatusClass(status) {
+  const map = {
+    0: 'status--pending', 1: 'status--paid', 2: 'status--shipped',
+    3: 'status--completed', 4: 'status--cancelled', 5: 'status--refunded'
+  }
+  return map[status] || 'status--unknown'
 }
 
 function formatDate(dateStr) {
@@ -614,6 +787,12 @@ onMounted(() => {
   fetchProducts()
   fetchOrders()
   fetchSellers()
+})
+
+watch(activeTab, (tab) => {
+  if (tab === 'recharge') {
+    fetchRechargeRequests()
+  }
 })
 </script>
 
@@ -759,6 +938,7 @@ onMounted(() => {
 }
 .status--active { background: rgba(43,138,62,0.08); color: #2b8a3e; }
 .status--disabled { background: rgba(201,42,42,0.08); color: #c92a2a; }
+.status--pending { background: rgba(255,193,7,0.1); color: #e67700; }
 
 /* ===== 角色标签 ===== */
 .role-badge {
@@ -774,29 +954,30 @@ onMounted(() => {
   display: inline-block; padding: 3px 10px; border-radius: 20px;
   font-size: 0.75rem; font-weight: 600;
 }
-.order-status.status--PENDING { background: rgba(240,140,0,0.08); color: #f08c00; }
-.order-status.status--PAID { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.order-status.status--SHIPPED { background: rgba(124,58,237,0.08); color: #7c3aed; }
-.order-status.status--COMPLETED { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.order-status.status--CANCELLED { background: rgba(134,142,150,0.08); color: #868e96; }
-.order-status.status--REFUNDING { background: rgba(201,42,42,0.08); color: #c92a2a; }
+.order-status.status--pending { background: rgba(240,140,0,0.08); color: #f08c00; }
+.order-status.status--paid { background: rgba(43,108,176,0.08); color: #2b6cb0; }
+.order-status.status--shipped { background: rgba(124,58,237,0.08); color: #7c3aed; }
+.order-status.status--completed { background: rgba(43,138,62,0.08); color: #2b8a3e; }
+.order-status.status--cancelled { background: rgba(134,142,150,0.08); color: #868e96; }
+.order-status.status--refunded { background: rgba(201,42,42,0.08); color: #c92a2a; }
 
 /* ===== 操作按钮 ===== */
 .action-btn {
-  padding: 5px 12px; border: 1px solid #dee2e6; border-radius: 6px;
+  padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 8px;
   background: transparent; color: #495057; font-size: 0.75rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
-  white-space: nowrap;
+  cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  font-family: 'DM Sans', sans-serif; white-space: nowrap;
 }
-.action-btn:hover:not(:disabled) { border-color: #4a9eff; color: #4a9eff; }
+.action-btn:hover:not(:disabled) { transform: translateY(-1px); }
 .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.action-btn--toggle { color: #2b6cb0; }
-.action-btn--delete { color: #c92a2a; }
-.action-btn--delete:hover:not(:disabled) { border-color: #c92a2a; }
-.action-btn--recover { color: #2b8a3e; }
-.action-btn--recover:hover:not(:disabled) { border-color: #2b8a3e; }
-.action-btn--complete { color: #2b8a3e; }
-.action-btn--complete:hover:not(:disabled) { border-color: #2b8a3e; }
+.action-btn--toggle { color: #2b6cb0; border-color: rgba(43,108,176,0.2); }
+.action-btn--toggle:hover:not(:disabled) { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
+.action-btn--delete { color: #c92a2a; border-color: rgba(201,42,42,0.2); }
+.action-btn--delete:hover:not(:disabled) { border-color: #c92a2a; background: rgba(201,42,42,0.04); }
+.action-btn--recover { color: #2b8a3e; border-color: rgba(43,138,62,0.2); }
+.action-btn--recover:hover:not(:disabled) { border-color: #2b8a3e; background: rgba(43,138,62,0.04); }
+.action-btn--complete { color: #2b8a3e; border-color: rgba(43,138,62,0.2); }
+.action-btn--complete:hover:not(:disabled) { border-color: #2b8a3e; background: rgba(43,138,62,0.04); }
 
 /* ===== 筛选标签 ===== */
 .order-status-filter {
@@ -915,6 +1096,79 @@ onMounted(() => {
 }
 .admin-footer span { font-size: 0.7rem; color: #adb5bd; }
 
+/* ===== 充值区域 ===== */
+.charge-section {
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: rgba(43,108,176,0.03);
+  border: 1px solid rgba(43,108,176,0.10);
+  border-radius: 12px;
+}
+.charge-title {
+  margin: 0 0 14px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2b6cb0;
+  letter-spacing: 0.02em;
+}
+.charge-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.charge-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.charge-field label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #868e96;
+  letter-spacing: 0.02em;
+}
+.charge-input {
+  padding: 10px 14px;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  color: #212529;
+  font-size: 0.9rem;
+  width: 140px;
+  outline: none;
+  transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.charge-input:focus {
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 3px rgba(74,158,255,0.10);
+}
+.charge-input::placeholder {
+  color: #adb5bd;
+}
+.charge-btn {
+  padding: 10px 28px;
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  white-space: nowrap;
+  font-family: 'DM Sans', sans-serif;
+}
+.charge-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(43,108,176,0.30);
+}
+.charge-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .nav { padding: 0 24px; }
@@ -922,5 +1176,11 @@ onMounted(() => {
   .tabs { gap: 6px; }
   .tab-btn { padding: 8px 14px; font-size: 0.8rem; }
   .tab-label { display: none; }
+  .action-cell { flex-direction: column; gap: 4px; }
+  .action-cell .action-btn { width: 100%; text-align: center; }
+  .charge-row { flex-direction: column; align-items: stretch; }
+  .charge-field { width: 100%; }
+  .charge-input { width: 100%; }
+  .charge-btn { width: 100%; text-align: center; }
 }
 </style>

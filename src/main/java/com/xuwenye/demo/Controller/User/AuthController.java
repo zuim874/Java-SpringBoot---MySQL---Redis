@@ -3,6 +3,7 @@ package com.xuwenye.demo.Controller.User;
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.MQProducer;
 import com.xuwenye.demo.Service.UserService;
+import com.xuwenye.demo.annotation.OperationLog;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.common.Result;
 import com.xuwenye.demo.dto.response.LoginResponse;
@@ -80,6 +81,7 @@ public class AuthController {
      * @param password 密码
      * @return Result 200 返回 token + nickname；400 账号或密码错误；403 账号禁用
      */
+    @OperationLog("用户登录")
     @RateLimit(window = 60, maxRequests = 5, message = "登录尝试过多，请稍后再试")
     @PostMapping("/login")
     public Result<?> login(@RequestParam String username,
@@ -117,6 +119,7 @@ public class AuthController {
      * @param code 注册验证码
      * @return Result 200 注册成功；400 参数/验证码错误；500 注册失败
      */
+    @OperationLog("用户注册")
     @RateLimit(window = 60, maxRequests = 3, message = "注册尝试过多，请稍后再试")
     @PostMapping("/register")
     public Result<?> register(@RequestParam String username,

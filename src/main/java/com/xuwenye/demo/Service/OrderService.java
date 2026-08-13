@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -35,6 +36,7 @@ public class OrderService {
     private final RedisUtil redisUtil;
     private final RedisLockHelper redisLockHelper;
     private final UserService userService;
+    private final MQProducer mqProducer;
 
     // Redis 缓存 Key 前缀
     private static final String ORDER_CACHE_PREFIX = "demo:order:";
@@ -47,13 +49,15 @@ public class OrderService {
                         ProductService productService,
                         RedisUtil redisUtil,
                         RedisLockHelper redisLockHelper,
-                        UserService userService) {
+                        UserService userService,
+                        MQProducer mqProducer) {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.productService = productService;
         this.redisUtil = redisUtil;
         this.redisLockHelper = redisLockHelper;
         this.userService = userService;
+        this.mqProducer = mqProducer;
     }
 
     /**
@@ -144,8 +148,9 @@ public class OrderService {
             orderItemMapper.insert(orderItem);
         }
 
-        // 5. 清除相关缓存
-        clearOrderCaches(order.getId(), userId);
+        // 5. 异步发送缓存刷新任务和订单创建消息
+        sendOrderCacheRefreshTask(order.getId(), userId);
+        mqProducer.sendOrderTask(order.getId(), "PROCESS");
 
         return order;
     }
@@ -182,7 +187,9 @@ public class OrderService {
         boolean result = orderMapper.updateById(update) > 0;
 
         if (result) {
-            clearOrderCaches(orderId, order.getUserId());
+            // 异步发送缓存刷新任务和订单支付消息
+            sendOrderCacheRefreshTask(orderId, order.getUserId());
+            mqProducer.sendOrderTask(orderId, "PAYMENT");
         }
         return result;
     }
@@ -231,7 +238,9 @@ public class OrderService {
         boolean result = orderMapper.updateById(update) > 0;
 
         if (result) {
-            clearOrderCaches(orderId, order.getUserId());
+            // 异步发送缓存刷新任务和订单取消消息
+            sendOrderCacheRefreshTask(orderId, order.getUserId());
+            mqProducer.sendOrderTask(orderId, "CANCEL");
         }
         return result;
     }
@@ -278,7 +287,9 @@ public class OrderService {
         boolean result = orderMapper.updateById(update) > 0;
 
         if (result) {
-            clearOrderCaches(orderId, order.getUserId());
+            // 异步发送缓存刷新任务和订单退款消息
+            sendOrderCacheRefreshTask(orderId, order.getUserId());
+            mqProducer.sendOrderTask(orderId, "REFUND");
         }
         return result;
     }
@@ -290,10 +301,24 @@ public class OrderService {
      * @param userId 用户ID
      * @param page 页码
      * @param size 每页条数
+     * @param status 订单状态筛选（可选，null=不筛选）
      * @return Page<Order> 分页订单列表
      */
     @SuppressWarnings("unchecked")
-    public Page<Order> getUserOrders(Long userId, int page, int size) {
+    public Page<Order> getUserOrders(Long userId, int page, int size, Integer status) {
+        // 带状态筛选时不走缓存
+        if (status != null) {
+            Page<Order> pageObj = new Page<>(page, size);
+            QueryWrapper<Order> wrapper = new QueryWrapper<>();
+            wrapper.eq("user_id", userId)
+                    .eq("is_deleted", 0)
+                    .eq("status", status)
+                    .orderByDesc("create_time");
+            Page<Order> result = orderMapper.selectPage(pageObj, wrapper);
+            return result;
+        }
+
+        // 无状态筛选时走缓存
         String cacheKey = ORDER_USER_LIST_CACHE_PREFIX + userId + ":page:" + page + ":" + size;
 
         // 第 1 步：先从 Redis 查
@@ -406,7 +431,9 @@ public class OrderService {
         boolean result = orderMapper.updateById(update) > 0;
 
         if (result) {
-            clearOrderCaches(orderId, order.getUserId());
+            // 异步发送缓存刷新任务和订单发货消息
+            sendOrderCacheRefreshTask(orderId, order.getUserId());
+            mqProducer.sendOrderTask(orderId, "SHIP");
         }
         return result;
     }
@@ -438,7 +465,9 @@ public class OrderService {
         boolean result = orderMapper.updateById(update) > 0;
 
         if (result) {
-            clearOrderCaches(orderId, order.getUserId());
+            // 异步发送缓存刷新任务和订单完成消息
+            sendOrderCacheRefreshTask(orderId, order.getUserId());
+            mqProducer.sendOrderTask(orderId, "COMPLETE");
         }
         return result;
     }
@@ -480,22 +509,25 @@ public class OrderService {
     }
 
     /**
-     * 清除订单相关缓存
+     * 发送订单缓存刷新任务（异步，通过 MQ）
+     * 1.清除订单详情缓存
+     * 2.清除订单项缓存
+     * 3.清除用户订单列表缓存
+     * 4.清除管理员订单列表缓存
      * <p>
      * @author ZuiM
      * @param orderId 订单ID
      * @param userId 用户ID
      */
-    private void clearOrderCaches(Long orderId, Long userId) {
-        // 清除订单详情缓存
-        redisUtil.delete(ORDER_DETAIL_CACHE_PREFIX + orderId);
-        redisUtil.delete(ORDER_DETAIL_CACHE_PREFIX + "items:" + orderId);
-        // 清除用户订单列表缓存（模糊匹配，删除所有该用户的订单列表缓存）
-        String userOrdersPattern = ORDER_USER_LIST_CACHE_PREFIX + userId + ":page:*";
-        redisUtil.delete(userOrdersPattern);
-        // 清除管理员订单列表缓存
-        String adminListPattern = ORDER_ADMIN_LIST_CACHE_PREFIX + "*";
-        redisUtil.delete(adminListPattern);
+    private void sendOrderCacheRefreshTask(Long orderId, Long userId) {
+        List<String> keys = new ArrayList<>();
+        keys.add(ORDER_DETAIL_CACHE_PREFIX + orderId);
+        keys.add(ORDER_DETAIL_CACHE_PREFIX + "items:" + orderId);
+        // 用户订单列表使用模糊匹配
+        keys.add(ORDER_USER_LIST_CACHE_PREFIX + userId + ":page:*");
+        // 管理员订单列表使用模糊匹配
+        keys.add(ORDER_ADMIN_LIST_CACHE_PREFIX + "*");
+        mqProducer.sendCacheRefreshTask("order", "clear", keys);
     }
 
     /**

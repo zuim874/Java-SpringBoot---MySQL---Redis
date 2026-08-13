@@ -49,7 +49,7 @@
                 <span class="step-label">{{ getOrderStatusText(order.status) }}</span>
               </div>
             </div>
-            <div class="status-badge-large" :class="'status--' + (order.status || 'UNKNOWN')">
+            <div class="status-badge-large" :class="getOrderStatusClass(order.status)">
               {{ getOrderStatusText(order.status) }}
             </div>
           </div>
@@ -81,7 +81,7 @@
               </div>
               <div class="summary-row">
                 <span class="summary-label">订单状态</span>
-                <span class="summary-value status-value" :class="'status--' + (order.status || 'UNKNOWN')">
+                <span class="summary-value status-value" :class="getOrderStatusClass(order.status)">
                   {{ getOrderStatusText(order.status) }}
                 </span>
               </div>
@@ -105,27 +105,27 @@
           </div>
 
           <!-- 收货地址 -->
-          <div class="section" v-if="order.address">
+          <div class="section" v-if="order.receiverAddress || order.receiverName">
             <h3 class="section-title">收货信息</h3>
             <div class="address-card">
-              <p class="address-name">{{ order.consignee || order.address.consignee }}</p>
-              <p class="address-phone">{{ order.phone || order.address.phone }}</p>
-              <p class="address-detail">{{ order.addressDetail || order.address.addressDetail || order.address }}</p>
+              <p class="address-name">{{ order.receiverName }}</p>
+              <p class="address-phone">{{ order.receiverPhone }}</p>
+              <p class="address-detail">{{ order.receiverAddress }}</p>
             </div>
           </div>
 
           <!-- 操作按钮 -->
           <div class="action-section">
             <button class="action-btn action-btn--primary" @click="handlePay"
-                    v-if="order.status === 'PENDING'" :disabled="actionLoading">
+                    v-if="order.status === 0" :disabled="actionLoading">
               立即支付
             </button>
             <button class="action-btn action-btn--cancel" @click="handleCancel"
-                    v-if="order.status === 'PENDING'" :disabled="actionLoading">
+                    v-if="order.status === 0" :disabled="actionLoading">
               取消订单
             </button>
             <button class="action-btn action-btn--refund" @click="handleRefund"
-                    v-if="order.status === 'PAID' || order.status === 'SHIPPED'" :disabled="actionLoading">
+                    v-if="order.status === 1 || order.status === 2" :disabled="actionLoading">
               申请退款
             </button>
             <button class="action-btn action-btn--outline" @click="goBack">
@@ -248,10 +248,18 @@ async function handleRefund() {
  */
 function getOrderStatusText(status) {
   const map = {
-    'PENDING': '待支付', 'PAID': '已支付', 'SHIPPED': '已发货',
-    'COMPLETED': '已完成', 'CANCELLED': '已取消', 'REFUNDING': '退款中'
+    0: '待支付', 1: '已支付', 2: '已发货',
+    3: '已完成', 4: '已取消', 5: '已退款'
   }
-  return map[status] || status || '未知'
+  return map[status] !== undefined ? map[status] : '未知'
+}
+
+function getOrderStatusClass(status) {
+  const map = {
+    0: 'status--pending', 1: 'status--paid', 2: 'status--shipped',
+    3: 'status--completed', 4: 'status--cancelled', 5: 'status--refunded'
+  }
+  return map[status] || 'status--unknown'
 }
 
 /**
@@ -359,12 +367,12 @@ onMounted(() => {
 .status-badge-large {
   padding: 8px 20px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
 }
-.status-badge-large.status--PENDING { background: rgba(240,140,0,0.1); color: #f08c00; }
-.status-badge-large.status--PAID { background: rgba(43,108,176,0.1); color: #2b6cb0; }
-.status-badge-large.status--SHIPPED { background: rgba(124,58,237,0.1); color: #7c3aed; }
-.status-badge-large.status--COMPLETED { background: rgba(43,138,62,0.1); color: #2b8a3e; }
-.status-badge-large.status--CANCELLED { background: rgba(134,142,150,0.1); color: #868e96; }
-.status-badge-large.status--REFUNDING { background: rgba(201,42,42,0.1); color: #c92a2a; }
+.status-badge-large.status--pending { background: rgba(240,140,0,0.1); color: #f08c00; }
+.status-badge-large.status--paid { background: rgba(43,108,176,0.1); color: #2b6cb0; }
+.status-badge-large.status--shipped { background: rgba(124,58,237,0.1); color: #7c3aed; }
+.status-badge-large.status--completed { background: rgba(43,138,62,0.1); color: #2b8a3e; }
+.status-badge-large.status--cancelled { background: rgba(134,142,150,0.1); color: #868e96; }
+.status-badge-large.status--refunded { background: rgba(201,42,42,0.1); color: #c92a2a; }
 
 /* ===== 分区 ===== */
 .section { margin-bottom: 24px; }
@@ -397,12 +405,12 @@ onMounted(() => {
 .summary-label { font-size: 0.85rem; color: #868e96; }
 .summary-value { font-size: 0.9rem; font-weight: 600; color: #212529; }
 .status-value { padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; }
-.status-value.status--PENDING { background: rgba(240,140,0,0.08); color: #f08c00; }
-.status-value.status--PAID { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.status-value.status--SHIPPED { background: rgba(124,58,237,0.08); color: #7c3aed; }
-.status-value.status--COMPLETED { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.status-value.status--CANCELLED { background: rgba(134,142,150,0.08); color: #868e96; }
-.status-value.status--REFUNDING { background: rgba(201,42,42,0.08); color: #c92a2a; }
+.status-value.status--pending { background: rgba(240,140,0,0.08); color: #f08c00; }
+.status-value.status--paid { background: rgba(43,108,176,0.08); color: #2b6cb0; }
+.status-value.status--shipped { background: rgba(124,58,237,0.08); color: #7c3aed; }
+.status-value.status--completed { background: rgba(43,138,62,0.08); color: #2b8a3e; }
+.status-value.status--cancelled { background: rgba(134,142,150,0.08); color: #868e96; }
+.status-value.status--refunded { background: rgba(201,42,42,0.08); color: #c92a2a; }
 
 /* ===== 收货地址 ===== */
 .address-card {

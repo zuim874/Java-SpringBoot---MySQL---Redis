@@ -58,6 +58,13 @@
               <button class="info-edit-btn" @click="openChangeEmail" title="换绑邮箱">✏️</button>
             </div>
           </div>
+          <div class="info-divider"></div>
+          <div class="info-row">
+            <div class="info-label">余额</div>
+            <div class="info-value">
+              <span class="balance-amount">¥{{ (balance || 0).toFixed(2) }}</span>
+            </div>
+          </div>
         </div>
 
         <!-- 账号操作区 -->
@@ -76,6 +83,14 @@
               <span class="edit-profile-btn-icon">🔒</span>
               <span>修改密码</span>
             </button>
+            <button class="edit-profile-btn edit-profile-btn--recharge" @click="openRecharge">
+              <span class="edit-profile-btn-icon">💰</span>
+              <span>申请充值</span>
+            </button>
+            <button class="edit-profile-btn" @click="openAddressManager">
+              <span class="edit-profile-btn-icon">📍</span>
+              <span>地址管理</span>
+            </button>
           </div>
           <button class="delete-btn" @click="confirmDelete">
             <span class="delete-btn-icon">⚠️</span>
@@ -90,7 +105,26 @@
       </div>
     </div>
 
-    <!-- 确认注销弹窗 -->
+    <!-- 充值记录 -->
+    <div class="recharge-records" v-if="rechargeRecords.length > 0">
+      <h3 class="records-title">充值记录</h3>
+      <div class="records-list">
+        <div v-for="record in rechargeRecords" :key="record.id" class="record-item">
+          <div class="record-info">
+            <span class="record-amount">¥{{ record.amount.toFixed(2) }}</span>
+            <span :class="['record-status', 'record-status--' + record.status]">
+              {{ record.status === 0 ? '待审核' : record.status === 1 ? '已通过' : '已拒绝' }}
+            </span>
+          </div>
+          <div class="record-time">
+            <span>{{ record.createTime }}</span>
+            <span v-if="record.remark" class="record-remark">{{ record.remark }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 修改密码弹窗 -->
     <Teleport to="body">
       <div v-if="showConfirm" class="modal-overlay" @click.self="showConfirm = false">
         <div class="modal-card">
@@ -246,6 +280,108 @@
       </div>
     </Teleport>
 
+    <!-- 申请充值弹窗 -->
+    <Teleport to="body">
+      <div v-if="showRecharge" class="modal-overlay" @click.self="showRecharge = false">
+        <div class="modal-card">
+          <div class="modal-icon">💰</div>
+          <h3 class="modal-title">申请充值</h3>
+          <p class="modal-desc">充值金额将直接添加到您的账户余额</p>
+          <div class="modal-form">
+            <div class="modal-field-row">
+              <label>当前余额</label>
+              <div class="modal-field">
+                <input type="text" :value="'¥' + (balance || 0).toFixed(2)" disabled />
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>充值金额（元）</label>
+              <div class="modal-field">
+                <input v-model="rechargeAmount" type="number" min="0.01" step="0.01" placeholder="请输入充值金额，最低 0.01 元" />
+              </div>
+            </div>
+          </div>
+          <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
+          <div class="modal-actions">
+            <button class="modal-btn modal-btn--cancel" @click="showRecharge = false">取消</button>
+            <button class="modal-btn modal-btn--confirm modal-btn--blue" @click="handleSubmitRecharge" :disabled="recharging">
+              <span v-if="recharging" class="btn-loading"></span>
+              <span v-else>确认充值</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 地址管理弹窗 -->
+    <Teleport to="body">
+      <div v-if="showAddressManager" class="modal-overlay" @click.self="closeAddressManager">
+        <div class="address-manager-modal">
+          <div class="modal-header">
+            <div class="modal-icon">📍</div>
+            <h3 class="modal-title">收货地址管理</h3>
+            <button class="modal-close" @click="closeAddressManager">✕</button>
+          </div>
+
+          <!-- 地址列表 -->
+          <div class="address-list" v-if="addresses.length > 0">
+            <div v-for="addr in addresses" :key="addr.id" class="address-card"
+                 :class="{ 'address-card--default': addr.isDefault === 1 }">
+              <div class="address-card-header">
+                <div class="address-card-info">
+                  <span class="address-card-name">{{ addr.receiverName }}</span>
+                  <span class="address-card-phone">{{ addr.receiverPhone }}</span>
+                  <span class="address-card-tag" v-if="addr.isDefault === 1">默认</span>
+                </div>
+                <div class="address-card-actions">
+                  <button class="addr-btn addr-btn--edit" @click.stop="editAddress(addr)">编辑</button>
+                  <button class="addr-btn addr-btn--default" @click.stop="setAddrDefault(addr.id)"
+                          :disabled="addr.isDefault === 1">设为默认</button>
+                  <button class="addr-btn addr-btn--delete" @click.stop="deleteAddr(addr.id)">删除</button>
+                </div>
+              </div>
+              <p class="address-card-detail">{{ addr.receiverAddress }}</p>
+            </div>
+          </div>
+
+          <div class="empty-state" v-if="addresses.length === 0 && !loadingAddresses">
+            <span>暂无保存的地址</span>
+          </div>
+
+          <!-- 添加/编辑地址 -->
+          <div class="address-form-section">
+            <h4 class="section-title">{{ editingAddress ? '编辑地址' : '新增地址' }}</h4>
+            <div class="address-form-fields">
+              <div class="form-field">
+                <label>收货人姓名</label>
+                <input v-model="formAddr.receiverName" placeholder="请输入收货人姓名" />
+              </div>
+              <div class="form-field">
+                <label>收货人电话</label>
+                <input v-model="formAddr.receiverPhone" placeholder="请输入联系电话" />
+              </div>
+              <div class="form-field form-field--full">
+                <label>详细地址</label>
+                <input v-model="formAddr.receiverAddress" placeholder="如：XX省XX市XX区XX路XX号" />
+              </div>
+              <label class="default-check">
+                <input type="checkbox" v-model="formAddr.isDefault" />
+                <span>设为默认收货地址</span>
+              </label>
+            </div>
+            <p v-if="addressMsg" :class="['msg', addressMsgSuccess ? 'msg--success' : 'msg--error']">{{ addressMsg }}</p>
+            <div class="form-actions">
+              <button class="form-btn form-btn--cancel" @click="clearForm">清空</button>
+              <button class="form-btn form-btn--confirm" @click="saveAddress" :disabled="saving">
+                <span v-if="saving" class="btn-loading"></span>
+                <span v-else>{{ editingAddress ? '保存修改' : '添加地址' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- 底部版权 -->
     <div class="profile-footer">
       <span>© 2026 ZuiMShop. All rights reserved.</span>
@@ -257,6 +393,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
+import { submitRecharge, getRechargeRecords, getUserAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress } from '../api/index.js'
 
 const router = useRouter()
 
@@ -264,6 +401,7 @@ const nickname = ref(localStorage.getItem('nickname') || '')
 const username = ref(localStorage.getItem('username') || '')
 const email = ref(localStorage.getItem('email') || '')
 const avatar = ref('')
+const balance = ref(0)
 const message = ref('')
 const success = ref(false)
 const showConfirm = ref(false)
@@ -298,6 +436,27 @@ const showNewPwd = ref(false)
 const showNewPwdCheck = ref(false)
 const changingPassword = ref(false)
 
+// 地址管理
+const showAddressManager = ref(false)
+const addresses = ref([])
+const loadingAddresses = ref(false)
+const editingAddress = ref(null)
+const saving = ref(false)
+const addressMsg = ref('')
+const addressMsgSuccess = ref(false)
+const formAddr = ref({
+  receiverName: '',
+  receiverPhone: '',
+  receiverAddress: '',
+  isDefault: 0
+})
+
+// 申请充值
+const showRecharge = ref(false)
+const rechargeAmount = ref('')
+const recharging = ref(false)
+const rechargeRecords = ref([])
+
 // 注销验证码
 const deleteCode = ref('')
 const deleteCodeSending = ref(false)
@@ -326,11 +485,20 @@ onMounted(async () => {
       if (u.nickname) nickname.value = u.nickname
       if (u.avatar) avatar.value = u.avatar
       email.value = u.email || ''
-      avatar.value = u.avatar || ''
+      balance.value = u.balance || 0
       avatar.value = u.avatar || ''
     }
   } catch (err) {
     // 拉取失败时保留 localStorage 中的缓存信息
+  }
+  // 加载充值记录
+  try {
+    const records = await getRechargeRecords()
+    if (records && records.code === 200) {
+      rechargeRecords.value = records.data || []
+    }
+  } catch {
+    // 充值记录加载失败不影响页面
   }
 })
 
@@ -350,6 +518,177 @@ function handleLogout() {
   localStorage.removeItem('token')
   localStorage.removeItem('nickname')
   router.push('/login')
+}
+
+// ==================== 申请充值 ====================
+function openRecharge() {
+  rechargeAmount.value = ''
+  showRecharge.value = true
+  message.value = ''
+}
+
+async function handleSubmitRecharge() {
+  const amount = parseFloat(rechargeAmount.value)
+  if (!amount || amount <= 0) {
+    message.value = '请输入有效的充值金额'
+    success.value = false
+    return
+  }
+  if (amount > 100000) {
+    message.value = '单次充值金额不能超过 100,000 元'
+    success.value = false
+    return
+  }
+
+  recharging.value = true
+  message.value = ''
+  try {
+    const data = await submitRecharge(amount)
+    if (data && data.code === 200) {
+      success.value = true
+      message.value = '充值申请已提交，请等待管理员审核'
+      // 刷新充值记录
+      try {
+        const records = await getRechargeRecords()
+        if (records && records.code === 200) {
+          rechargeRecords.value = records.data || []
+        }
+      } catch {
+        // ignore
+      }
+      setTimeout(() => { showRecharge.value = false }, 1500)
+    } else {
+      success.value = false
+      message.value = data && data.mes ? data.mes : '提交失败，请稍后重试'
+    }
+  } catch (err) {
+    success.value = false
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+  } finally {
+    recharging.value = false
+  }
+}
+
+// ==================== 地址管理 ====================
+async function openAddressManager() {
+  showAddressManager.value = true
+  addressMsg.value = ''
+  clearForm()
+  loadingAddresses.value = true
+  try {
+    const res = await getUserAddresses()
+    if (res && res.code === 200) {
+      addresses.value = res.data || []
+    }
+  } catch {
+    addresses.value = []
+  } finally {
+    loadingAddresses.value = false
+  }
+}
+
+function closeAddressManager() {
+  showAddressManager.value = false
+}
+
+function clearForm() {
+  editingAddress.value = null
+  formAddr.value = { receiverName: '', receiverPhone: '', receiverAddress: '', isDefault: 0 }
+  addressMsg.value = ''
+}
+
+function editAddress(addr) {
+  editingAddress.value = addr
+  formAddr.value = {
+    receiverName: addr.receiverName,
+    receiverPhone: addr.receiverPhone,
+    receiverAddress: addr.receiverAddress,
+    isDefault: addr.isDefault === 1
+  }
+  addressMsg.value = ''
+}
+
+async function saveAddress() {
+  const { receiverName, receiverPhone, receiverAddress, isDefault } = formAddr.value
+  if (!receiverName || !receiverName.trim()) {
+    addressMsg.value = '请输入收货人姓名'
+    addressMsgSuccess.value = false
+    return
+  }
+  if (!receiverPhone || !receiverPhone.trim()) {
+    addressMsg.value = '请输入收货人电话'
+    addressMsgSuccess.value = false
+    return
+  }
+  if (!receiverAddress || !receiverAddress.trim()) {
+    addressMsg.value = '请输入收货地址'
+    addressMsgSuccess.value = false
+    return
+  }
+
+  saving.value = true
+  addressMsg.value = ''
+  try {
+    const payload = {
+      receiverName: receiverName.trim(),
+      receiverPhone: receiverPhone.trim(),
+      receiverAddress: receiverAddress.trim(),
+      isDefault: isDefault ? 1 : 0
+    }
+
+    let res
+    if (editingAddress.value) {
+      payload.id = editingAddress.value.id
+      res = await updateAddress(payload)
+    } else {
+      res = await addAddress(payload)
+    }
+
+    if (res && res.code === 200) {
+      addressMsg.value = editingAddress.value ? '地址更新成功' : '地址添加成功'
+      addressMsgSuccess.value = true
+      clearForm()
+      // 刷新列表
+      const refresh = await getUserAddresses()
+      if (refresh && refresh.code === 200) {
+        addresses.value = refresh.data || []
+      }
+    } else {
+      addressMsg.value = (res && res.mes) || '操作失败'
+      addressMsgSuccess.value = false
+    }
+  } catch (err) {
+    addressMsg.value = (err && err.message) || '网络错误'
+    addressMsgSuccess.value = false
+  } finally {
+    saving.value = false
+  }
+}
+
+async function setAddrDefault(id) {
+  try {
+    const res = await setDefaultAddress(id)
+    if (res && res.code === 200) {
+      const refresh = await getUserAddresses()
+      if (refresh && refresh.code === 200) {
+        addresses.value = refresh.data || []
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function deleteAddr(id) {
+  if (!confirm('确定要删除该地址吗？')) return
+  try {
+    const res = await deleteAddress(id)
+    if (res && res.code === 200) {
+      addresses.value = addresses.value.filter(a => a.id !== id)
+    }
+  } catch {
+    // ignore
+  }
 }
 
 // ==================== 编辑昵称 ====================
@@ -1278,6 +1617,51 @@ async function handleDelete() {
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+
+/* ===== 充值记录 ===== */
+.recharge-records {
+  margin-top: 32px;
+  padding: 24px;
+  background: rgba(255,255,255,0.5);
+  border: 1px solid #f1f3f5;
+  border-radius: 16px;
+}
+.records-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.1rem; font-weight: 700; color: #212529;
+  margin: 0 0 16px 0;
+}
+.records-list {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.record-item {
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid #f1f3f5;
+  border-radius: 10px;
+  transition: border-color 0.2s;
+}
+.record-item:hover { border-color: #dee2e6; }
+.record-info {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 4px;
+}
+.record-amount {
+  font-size: 1rem; font-weight: 700; color: #2b6cb0;
+}
+.record-status {
+  padding: 2px 10px; border-radius: 10px;
+  font-size: 0.72rem; font-weight: 600;
+}
+.record-status--0 { background: rgba(255,193,7,0.1); color: #e67700; }
+.record-status--1 { background: rgba(43,138,62,0.08); color: #2b8a3e; }
+.record-status--2 { background: rgba(201,42,42,0.06); color: #c92a2a; }
+.record-time {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 0.75rem; color: #adb5bd;
+}
+.record-remark {
+  color: #c92a2a;
+}
 .modal-btn--cancel {
   background: #f1f3f5;
   color: #495057;
@@ -1329,8 +1713,105 @@ async function handleDelete() {
   letter-spacing: 0.02em;
 }
 
-/* ===== 响应式 ===== */
+/* ===== 地址管理弹窗 ===== */
+.address-manager-modal {
+  width: 580px; max-width: 94vw; max-height: 75vh; overflow-y: auto;
+  background: white; border-radius: 20px; padding: 0;
+}
+.address-manager-modal .modal-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 20px 24px; border-bottom: 1px solid #f1f3f5;
+}
+.address-manager-modal .modal-icon { font-size: 1.5rem; }
+.address-manager-modal .modal-title {
+  flex: 1;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.3rem; font-weight: 700; color: #212529; margin: 0;
+}
+.address-manager-modal .modal-close {
+  background: none; border: none; font-size: 1.2rem; color: #adb5bd;
+  cursor: pointer; padding: 4px; transition: color 0.2s;
+}
+.address-manager-modal .modal-close:hover { color: #212529; }
+.address-list { padding: 16px 24px 8px; }
+.address-card {
+  padding: 14px 16px; border: 1px solid #dee2e6; border-radius: 12px;
+  margin-bottom: 10px; background: white; transition: all 0.2s;
+}
+.address-card:hover { border-color: #4a9eff; }
+.address-card--default { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
+.address-card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
+}
+.address-card-info { display: flex; align-items: center; gap: 10px; }
+.address-card-name { font-size: 0.9rem; font-weight: 600; color: #212529; }
+.address-card-phone { font-size: 0.8rem; color: #868e96; }
+.address-card-tag {
+  padding: 2px 8px; border-radius: 10px; background: rgba(43,108,176,0.1);
+  color: #2b6cb0; font-size: 0.68rem; font-weight: 600;
+}
+.address-card-detail { font-size: 0.8rem; color: #495057; margin: 0; }
+.address-card-actions { display: flex; gap: 4px; }
+.addr-btn {
+  padding: 4px 10px; border: 1px solid #dee2e6; border-radius: 6px;
+  background: white; font-size: 0.7rem; cursor: pointer; transition: all 0.2s;
+}
+.addr-btn:hover { transform: translateY(-1px); }
+.addr-btn--edit { color: #2b6cb0; border-color: rgba(43,108,176,0.2); }
+.addr-btn--edit:hover { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
+.addr-btn--default { color: #7c3aed; border-color: rgba(124,58,237,0.2); }
+.addr-btn--default:hover { border-color: #7c3aed; background: rgba(124,58,237,0.04); }
+.addr-btn--default:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.addr-btn--delete { color: #c92a2a; border-color: rgba(201,42,42,0.2); }
+.addr-btn--delete:hover { border-color: #c92a2a; background: rgba(201,42,42,0.04); }
+.address-form-section { padding: 16px 24px 24px; border-top: 1px solid #f1f3f5; }
+.address-form-section .section-title {
+  font-size: 0.9rem; font-weight: 600; color: #343a40;
+  margin: 0 0 12px 0;
+}
+.address-form-fields { display: flex; flex-direction: column; gap: 10px; }
+.address-form-fields .form-field { display: flex; flex-direction: column; gap: 4px; }
+.address-form-fields .form-field--full { grid-column: 1 / -1; }
+.address-form-fields label { font-size: 0.78rem; color: #868e96; font-weight: 600; }
+.address-form-fields input {
+  padding: 10px 12px; border: 1px solid #dee2e6; border-radius: 8px;
+  font-size: 0.85rem; font-family: 'DM Sans', sans-serif; color: #212529;
+  outline: none; transition: border-color 0.2s;
+}
+.address-form-fields input:focus { border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.08); }
+.default-check {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 0.8rem; color: #868e96; margin-top: 8px;
+}
+.default-check input[type="checkbox"] { accent-color: #2b6cb0; }
+.form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
+.form-btn {
+  padding: 10px 24px; border: none; border-radius: 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: all 0.3s;
+}
+.form-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.form-btn--cancel { border: 1px solid #dee2e6; background: transparent; color: #495057; }
+.form-btn--cancel:hover { border-color: #4a9eff; color: #4a9eff; }
+.form-btn--confirm { background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: white; }
+.form-btn--confirm:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(43,108,176,0.25); }
+.address-manager-modal .empty-state {
+  text-align: center; padding: 32px; color: #adb5bd; font-size: 0.9rem;
+}
+.btn-loading {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 @media (max-width: 480px) {
+  .address-manager-modal { max-height: 80vh; }
+  .address-card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .address-card-actions { width: 100%; justify-content: flex-start; }
+  .form-actions { flex-direction: column; }
+  .form-btn { width: 100%; text-align: center; }
   .nav { padding: 0 24px; }
   .nav-btn-text { display: none; }
   .nav-btn { padding: 8px 12px; }

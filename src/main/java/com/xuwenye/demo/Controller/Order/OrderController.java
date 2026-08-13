@@ -6,6 +6,7 @@ import com.xuwenye.demo.Entity.OrderItem;
 import com.xuwenye.demo.Service.OrderService;
 import com.xuwenye.demo.Service.OrderService.OrderItemRequest;
 import com.xuwenye.demo.Service.UserService;
+import com.xuwenye.demo.annotation.OperationLog;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.common.Result;
 import com.xuwenye.demo.util.auth.JwtUtil;
@@ -53,6 +54,7 @@ public class OrderController {
      * @param request 创建订单请求体
      * @return Result 订单信息
      */
+    @OperationLog("创建订单")
     @PostMapping("/create")
     @RateLimit(window = 60, maxRequests = 10, message = "订单创建过于频繁，请稍后再试")
     public Result<?> createOrder(
@@ -100,14 +102,15 @@ public class OrderController {
     public Result<?> getUserOrders(
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Integer status) {
         // 校验登录
         Long userId = validateLogin(token);
         if (userId == null) {
             return Result.error(401, "未登录或登录已过期");
         }
 
-        Page<Order> orderPage = orderService.getUserOrders(userId, page, size);
+        Page<Order> orderPage = orderService.getUserOrders(userId, page, size, status);
         return Result.ok(orderPage);
     }
 
@@ -163,6 +166,7 @@ public class OrderController {
      * @param id 订单ID
      * @return Result 200 支付成功
      */
+    @OperationLog("支付订单")
     @PutMapping("/pay/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "支付操作过于频繁，请稍后再试")
     public Result<?> payOrder(
@@ -205,6 +209,7 @@ public class OrderController {
      * @param id 订单ID
      * @return Result 200 取消成功
      */
+    @OperationLog("取消订单")
     @PutMapping("/cancel/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "取消操作过于频繁，请稍后再试")
     public Result<?> cancelOrder(
@@ -247,6 +252,7 @@ public class OrderController {
      * @param id 订单ID
      * @return Result 200 退款成功
      */
+    @OperationLog("申请退款")
     @PutMapping("/refund/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "退款操作过于频繁，请稍后再试")
     public Result<?> requestRefund(
@@ -314,6 +320,7 @@ public class OrderController {
      * @param id 订单ID
      * @return Result 200 发货成功
      */
+    @OperationLog("管理员发货")
     @PutMapping("/admin/ship/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
     public Result<?> shipOrder(
@@ -343,6 +350,7 @@ public class OrderController {
      * @param id 订单ID
      * @return Result 200 完成成功
      */
+    @OperationLog("管理员完成订单")
     @PutMapping("/admin/complete/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
     public Result<?> completeOrder(

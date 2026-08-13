@@ -65,7 +65,7 @@
                 <span class="order-no">订单号: {{ order.orderNo || order.id }}</span>
                 <span class="order-time">{{ formatDate(order.createTime) }}</span>
               </div>
-              <span class="order-status" :class="'status--' + (order.status || 'UNKNOWN')">
+              <span class="order-status" :class="getOrderStatusClass(order.status)">
                 {{ getOrderStatusText(order.status) }}
               </span>
             </div>
@@ -97,13 +97,13 @@
               </div>
               <div class="order-actions" @click.stop>
                 <button class="action-btn" @click="handlePay(order)"
-                        v-if="order.status === 'PENDING'"
+                        v-if="order.status === 0"
                         :disabled="actionLoading">立即支付</button>
                 <button class="action-btn action-btn--cancel" @click="handleCancel(order)"
-                        v-if="order.status === 'PENDING'"
+                        v-if="order.status === 0"
                         :disabled="actionLoading">取消订单</button>
                 <button class="action-btn action-btn--refund" @click="handleRefund(order)"
-                        v-if="order.status === 'PAID' || order.status === 'SHIPPED'"
+                        v-if="order.status === 1 || order.status === 2"
                         :disabled="actionLoading">申请退款</button>
                 <button class="action-btn action-btn--detail" @click="goToOrderDetail(order.id)">查看详情</button>
               </div>
@@ -149,15 +149,15 @@ const actionLoading = ref(false)
 const message = ref('')
 const msgSuccess = ref(false)
 
-// 状态标签选项
+// 状态标签选项（后端使用数字状态：0-待支付 1-已支付 2-已发货 3-已完成 4-已取消 5-已退款）
 const statusTabs = [
   { value: '', label: '全部' },
-  { value: 'PENDING', label: '待支付' },
-  { value: 'PAID', label: '已支付' },
-  { value: 'SHIPPED', label: '已发货' },
-  { value: 'COMPLETED', label: '已完成' },
-  { value: 'CANCELLED', label: '已取消' },
-  { value: 'REFUNDING', label: '退款中' }
+  { value: 0, label: '待支付' },
+  { value: 1, label: '已支付' },
+  { value: 2, label: '已发货' },
+  { value: 3, label: '已完成' },
+  { value: 4, label: '已取消' },
+  { value: 5, label: '已退款' }
 ]
 
 /**
@@ -287,10 +287,21 @@ function getItemCount(order) {
  */
 function getOrderStatusText(status) {
   const map = {
-    'PENDING': '待支付', 'PAID': '已支付', 'SHIPPED': '已发货',
-    'COMPLETED': '已完成', 'CANCELLED': '已取消', 'REFUNDING': '退款中'
+    0: '待支付', 1: '已支付', 2: '已发货',
+    3: '已完成', 4: '已取消', 5: '已退款'
   }
-  return map[status] || status || '未知'
+  return map[status] !== undefined ? map[status] : '未知'
+}
+
+/**
+ * 获取订单状态 CSS 类名
+ */
+function getOrderStatusClass(status) {
+  const map = {
+    0: 'status--pending', 1: 'status--paid', 2: 'status--shipped',
+    3: 'status--completed', 4: 'status--cancelled', 5: 'status--refunded'
+  }
+  return map[status] || 'status--unknown'
 }
 
 /**
@@ -419,12 +430,12 @@ onMounted(() => {
 .order-status {
   font-size: 0.8rem; font-weight: 600; padding: 4px 12px; border-radius: 20px;
 }
-.order-status.status--PENDING { background: rgba(240,140,0,0.08); color: #f08c00; }
-.order-status.status--PAID { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.order-status.status--SHIPPED { background: rgba(124,58,237,0.08); color: #7c3aed; }
-.order-status.status--COMPLETED { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.order-status.status--CANCELLED { background: rgba(134,142,150,0.08); color: #868e96; }
-.order-status.status--REFUNDING { background: rgba(201,42,42,0.08); color: #c92a2a; }
+.order-status.status--pending { background: rgba(240,140,0,0.08); color: #f08c00; }
+.order-status.status--paid { background: rgba(43,108,176,0.08); color: #2b6cb0; }
+.order-status.status--shipped { background: rgba(124,58,237,0.08); color: #7c3aed; }
+.order-status.status--completed { background: rgba(43,138,62,0.08); color: #2b8a3e; }
+.order-status.status--cancelled { background: rgba(134,142,150,0.08); color: #868e96; }
+.order-status.status--refunded { background: rgba(201,42,42,0.08); color: #c92a2a; }
 
 /* ===== 订单商品 ===== */
 .order-items { padding: 16px 20px; }

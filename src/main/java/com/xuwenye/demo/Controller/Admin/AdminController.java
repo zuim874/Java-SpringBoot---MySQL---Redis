@@ -3,12 +3,15 @@ package com.xuwenye.demo.Controller.Admin;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Order;
 import com.xuwenye.demo.Entity.Product;
+import com.xuwenye.demo.Entity.RechargeRequest;
 import com.xuwenye.demo.Entity.Seller;
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.OrderService;
 import com.xuwenye.demo.Service.ProductService;
+import com.xuwenye.demo.Service.RechargeRequestService;
 import com.xuwenye.demo.Service.SellerService;
 import com.xuwenye.demo.Service.UserService;
+import com.xuwenye.demo.annotation.OperationLog;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.common.Result;
 import com.xuwenye.demo.util.auth.JwtUtil;
@@ -17,7 +20,6 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 /**
  * 管理员后台管理接口
@@ -39,17 +41,20 @@ public class AdminController {
     private final OrderService orderService;
     private final SellerService sellerService;
     private final JwtUtil jwtUtil;
+    private final RechargeRequestService rechargeRequestService;
 
     public AdminController(UserService userService,
                            ProductService productService,
                            OrderService orderService,
                            SellerService sellerService,
-                           JwtUtil jwtUtil) {
+                           JwtUtil jwtUtil,
+                           RechargeRequestService rechargeRequestService) {
         this.userService = userService;
         this.productService = productService;
         this.orderService = orderService;
         this.sellerService = sellerService;
         this.jwtUtil = jwtUtil;
+        this.rechargeRequestService = rechargeRequestService;
     }
 
     // ======================== 用户管理 ========================
@@ -97,6 +102,7 @@ public class AdminController {
      * @param status 状态（0禁用 1启用）
      * @return Result 200 操作成功
      */
+    @OperationLog("启用/禁用用户")
     @PutMapping("/user/status/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
     public Result<?> updateUserStatus(
@@ -128,6 +134,7 @@ public class AdminController {
      * @param id 用户ID
      * @return Result 200 删除成功
      */
+    @OperationLog("管理员删除用户")
     @DeleteMapping("/user/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
     public Result<?> deleteUser(
@@ -154,6 +161,7 @@ public class AdminController {
      * @param id 用户ID
      * @return Result 200 恢复成功
      */
+    @OperationLog("管理员恢复用户")
     @PutMapping("/user/recover/{id}")
     @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
     public Result<?> recoverUser(
@@ -181,6 +189,7 @@ public class AdminController {
      * @param amount 充值金额（必须大于0）
      * @return Result 200 充值成功；400 参数错误/失败；403 权限不足
      */
+    @OperationLog("管理员用户充值")
     @PostMapping("/user/charge")
     @RateLimit(window = 60, maxRequests = 10, message = "充值操作过于频繁，请稍后再试")
     public Result<?> chargeUser(
@@ -259,24 +268,107 @@ public class AdminController {
     // ======================== 卖家管理 ========================
 
     /**
-     * 卖家列表
+     * 卖家列表（分页）
      * 1.校验管理员权限
-     * 2.返回所有卖家列表
+     * 2.返回分页卖家列表
      * <p>
      * @author ZuiM
      * @param token 登录令牌
-     * @return Result 卖家列表
+     * @param page 页码
+     * @param size 每页条数
+     * @return Result 分页卖家列表
      */
     @GetMapping("/sellers")
     @RateLimit(window = 60, maxRequests = 20, message = "请求过于频繁，请稍后再试")
     public Result<?> getSellerList(
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
         if (!validateAdmin(token)) {
             return Result.error(403, "权限不足，仅管理员可操作");
         }
 
-        List<Seller> sellers = sellerService.getAllSellers();
-        return Result.ok(sellers);
+        Page<Seller> sellerPage = sellerService.getSellerPage(page, size);
+        return Result.ok(sellerPage);
+    }
+
+    // ======================== 充值审核管理 ========================
+
+    /**
+     * 充值申请列表（分页）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param page 页码
+     * @param size 每页条数
+     * @return Result 分页充值申请列表
+     */
+    @GetMapping("/recharge-requests")
+    @RateLimit(window = 60, maxRequests = 20, message = "请求过于频繁，请稍后再试")
+    public Result<?> getRechargeRequests(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        if (!validateAdmin(token)) {
+            return Result.error(403, "权限不足，仅管理员可操作");
+        }
+        return Result.ok(rechargeRequestService.getRequestPage(page, size));
+    }
+
+    /**
+     * 审核通过充值申请
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 申请ID
+     * @return Result<?>
+     */
+    @OperationLog("审核通过充值申请")
+    @PostMapping("/recharge-requests/{id}/approve")
+    @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
+    public Result<?> approveRecharge(
+            @RequestHeader("Authorization") String token,
+            @PathVariable Long id) {
+        if (!validateAdmin(token)) {
+            return Result.error(403, "权限不足，仅管理员可操作");
+        }
+        try {
+            rechargeRequestService.approveRequest(id);
+            return Result.ok("已通过该充值申请，余额已更新");
+        } catch (IllegalArgumentException e) {
+            return Result.error(400, e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "审核失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 拒绝充值申请
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 申请ID
+     * @param reason 拒绝原因（可选）
+     * @return Result<?>
+     */
+    @OperationLog("拒绝充值申请")
+    @PostMapping("/recharge-requests/{id}/reject")
+    @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
+    public Result<?> rejectRecharge(
+            @RequestHeader("Authorization") String token,
+            @PathVariable Long id,
+            @RequestParam(required = false) String reason) {
+        if (!validateAdmin(token)) {
+            return Result.error(403, "权限不足，仅管理员可操作");
+        }
+        try {
+            rechargeRequestService.rejectRequest(id, reason);
+            return Result.ok("已拒绝该充值申请");
+        } catch (IllegalArgumentException e) {
+            return Result.error(400, e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "操作失败：" + e.getMessage());
+        }
     }
 
     // ======================== 内部工具方法 ========================

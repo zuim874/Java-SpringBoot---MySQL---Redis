@@ -14,6 +14,7 @@ import jakarta.jms.Queue;
 import jakarta.jms.Topic;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -36,6 +37,7 @@ public class MQProducer {
     private final Queue statisticsQueue;
     private final Queue fileQueue;
     private final Queue notificationQueue;
+    private final Queue cacheQueue;
     private final Topic broadcastTopic;
     private final Topic alertTopic;
     public MQProducer(JmsMessagingTemplate jmsMessagingTemplate,
@@ -46,6 +48,7 @@ public class MQProducer {
                       Queue statisticsQueue,
                       Queue fileQueue,
                       Queue notificationQueue,
+                      Queue cacheQueue,
                       Topic broadcastTopic,
                       Topic alertTopic) {
         this.jmsMessagingTemplate = jmsMessagingTemplate;
@@ -56,6 +59,7 @@ public class MQProducer {
         this.statisticsQueue = statisticsQueue;
         this.fileQueue = fileQueue;
         this.notificationQueue = notificationQueue;
+        this.cacheQueue = cacheQueue;
         this.broadcastTopic = broadcastTopic;
         this.alertTopic = alertTopic;
     }
@@ -99,9 +103,10 @@ public class MQProducer {
         log.info("📱 短信任务已发送: {}", phone);
     }
 
-    // ========== 3. 发送日志任务 ==========
+    // ========== 3. 发送日志任务（简易版，手动传参） ==========
     /**
-     * 发送日志任务（异步）
+     * 发送日志任务（异步，简易版，手动传参）
+     * 适用于手动调用场景，如简单业务逻辑中直接记录日志
      * <p>
      * @author ZuiM
      * @param username 操作用户
@@ -119,6 +124,20 @@ public class MQProducer {
 
         sendMessage(logQueue, "LOG", action, data);
         log.info("📝 日志任务已发送: {} -> {}", username, action);
+    }
+
+    // ========== 3b. 发送日志任务（完整版，接受 Map） ==========
+    /**
+     * 发送日志任务（异步，完整版，接受预组装的 Map）
+     * 适用于 AOP 切面场景，传递完整的日志数据结构
+     * <p>
+     * @author ZuiM
+     * @param logData 日志数据（包含 userId/username/operation/method/requestUrl/requestIp/requestParams/status/errorMsg/duration）
+     */
+    @Async
+    public void sendLogTask(Map<String, Object> logData) {
+        sendMessage(logQueue, "LOG", (String) logData.getOrDefault("operation", "UNKNOWN"), logData);
+        log.info("📝 日志任务已发送: {} -> {}", logData.get("username"), logData.get("operation"));
     }
 
     // ========== 4. 发送订单任务 ==========
@@ -196,6 +215,30 @@ public class MQProducer {
 
         sendMessage(notificationQueue, "NOTIFICATION", "PUSH", data);
         log.info("🔔 通知任务已发送: {} - {}", userId, title);
+    }
+
+    // ========== 7b. 发送缓存刷新任务 ==========
+    /**
+     * 发送缓存刷新任务（异步）
+     * 1.将缓存刷新操作异步化，不阻塞主业务流程
+     * 2.支持按域划分：product、order、user、seller
+     * 3.支持单 key 删除和前缀模糊匹配删除
+     * <p>
+     * @author ZuiM
+     * @param domain 缓存域（product/order/user/seller）
+     * @param action 操作类型（delete/clear/refresh）
+     * @param keys 待操作的缓存 key 列表（不含前缀则为模糊匹配，含完整 key 为精确删除）
+     */
+    @Async
+    public void sendCacheRefreshTask(String domain, String action, List<String> keys) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("domain", domain);
+        data.put("action", action);
+        data.put("keys", keys);
+        data.put("timestamp", System.currentTimeMillis());
+
+        sendMessage(cacheQueue, "CACHE", domain + ":" + action, data);
+        log.info("🔄 缓存刷新任务已发送: {} - {} ({} keys)", domain, action, keys.size());
     }
 
     // ========== 8. 发送广播消息（所有订阅者收到） ==========

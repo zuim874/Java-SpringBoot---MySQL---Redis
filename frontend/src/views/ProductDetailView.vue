@@ -13,6 +13,8 @@
       </ul>
       <div class="nav-user">
         <span class="nav-nickname" v-if="nickname">{{ nickname }}</span>
+        <button class="nav-profile-btn" @click="goOrders">我的订单</button>
+        <button class="nav-profile-btn" @click="goProfile">个人中心</button>
         <button class="nav-logout" @click="handleLogout">退出</button>
       </div>
     </nav>
@@ -125,13 +127,67 @@
         <div class="footer-copy">© 2026 ZuiMShop. All rights reserved.</div>
       </div>
     </footer>
-  </div>
-</template>
+
+    <!-- ===== 地址选择弹窗（立即购买用）===== -->
+    <Teleport to="body">
+      <div v-if="showAddressModal" class="modal-overlay" @click.self="cancelCheckout">
+        <div class="address-modal">
+          <div class="address-modal-header">
+            <h3>确认收货信息</h3>
+            <button class="address-modal-close" @click="cancelCheckout">✕</button>
+          </div>
+
+          <!-- 已有地址列表 -->
+          <div class="address-list" v-if="addresses.length > 0">
+            <p class="address-section-label">选择已有地址</p>
+            <div v-for="addr in addresses" :key="addr.id"
+                 class="address-card"
+                 :class="{ selected: selectedAddressId === addr.id }"
+                 @click="selectAddress(addr)">
+              <div class="address-card-info">
+                <span class="address-card-name">{{ addr.receiverName }}</span>
+                <span class="address-card-phone">{{ addr.receiverPhone }}</span>
+                <span class="address-card-tag" v-if="addr.isDefault === 1">默认</span>
+              </div>
+              <p class="address-card-detail">{{ addr.receiverAddress }}</p>
+            </div>
+          </div>
+
+          <!-- 手动填写地址 -->
+          <div class="address-form">
+            <p class="address-section-label">{{ addresses.length > 0 ? '或填写新地址' : '填写收货地址' }}</p>
+            <div class="address-form-row">
+              <input v-model="formReceiverName" placeholder="收货人姓名" class="address-input" />
+              <input v-model="formReceiverPhone" placeholder="收货人电话" class="address-input" />
+            </div>
+            <div class="address-form-row">
+              <input v-model="formReceiverAddress" placeholder="收货地址（如：xx省xx市xx区xx路xx号）" class="address-input address-input--wide" />
+            </div>
+            <label class="address-save-check" v-if="selectedAddressId === null">
+              <input type="checkbox" v-model="formSaveAddress" />
+              <span>保存为常用地址</span>
+            </label>
+          </div>
+
+          <p v-if="addressMsg" :class="['address-msg', addressMsgSuccess ? 'address-msg--success' : 'address-msg--error']">{{ addressMsg }}</p>
+
+          <div class="address-modal-actions">
+            <button class="address-btn address-btn--cancel" @click="cancelCheckout">取消</button>
+            <button class="address-btn address-btn--confirm" @click="confirmCheckout" :disabled="checkouting">
+              <span v-if="checkouting" class="btn-loading"></span>
+              <span v-else>确认下单</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+  </div></template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getProductDetail, createOrder } from '../api/index.js'
+import { getUserAddresses, addAddress } from '../api/index.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -144,6 +200,18 @@ const scrolled = ref(false)
 const nickname = ref(localStorage.getItem('nickname') || '')
 const currentImageIndex = ref(0)
 const quantity = ref(1)
+
+// ===== 地址选择弹窗状态 =====
+const showAddressModal = ref(false)
+const addresses = ref([])
+const selectedAddressId = ref(null)
+const formReceiverName = ref('')
+const formReceiverPhone = ref('')
+const formReceiverAddress = ref('')
+const formSaveAddress = ref(false)
+const addressMsg = ref('')
+const addressMsgSuccess = ref(false)
+const checkouting = ref(false)
 
 // 当前显示的图片
 const currentImage = computed(() => {
@@ -200,9 +268,9 @@ function addToCart() {
   } else {
     cart.push({
       id: product.value.id,
-      name: product.value.productName,
+      productName: product.value.productName,
       price: product.value.price,
-      image: product.value.mainImageUrl,
+      mainImageUrl: product.value.mainImageUrl,
       category: product.value.category,
       qty: quantity.value
     })
@@ -212,32 +280,118 @@ function addToCart() {
   showToast('已加入购物车')
 }
 
-// 立即购买：直接创建订单（需登录，收货信息用简单弹窗收集）
+// 立即购买：打开地址选择弹窗
 async function buyNow() {
-  const qty = quantity.value
-  const receiverName = prompt('收货人姓名：', (localStorage.getItem('nickname') || ''))
-  if (!receiverName) return
-  const receiverPhone = prompt('收货人电话：')
-  if (!receiverPhone) return
-  const receiverAddress = prompt('收货地址：')
-  if (!receiverAddress) return
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+
+  addressMsg.value = ''
+  try {
+    const res = await getUserAddresses()
+    if (res && res.code === 200 && res.data) {
+      addresses.value = res.data
+      const defaultAddr = res.data.find(a => a.isDefault === 1)
+      if (defaultAddr) {
+        selectedAddressId.value = defaultAddr.id
+        formReceiverName.value = defaultAddr.receiverName
+        formReceiverPhone.value = defaultAddr.receiverPhone
+        formReceiverAddress.value = defaultAddr.receiverAddress
+      } else {
+        selectedAddressId.value = null
+        formReceiverName.value = ''
+        formReceiverPhone.value = ''
+        formReceiverAddress.value = ''
+      }
+    }
+  } catch {
+    addresses.value = []
+    selectedAddressId.value = null
+  }
+
+  showAddressModal.value = true
+}
+
+// 选择已有地址
+function selectAddress(addr) {
+  selectedAddressId.value = addr.id
+  formReceiverName.value = addr.receiverName
+  formReceiverPhone.value = addr.receiverPhone
+  formReceiverAddress.value = addr.receiverAddress
+  addressMsg.value = ''
+}
+
+// 确认下单
+async function confirmCheckout() {
+  const name = formReceiverName.value.trim()
+  const phone = formReceiverPhone.value.trim()
+  const addr = formReceiverAddress.value.trim()
+
+  if (!name) {
+    addressMsg.value = '请输入收货人姓名'
+    addressMsgSuccess.value = false
+    return
+  }
+  if (!phone) {
+    addressMsg.value = '请输入收货人电话'
+    addressMsgSuccess.value = false
+    return
+  }
+  if (!addr) {
+    addressMsg.value = '请输入收货地址'
+    addressMsgSuccess.value = false
+    return
+  }
+
+  if (selectedAddressId.value === null && formSaveAddress.value) {
+    try {
+      await addAddress({
+        receiverName: name,
+        receiverPhone: phone,
+        receiverAddress: addr,
+        isDefault: addresses.value.length === 0 ? 1 : 0
+      })
+    } catch {
+      // 保存失败不影响下单
+    }
+  }
+
+  checkouting.value = true
+  addressMsg.value = ''
+
   try {
     const res = await createOrder({
-      items: [{ productId: product.value.id, quantity: qty }],
-      receiverName,
-      receiverPhone,
-      receiverAddress,
+      items: [{ productId: product.value.id, quantity: quantity.value }],
+      receiverName: name,
+      receiverPhone: phone,
+      receiverAddress: addr,
       remark: ''
     })
     if (res && res.code === 200) {
-      showToast('下单成功，请前往订单页支付')
-      router.push('/orders')
+      showAddressModal.value = false
+      addressMsg.value = '下单成功，请前往订单页支付'
+      addressMsgSuccess.value = true
+      setTimeout(() => {
+        router.push('/orders')
+      }, 800)
     } else {
-      showToast((res && res.mes) || '下单失败')
+      addressMsg.value = (res && res.mes) || '下单失败'
+      addressMsgSuccess.value = false
     }
   } catch (err) {
-    showToast('下单失败：' + ((err && err.message) || '网络错误'))
+    addressMsg.value = '下单失败：' + ((err && err.message) || '网络错误')
+    addressMsgSuccess.value = false
+  } finally {
+    checkouting.value = false
   }
+}
+
+// 取消下单
+function cancelCheckout() {
+  showAddressModal.value = false
+  addressMsg.value = ''
 }
 
 // 显示提示
@@ -255,6 +409,12 @@ function handleLogout() {
 // 返回首页
 function goHome() {
   router.push('/home')
+}
+function goOrders() {
+  router.push('/orders')
+}
+function goProfile() {
+  router.push('/profile')
 }
 
 // 滚动到指定位置
@@ -319,15 +479,22 @@ onUnmounted(() => {
 .breadcrumb {
   font-size: 0.85rem; color: #495057;
 }
-.nav-user { display: flex; align-items: center; gap: 12px; }
+.nav-user { display: flex; align-items: center; gap: 8px; }
 .nav-nickname { font-size: 0.85rem; font-weight: 500; color: #2b6cb0; }
+.nav-profile-btn {
+  padding: 8px 14px; border-radius: 50px;
+  border: 1px solid #dee2e6; background: transparent; color: #2b6cb0;
+  font-family: 'DM Sans', sans-serif; font-size: 0.75rem; font-weight: 500;
+  cursor: pointer; transition: all 0.3s; min-height: 32px; display: flex; align-items: center;
+}
+.nav-profile-btn:hover { border-color: #2b6cb0; background: rgba(43,108,176,0.04); transform: translateY(-1px); }
 .nav-logout {
-  padding: 6px 16px; border-radius: 50px;
+  padding: 8px 14px; border-radius: 50px;
   border: 1px solid #dee2e6; background: transparent; color: #868e96;
   font-family: 'DM Sans', sans-serif; font-size: 0.75rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s;
+  cursor: pointer; transition: all 0.3s; min-height: 32px; display: flex; align-items: center;
 }
-.nav-logout:hover { border-color: #dc3545; color: #dc3545; }
+.nav-logout:hover { border-color: #dc3545; color: #dc3545; transform: translateY(-1px); }
 
 /* ===== Loading ===== */
 .loading-container {
@@ -586,5 +753,105 @@ onUnmounted(() => {
   .description-section .container { padding: 0 24px; }
   .footer { padding: 40px 24px; }
   .footer-inner { flex-direction: column; gap: 24px; text-align: center; }
+}
+
+/* ===== 地址选择弹窗 ===== */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.address-modal {
+  width: 520px; max-width: 92vw; max-height: 85vh; overflow-y: auto;
+  background: white; border-radius: 20px; padding: 28px 32px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.15);
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.address-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px;
+}
+.address-modal-header h3 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.3rem; font-weight: 700; color: #212529;
+}
+.address-modal-close {
+  background: none; border: none; font-size: 1.2rem; color: #adb5bd;
+  cursor: pointer; padding: 4px; transition: color 0.2s;
+}
+.address-modal-close:hover { color: #212529; }
+.address-section-label {
+  font-size: 0.8rem; font-weight: 600; color: #868e96;
+  margin-bottom: 10px; letter-spacing: 0.02em;
+}
+.address-list { margin-bottom: 20px; }
+.address-card {
+  padding: 12px 16px; border: 1px solid #dee2e6; border-radius: 12px;
+  margin-bottom: 8px; cursor: pointer; transition: all 0.2s;
+  background: white;
+}
+.address-card:hover { border-color: #4a9eff; background: rgba(74,158,255,0.02); }
+.address-card.selected { border-color: #2b6cb0; background: rgba(43,108,176,0.04); box-shadow: 0 0 0 2px rgba(43,108,176,0.10); }
+.address-card-info { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.address-card-name { font-size: 0.9rem; font-weight: 600; color: #212529; }
+.address-card-phone { font-size: 0.8rem; color: #868e96; }
+.address-card-tag {
+  padding: 1px 8px; border-radius: 10px; background: rgba(43,108,176,0.08);
+  color: #2b6cb0; font-size: 0.7rem; font-weight: 600;
+}
+.address-card-detail { font-size: 0.8rem; color: #495057; }
+.address-form { margin-bottom: 16px; }
+.address-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.address-input {
+  flex: 1; padding: 10px 14px; border: 1px solid #dee2e6; border-radius: 10px;
+  font-size: 0.85rem; font-family: 'DM Sans', sans-serif; color: #212529;
+  outline: none; transition: border-color 0.2s;
+}
+.address-input:focus { border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.08); }
+.address-input::placeholder { color: #adb5bd; }
+.address-input--wide { width: 100%; }
+.address-save-check {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 0.8rem; color: #868e96; margin-top: 8px;
+}
+.address-save-check input[type="checkbox"] { accent-color: #2b6cb0; }
+.address-msg {
+  margin: 12px 0; text-align: center; font-size: 0.85rem;
+  padding: 10px; border-radius: 10px;
+}
+.address-msg--success { color: #2b8a3e; background: rgba(43,138,62,0.06); border: 1px solid rgba(43,138,62,0.12); }
+.address-msg--error { color: #c92a2a; background: rgba(201,42,42,0.06); border: 1px solid rgba(201,42,42,0.12); }
+.address-modal-actions {
+  display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px;
+}
+.address-btn {
+  padding: 12px 28px; border: none; border-radius: 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: all 0.3s;
+}
+.address-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.address-btn--cancel {
+  border: 1px solid #dee2e6; background: transparent; color: #495057;
+}
+.address-btn--cancel:hover { border-color: #4a9eff; color: #4a9eff; }
+.address-btn--confirm {
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: white;
+}
+.address-btn--confirm:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(43,108,176,0.25); }
+.btn-loading {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 480px) {
+  .address-modal { padding: 24px 20px; }
+  .address-form-row { flex-direction: column; gap: 8px; }
+  .address-modal-actions { flex-direction: column; }
+  .address-btn { width: 100%; text-align: center; }
 }
 </style>

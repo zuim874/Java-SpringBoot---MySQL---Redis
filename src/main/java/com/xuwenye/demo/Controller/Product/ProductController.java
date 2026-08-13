@@ -8,6 +8,7 @@ import com.xuwenye.demo.Service.FileStorageService;
 import com.xuwenye.demo.Service.ProductService;
 import com.xuwenye.demo.Service.SellerService;
 import com.xuwenye.demo.Service.UserService;
+import com.xuwenye.demo.annotation.OperationLog;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.common.Result;
 import com.xuwenye.demo.util.auth.JwtUtil;
@@ -213,6 +214,7 @@ public class ProductController {
      * @param product 商品实体
      * @return Result 200 新增成功
      */
+    @OperationLog("新增商品")
     @PostMapping("/admin/add")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> addProduct(
@@ -243,6 +245,7 @@ public class ProductController {
      * @param product 商品实体（更新字段）
      * @return Result 200 更新成功
      */
+    @OperationLog("更新商品")
     @PutMapping("/admin/update/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> updateProduct(
@@ -274,6 +277,7 @@ public class ProductController {
      * @param id 商品ID
      * @return Result 200 删除成功
      */
+    @OperationLog("删除商品")
     @DeleteMapping("/admin/delete/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> deleteProduct(
@@ -303,6 +307,7 @@ public class ProductController {
      * @param id 商品ID
      * @return Result 200 上架成功
      */
+    @OperationLog("商品上架")
     @PutMapping("/admin/onshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> onShelfProduct(
@@ -332,6 +337,7 @@ public class ProductController {
      * @param id 商品ID
      * @return Result 200 下架成功
      */
+    @OperationLog("商品下架")
     @PutMapping("/admin/offshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> offShelfProduct(
@@ -486,6 +492,7 @@ public class ProductController {
      * @param seller 卖家实体
      * @return Result 200 新增成功
      */
+    @OperationLog("新增卖家")
     @PostMapping("/admin/seller/add")
     @RateLimit(window = 60, maxRequests = 5, message = "卖家操作过于频繁，请稍后再试")
     public Result<?> addSeller(
@@ -516,6 +523,7 @@ public class ProductController {
      * @param seller 卖家实体（更新字段）
      * @return Result 200 更新成功
      */
+    @OperationLog("更新卖家")
     @PutMapping("/admin/seller/update/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "卖家操作过于频繁，请稍后再试")
     public Result<?> updateSeller(
@@ -547,6 +555,7 @@ public class ProductController {
      * @param id 卖家ID
      * @return Result 200 删除成功
      */
+    @OperationLog("删除卖家")
     @DeleteMapping("/admin/seller/delete/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "卖家操作过于频繁，请稍后再试")
     public Result<?> deleteSeller(
@@ -606,6 +615,7 @@ public class ProductController {
      * @param product 商品实体
      * @return Result 200 新增成功
      */
+    @OperationLog("商家新增商品")
     @PostMapping("/seller/add")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> addSellerProduct(
@@ -643,6 +653,7 @@ public class ProductController {
      * @param product 商品更新信息
      * @return Result 200 更新成功
      */
+    @OperationLog("商家更新商品")
     @PutMapping("/seller/update/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> updateSellerProduct(
@@ -684,6 +695,7 @@ public class ProductController {
      * @param id 商品ID
      * @return Result 200 上架成功
      */
+    @OperationLog("商家上架商品")
     @PutMapping("/seller/onshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> onShelfSellerProduct(
@@ -722,6 +734,7 @@ public class ProductController {
      * @param id 商品ID
      * @return Result 200 下架成功
      */
+    @OperationLog("商家下架商品")
     @PutMapping("/seller/offshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> offShelfSellerProduct(

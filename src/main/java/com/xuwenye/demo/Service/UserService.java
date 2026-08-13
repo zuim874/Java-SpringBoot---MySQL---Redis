@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.sql.Time;
 import java.util.concurrent.TimeUnit;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import com.xuwenye.demo.util.redis.RedisLockHelper;
 import com.xuwenye.demo.util.redis.RedisUtil;
@@ -29,12 +30,15 @@ public class UserService {
     private final UserMapper userMapper;
     private final RedisUtil redisUtil;
     private final RedisLockHelper redisLockHelper;
+    private final MQProducer mqProducer;
     public UserService(UserMapper userMapper,
                        RedisUtil redisUtil,
-                       RedisLockHelper redisLockHelper) {
+                       RedisLockHelper redisLockHelper,
+                       MQProducer mqProducer) {
         this.userMapper = userMapper;
         this.redisUtil = redisUtil;
         this.redisLockHelper = redisLockHelper;
+        this.mqProducer = mqProducer;
     }
 
     /**
@@ -276,15 +280,8 @@ public class UserService {
         User user = userMapper.selectById(id);
         boolean result = userMapper.deleteById(id) > 0;
         if (result && user != null) {
-            String username = user.getUsername();
-            // 清除该用户关联的所有缓存
-            redisUtil.delete("demo:user:active:" + username);
-            redisUtil.delete("demo:user:all:" + username);
-            redisUtil.delete("demo:user:recover:" + username);
-            redisUtil.delete("demo:user:id:" + id);
-            if (user.getEmail() != null) {
-                redisUtil.delete("demo:user:email:" + user.getEmail());
-            }
+            // 异步发送缓存刷新任务
+            sendUserCacheRefreshTask(user);
         }
         return result;
     }
@@ -305,13 +302,10 @@ public class UserService {
         if (result) {
             User user = userMapper.selectById(id);
             if (user != null) {
-                String username = user.getUsername();
-                // 清除旧的关联缓存（recover 和 all 中的数据已过时）
-                redisUtil.delete("demo:user:recover:" + username);
-                redisUtil.delete("demo:user:all:" + username);
-                redisUtil.delete("demo:user:id:" + id);
-                // 恢复后重新写入 active 缓存（用户已可登录）
-                String cacheKey = "demo:user:active:" + username;
+                // 异步发送缓存刷新任务
+                sendUserCacheRefreshTask(user);
+                // 恢复后重新写入 active 缓存（用户已可登录，同步写入避免延迟）
+                String cacheKey = "demo:user:active:" + user.getUsername();
                 redisUtil.set(cacheKey, user);
             }
         }
@@ -338,10 +332,8 @@ public class UserService {
             // 清理该用户所有维度缓存，保证下次查询拿到最新头像
             User user = userMapper.selectById(id);
             if (user != null) {
-                String username = user.getUsername();
-                redisUtil.delete("demo:user:active:" + username);
-                redisUtil.delete("demo:user:all:" + username);
-                redisUtil.delete("demo:user:id:" + id);
+                // 异步发送缓存刷新任务
+                sendUserCacheRefreshTask(user);
             }
         }
         return result;
@@ -377,18 +369,9 @@ public class UserService {
         }
         boolean result = userMapper.updateById(update) > 0;
         if (result) {
-            String username = old.getUsername();
-            // 清理该用户所有维度缓存，保证下次查询拿到最新资料
-            redisUtil.delete("demo:user:active:" + username);
-            redisUtil.delete("demo:user:all:" + username);
-            redisUtil.delete("demo:user:id:" + id);
-            // 邮箱维度缓存（旧邮箱 + 新邮箱）
-            if (old.getEmail() != null) {
-                redisUtil.delete("demo:user:email:" + old.getEmail());
-            }
-            if (newEmail != null) {
-                redisUtil.delete("demo:user:email:" + newEmail);
-            }
+            // 异步发送缓存刷新任务，保证下次查询拿到最新资料
+            // 注意：sendUserCacheRefreshTask 会自动清理 active/all/id/email 维度缓存
+            sendUserCacheRefreshTask(old);
         }
         return result;
     }
@@ -412,10 +395,8 @@ public class UserService {
         if (result) {
             User user = userMapper.selectById(id);
             if (user != null) {
-                String username = user.getUsername();
-                redisUtil.delete("demo:user:active:" + username);
-                redisUtil.delete("demo:user:all:" + username);
-                redisUtil.delete("demo:user:id:" + id);
+                // 异步发送缓存刷新任务
+                sendUserCacheRefreshTask(user);
             }
         }
         return result;
@@ -429,10 +410,8 @@ public class UserService {
         if (result) {
             User user = userMapper.selectById(id);
             if (user != null) {
-                String username = user.getUsername();
-                redisUtil.delete("demo:user:active:" + username);
-                redisUtil.delete("demo:user:all:" + username);
-                redisUtil.delete("demo:user:id:" + id);
+                // 异步发送缓存刷新任务
+                sendUserCacheRefreshTask(user);
             }
         }
         return result;
@@ -500,27 +479,29 @@ public class UserService {
         update.setStatus(status);
         boolean result = userMapper.updateById(update) > 0;
         if (result) {
-            clearUserCache(user);
+            sendUserCacheRefreshTask(user);
         }
         return result;
     }
 
     /**
-     * 清除用户所有关联缓存
+     * 发送用户缓存刷新任务（异步，通过 MQ）
+     * 1.清除 active/all/recover/id/email 维度缓存
      * <p>
      * @author ZuiM
      * @param user 用户实体
      */
-    public void clearUserCache(User user) {
+    private void sendUserCacheRefreshTask(User user) {
         if (user == null) return;
-        String username = user.getUsername();
-        redisUtil.delete("demo:user:active:" + username);
-        redisUtil.delete("demo:user:all:" + username);
-        redisUtil.delete("demo:user:recover:" + username);
-        redisUtil.delete("demo:user:id:" + user.getId());
+        List<String> keys = new ArrayList<>();
+        keys.add("demo:user:active:" + user.getUsername());
+        keys.add("demo:user:all:" + user.getUsername());
+        keys.add("demo:user:recover:" + user.getUsername());
+        keys.add("demo:user:id:" + user.getId());
         if (user.getEmail() != null) {
-            redisUtil.delete("demo:user:email:" + user.getEmail());
+            keys.add("demo:user:email:" + user.getEmail());
         }
+        mqProducer.sendCacheRefreshTask("user", "clear", keys);
     }
 
     /**
@@ -576,7 +557,7 @@ public class UserService {
                 // 清缓存，下次查询读到最新余额
                 User user = userMapper.selectById(userId);
                 if (user != null) {
-                    clearUserCache(user);
+                    sendUserCacheRefreshTask(user);
                 }
             }
             return rows > 0;

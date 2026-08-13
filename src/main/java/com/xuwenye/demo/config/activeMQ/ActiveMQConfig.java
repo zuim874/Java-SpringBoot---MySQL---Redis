@@ -50,6 +50,7 @@ public class ActiveMQConfig {
     public static final String QUEUE_STATISTICS = "queue.statistics";
     public static final String QUEUE_FILE = "queue.file";
     public static final String QUEUE_NOTIFICATION = "queue.notification";
+    public static final String QUEUE_CACHE = "queue.cache";
 
     // ========== 主题定义（发布订阅） ==========
     public static final String TOPIC_BROADCAST = "topic.broadcast";
@@ -249,6 +250,17 @@ public class ActiveMQConfig {
     @Bean
     public Queue notificationQueue() {
         return new ActiveMQQueue(QUEUE_NOTIFICATION);
+    }
+
+    /**
+     * 缓存刷新队列 Bean
+     * <p>
+     * @author ZuiM
+     * @return Queue 缓存刷新队列
+     */
+    @Bean
+    public Queue cacheQueue() {
+        return new ActiveMQQueue(QUEUE_CACHE);
     }
 
     // ========== 8. 主题 Bean ==========

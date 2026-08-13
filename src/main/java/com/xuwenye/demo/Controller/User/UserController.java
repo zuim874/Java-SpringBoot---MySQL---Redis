@@ -1,9 +1,12 @@
 package com.xuwenye.demo.Controller.User;
 
+import com.xuwenye.demo.Entity.RechargeRequest;
 import com.xuwenye.demo.Entity.User;
+import com.xuwenye.demo.Service.RechargeRequestService;
 import com.xuwenye.demo.Service.FileStorageService;
 import com.xuwenye.demo.Service.MQProducer;
 import com.xuwenye.demo.Service.UserService;
+import com.xuwenye.demo.annotation.OperationLog;
 import com.xuwenye.demo.annotation.RateLimit;
 import com.xuwenye.demo.annotation.UserCheck;
 import com.xuwenye.demo.common.Result;
@@ -20,6 +23,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -39,6 +44,7 @@ public class UserController {
     private final PasswordEncoder passwordEncoder;
     private final PasswordStrengthUtils passwordStrengthUtils;
     private final RedisLockHelper redisLockHelper;
+    private final RechargeRequestService rechargeRequestService;
     public UserController(UserService userService,
                           RedisUtil redisUtil,
                           FileStorageService fileStorageService,
@@ -46,7 +52,8 @@ public class UserController {
                           MQProducer mqProducer,
                           PasswordEncoder passwordEncoder,
                           PasswordStrengthUtils passwordStrengthUtils,
-                          RedisLockHelper redisLockHelper) {
+                          RedisLockHelper redisLockHelper,
+                          RechargeRequestService rechargeRequestService) {
         this.userService = userService;
         this.redisUtil = redisUtil;
         this.fileStorageService = fileStorageService;
@@ -55,6 +62,7 @@ public class UserController {
         this.passwordEncoder = passwordEncoder;
         this.passwordStrengthUtils = passwordStrengthUtils;
         this.redisLockHelper = redisLockHelper;
+        this.rechargeRequestService = rechargeRequestService;
     }
 
     /** 账号恢复验证码校验开关 */
@@ -85,6 +93,7 @@ public class UserController {
      * @param code 邮箱验证码
      * @return Result<?> 200/400/401/500：成功/失败
      */
+    @OperationLog("账号注销")
     @RateLimit(window = 60, maxRequests = 3, message = "账号注销尝试过多，请稍后再试")
     @UserCheck
     @DeleteMapping("/delete_user")
@@ -134,6 +143,7 @@ public class UserController {
      * @param code 邮箱验证码
      * @return Result<?> 200/400：成功/失败
      */
+    @OperationLog("账号恢复")
     @RateLimit(window = 60, maxRequests = 3, message = "账号恢复尝试过多，请稍后再试")
     @PutMapping("/recover_user")
     public Result<?> recoverUserByUserParam(
@@ -305,6 +315,55 @@ public class UserController {
     }
 
     /**
+     * 用户自助申请充值（给自己充值）
+     * 限流：每分钟最多 3 次
+     * <p>
+     * @author ZuiM
+     * @param currentUser 当前登录用户（切面注入）
+     * @param amount 充值金额（必须大于 0）
+     * @return Result<?> 200/400/401
+     */
+    @OperationLog("用户申请充值")
+    @RateLimit(window = 60, maxRequests = 3, message = "充值操作过于频繁，请稍后再试")
+    @UserCheck
+    @PostMapping("/recharge/apply")
+    public Result<?> applyRecharge(User currentUser, @RequestParam BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return Result.error(400, "充值金额必须大于 0");
+        }
+        if (amount.compareTo(new BigDecimal("100000")) > 0) {
+            return Result.error(400, "单次充值金额不能超过 100,000 元");
+        }
+        try {
+            RechargeRequest request = rechargeRequestService.submitRequest(
+                    currentUser.getId(), currentUser.getUsername(), amount);
+            log.info("用户 {} 提交充值申请，金额：{}，申请ID：{}",
+                    currentUser.getId(), amount, request.getId());
+            return Result.ok("充值申请已提交，请等待管理员审核");
+        } catch (IllegalStateException e) {
+            return Result.error(400, e.getMessage());
+        } catch (Exception e) {
+            log.error("提交充值申请异常", e);
+            return Result.error(500, "提交失败，系统异常");
+        }
+    }
+
+    /**
+     * 查询当前用户的充值申请记录
+     * <p>
+     * @author ZuiM
+     * @param currentUser 当前登录用户（切面注入）
+     * @return Result<List<RechargeRequest>> 申请记录列表
+     */
+    @UserCheck
+    @GetMapping("/recharge/records")
+    @RateLimit(window = 60, maxRequests = 20)
+    public Result<List<RechargeRequest>> getRechargeRecords(User currentUser) {
+        List<RechargeRequest> records = rechargeRequestService.getUserRequests(currentUser.getId());
+        return Result.ok(records);
+    }
+
+    /**
      * 上传/更新头像（multipart/form-data，字段名 file）
      * 1.@UserCheck 切面校验登录态并注入当前用户
      * 2.分布式锁（看门狗）防并发 + 锁内双重检查
@@ -316,6 +375,7 @@ public class UserController {
      * @param file 头像图片文件（jpg/png/gif/webp，大小不超过 2MB）
      * @return Result<?> 200/400/401/500：成功返回新头像 URL
      */
+    @OperationLog("更换头像")
     @RateLimit(window = 60, maxRequests = 3, message = "头像上传频繁，请稍后再试")
     @UserCheck
     @PostMapping("/avatar")
@@ -379,6 +439,7 @@ public class UserController {
      * @param nickname 新昵称
      * @return Result<?> 200/400/401/500：成功/失败
      */
+    @OperationLog("更新资料")
     @RateLimit(window = 60, maxRequests = 3, message = "资料更新频繁，请稍后再试")
     @UserCheck
     @PutMapping("/update_profile")
@@ -449,6 +510,7 @@ public class UserController {
      * 需先调用 /send-changeEmail 获取两组验证码：
      * type=3 旧邮箱验证码（发到旧邮箱）、type=4 新邮箱验证码（发到新邮箱）
      */
+    @OperationLog("更换邮箱")
     @RateLimit(window = 60, maxRequests = 3, message = "邮箱更换过于频繁，请稍后再试")
     @UserCheck
     @PutMapping("/change_email")
@@ -614,6 +676,7 @@ public class UserController {
      * @param newPassword_check 确认新密码
      * @return 400/401/500/200 身份验证失败/用户不存在/修改失败/修改成功
      */
+    @OperationLog("修改密码")
     @RateLimit(window = 60, maxRequests = 5, message = "更改密码过于频繁，请稍后重试！")
     @UserCheck
     @PostMapping("/change_password")
