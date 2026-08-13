@@ -169,7 +169,14 @@ async function fetchOrderDetail() {
   try {
     const res = await getOrderDetail(orderId.value)
     if (res && res.code === 200 && res.data) {
-      order.value = res.data
+      // 后端返回 { order: {...}, items: [...] } 嵌套结构，需展平
+      const o = res.data.order || res.data
+      if (o) {
+        o.items = res.data.items || []
+        order.value = o
+      } else {
+        order.value = null
+      }
     } else {
       order.value = null
     }
@@ -189,8 +196,9 @@ async function handlePay() {
   try {
     const res = await payOrder(order.value.id)
     if (res && res.code === 200) {
+      // 本地立即更新订单状态，支付按钮即刻消失
+      order.value.status = 1
       showMessage(res.mes || '支付成功', true)
-      fetchOrderDetail()
     } else {
       showMessage(res?.mes || '支付失败', false)
     }
@@ -210,8 +218,9 @@ async function handleCancel() {
   try {
     const res = await cancelOrder(order.value.id)
     if (res && res.code === 200) {
+      // 本地立即更新订单状态，操作按钮即刻消失
+      order.value.status = 4
       showMessage('订单已取消', true)
-      fetchOrderDetail()
     } else {
       showMessage(res?.mes || '取消失败', false)
     }
@@ -231,8 +240,9 @@ async function handleRefund() {
   try {
     const res = await refundOrder(order.value.id)
     if (res && res.code === 200) {
+      // 本地立即更新订单状态，操作按钮即刻消失
+      order.value.status = 5
       showMessage('退款申请已提交', true)
-      fetchOrderDetail()
     } else {
       showMessage(res?.mes || '申请失败', false)
     }
@@ -247,19 +257,22 @@ async function handleRefund() {
  * 获取订单状态文本
  */
 function getOrderStatusText(status) {
+  // 兼容后端可能返回字符串的情况
+  const s = Number(status)
   const map = {
     0: '待支付', 1: '已支付', 2: '已发货',
     3: '已完成', 4: '已取消', 5: '已退款'
   }
-  return map[status] !== undefined ? map[status] : '未知'
+  return map[s] !== undefined ? map[s] : '未知'
 }
 
 function getOrderStatusClass(status) {
+  const s = Number(status)
   const map = {
     0: 'status--pending', 1: 'status--paid', 2: 'status--shipped',
     3: 'status--completed', 4: 'status--cancelled', 5: 'status--refunded'
   }
-  return map[status] || 'status--unknown'
+  return map[s] || 'status--unknown'
 }
 
 /**
@@ -282,7 +295,10 @@ function showMessage(msg, success) {
 }
 
 function goHome() { router.push('/home') }
-function goBack() { router.push('/orders') }
+function goBack() {
+  // 保留当前路由 query（如选中的状态标签），返回列表页时保持一致
+  router.push({ path: '/orders', query: route.query.status ? { status: route.query.status } : {} })
+}
 function handleLogout() {
   localStorage.removeItem('token')
   localStorage.removeItem('nickname')

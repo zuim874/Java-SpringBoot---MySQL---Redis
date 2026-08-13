@@ -112,7 +112,10 @@ export function createOrder(orderData) {
  */
 export function getUserOrders(page = 1, size = 10, status = '') {
   const params = { page, size }
-  if (status) params.status = status
+  // 注意：status 为 0（待支付）时不能省略，需用显式判空而非 if(status)
+  if (status !== '' && status !== null && status !== undefined) {
+    params.status = status
+  }
   return api.get('/order/list', { params })
 }
 
@@ -163,7 +166,10 @@ export function refundOrder(id) {
  */
 export function getAdminOrders(page = 1, size = 10, status = '') {
   const params = { page, size }
-  if (status) params.status = status
+  // 注意：status 为 0（待支付）时不能省略，需用显式判空而非 if(status)
+  if (status !== '' && status !== null && status !== undefined) {
+    params.status = status
+  }
   return api.get('/order/admin/list', { params })
 }
 

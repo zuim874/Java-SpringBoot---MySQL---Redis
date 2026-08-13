@@ -6,10 +6,8 @@
       <ul class="nav-links" :class="{ open: menuOpen }">
         <li><a href="#hero" @click.prevent="closeMenu; scrollTo('#hero')">首页</a></li>
         <li><a href="#products" @click.prevent="closeMenu; scrollTo('#products')">商品</a></li>
-        <!-- 分类下拉菜单：点击/悬停弹出商品种类列表 -->
-        <li class="nav-dropdown"
-            @mouseenter="catMenuOpen = true"
-            @mouseleave="catMenuOpen = false">
+        <!-- 分类下拉菜单：点击弹出商品种类列表（@click.stop 阻止冒泡，避免触发空白处关闭） -->
+        <li class="nav-dropdown" @click.stop>
           <a href="javascript:void(0)" @click.prevent="catMenuOpen = !catMenuOpen">
             分类 <span class="dropdown-caret">▾</span>
           </a>
@@ -26,12 +24,38 @@
             <span class="cart-icon">🛒</span>
             <span class="cart-badge" v-if="cartTotalCount > 0">{{ cartTotalCount }}</span>
           </button>
-          <span class="nav-nickname">{{ nickname }}</span>
-          <button class="nav-profile-btn" @click="goOrders">我的订单</button>
-          <button class="nav-profile-btn" @click="goProfile">个人中心</button>
-          <button class="nav-profile-btn nav-admin-btn" v-if="isAdminUser" @click="goAdmin">管理后台</button>
-          <button class="nav-profile-btn" v-if="isSellerUser" @click="goSeller">商家管理</button>
-          <button class="nav-logout" @click="handleLogout">退出</button>
+          <!-- 用户头像组件：左侧显示余额与用户名，点击头像弹出个人中心相关功能与退出登录 -->
+          <div class="avatar-wrapper" @click.stop>
+            <span class="nav-balance" v-if="userBalance !== null">余额 ¥{{ Number(userBalance).toFixed(2) }}</span>
+            <span class="nav-nickname">{{ nickname }}</span>
+            <button class="avatar-btn" @click="profileMenuOpen = !profileMenuOpen" aria-label="用户菜单">
+              <span class="avatar-circle">
+                <img v-if="avatarUrl" :src="avatarUrl" alt="头像">
+                <span v-else>{{ avatarText }}</span>
+              </span>
+              <span class="avatar-caret" :class="{ open: profileMenuOpen }">▾</span>
+            </button>
+            <transition name="profile">
+              <div class="profile-menu" v-if="profileMenuOpen">
+                <div class="profile-menu-header">
+                  <span class="profile-menu-avatar">
+                    <img v-if="avatarUrl" :src="avatarUrl" alt="头像">
+                    <span v-else>{{ avatarText }}</span>
+                  </span>
+                  <div class="profile-menu-id">
+                    <p class="profile-menu-name">{{ nickname }}</p>
+                    <p class="profile-menu-role">{{ roleLabel }}</p>
+                  </div>
+                </div>
+                <button class="profile-menu-item" @click="profileMenuOpen = false; goOrders()">我的订单</button>
+                <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
+                <button class="profile-menu-item" v-if="isAdminUser" @click="profileMenuOpen = false; goAdmin()">管理后台</button>
+                <button class="profile-menu-item" v-if="isSellerUser" @click="profileMenuOpen = false; goSeller()">商家管理</button>
+                <div class="profile-menu-divider"></div>
+                <button class="profile-menu-item profile-menu-item--logout" @click="handleLogout">退出登录</button>
+              </div>
+            </transition>
+          </div>
         </li>
       </ul>
       <button class="nav-toggle" @click="menuOpen = !menuOpen" aria-label="菜单">
@@ -251,7 +275,7 @@
 import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { getProductPage, getCategories, createOrder } from '../api/index.js'
-import { getUserAddresses, addAddress } from '../api/index.js'
+import { getUserAddresses, addAddress, getUserInfo } from '../api/index.js'
 import { getCachedRoles } from '../utils/auth.js'
 
 const router = useRouter()
@@ -277,6 +301,40 @@ const checkouting = ref(false)
 const cachedRoles = getCachedRoles()
 const isAdminUser = computed(() => cachedRoles.includes('ROLE_ADMIN'))
 const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
+
+// ===== 用户头像菜单 =====
+const profileMenuOpen = ref(false)
+// 头像 URL（用户未上传时为空，回退为首字头像）
+const avatarUrl = ref('')
+// 用户余额（未加载时为 null）
+const userBalance = ref(null)
+// 取昵称首字符作为头像内容（未提供头像上传时使用首字头像）
+const avatarText = computed(() => (nickname.value || '用').charAt(0))
+const roleLabel = computed(() => {
+  if (isAdminUser.value) return '管理员'
+  if (isSellerUser.value) return '商家'
+  return '普通用户'
+})
+
+/**
+ * 拉取当前用户资料（头像 + 余额 + 昵称）
+ * 调用 GET /user/me，登录态下由 Token 自动鉴权
+ */
+async function fetchUserProfile() {
+  try {
+    const res = await getUserInfo()
+    if (res && res.code === 200 && res.data) {
+      const u = res.data
+      if (u.avatar) avatarUrl.value = u.avatar
+      if (u.nickname) nickname.value = u.nickname
+      if (u.balance !== undefined && u.balance !== null) {
+        userBalance.value = Number(u.balance)
+      }
+    }
+  } catch (e) {
+    console.error('获取用户资料失败:', e)
+  }
+}
 
 // ===== 商品数据（分页） =====
 const products = ref([])
@@ -369,6 +427,15 @@ function selectCategory(name) {
   catMenuOpen.value = false
   closeMenu()
   filterByCategory(name)
+}
+
+/**
+ * 点击页面空白处关闭导航浮层（分类下拉菜单 / 用户头像菜单）
+ * 通过 document 点击监听实现：点击浮层外部任意区域即收起
+ */
+function closePopups() {
+  catMenuOpen.value = false
+  profileMenuOpen.value = false
 }
 
 // ===== 关键词搜索（模糊匹配商品名/描述） =====
@@ -661,11 +728,14 @@ const prodRefs = reactive({})
 let observer = null
 
 onMounted(() => {
-  // 加载商品和分类数据
+  // 加载商品、分类和用户资料（头像/余额/昵称）
   fetchProducts()
   fetchCategories()
+  fetchUserProfile()
 
   window.addEventListener('scroll', onScroll)
+  // 点击页面空白处关闭导航浮层（分类下拉菜单 / 用户头像菜单）
+  document.addEventListener('click', closePopups)
   carouselTimer = setInterval(nextSlide, 5000)
 
   observer = new IntersectionObserver((entries) => {
@@ -704,6 +774,8 @@ function observeCards() {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', onScroll)
+  // 移除导航浮层的点击关闭监听
+  document.removeEventListener('click', closePopups)
   clearInterval(carouselTimer)
   if (observer) observer.disconnect()
 })
@@ -795,6 +867,76 @@ a { text-decoration: none; color: inherit; }
   border: 1px solid #dee2e6; background: transparent; color: #868e96;
 }
 .nav-logout:hover { border-color: #dc3545; color: #dc3545; transform: translateY(-1px); }
+
+/* ===== 用户头像与下拉菜单 ===== */
+.avatar-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
+.nav-balance {
+  padding: 5px 12px; border-radius: 50px;
+  background: rgba(43,108,176,0.08); border: 1px solid rgba(43,108,176,0.15);
+  color: #2b6cb0; font-size: 0.75rem; font-weight: 600;
+  white-space: nowrap;
+}
+.avatar-btn {
+  display: flex; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer; padding: 2px;
+  transition: transform 0.3s;
+}
+.avatar-btn:hover { transform: scale(1.05); }
+.avatar-circle {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
+  color: white; font-family: 'DM Sans', sans-serif;
+  font-size: 1rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(43,108,176,0.25);
+  overflow: hidden;
+}
+.avatar-circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.avatar-caret {
+  font-size: 0.7rem; color: #868e96; transition: transform 0.3s;
+}
+.avatar-caret.open { transform: rotate(180deg); }
+.profile-menu {
+  position: absolute; top: calc(100% + 14px); right: 0;
+  min-width: 180px; padding: 8px;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid rgba(255,255,255,0.60);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.10);
+}
+.profile-menu-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid #f1f3f5; margin-bottom: 6px;
+}
+.profile-menu-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
+  color: white; font-family: 'DM Sans', sans-serif;
+  font-size: 1.05rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; overflow: hidden;
+}
+.profile-menu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.profile-menu-id { min-width: 0; }
+.profile-menu-name {
+  font-size: 0.9rem; font-weight: 600; color: #212529; margin: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-menu-role { font-size: 0.72rem; color: #adb5bd; margin: 2px 0 0; }
+.profile-menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 14px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+  color: #495057; transition: all 0.2s;
+}
+.profile-menu-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
+.profile-menu-item--logout:hover { background: rgba(220,53,69,0.06); color: #dc3545; }
+.profile-menu-divider { height: 1px; background: #f1f3f5; margin: 6px 0; }
+.profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
 
 /* ===== 导航栏分类下拉菜单 ===== */
 .nav-dropdown { position: relative; }
@@ -1277,6 +1419,9 @@ a { text-decoration: none; color: inherit; }
   }
   .dropdown-enter-from, .dropdown-leave-to { transform: translateY(-6px); }
   .nav-user { margin-top: 8px; padding-top: 16px; border-top: 1px solid #dee2e6; width: 100%; justify-content: space-between; flex-wrap: wrap; }
+  /* 移动端：头像菜单右对齐，避免超出屏幕 */
+  .avatar-wrapper { flex: 1; justify-content: flex-end; }
+  .profile-menu { right: 0; }
   .hero-content { padding: 0 24px; bottom: 20%; }
   .hero-actions { flex-direction: column; gap: 12px; }
   .section { padding: 80px 0; }

@@ -205,10 +205,10 @@ public class MQConsumer {
 
             for (String key : keys) {
                 if (key.endsWith("*")) {
-                    // 模糊匹配删除
+                    // 模糊匹配删除（按前缀匹配所有 key）
                     String prefix = key.substring(0, key.length() - 1);
-                    redisUtil.delete(prefix);
-                    log.debug("🔄 缓存模糊删除: {} from {}", prefix, domain);
+                    long deleted = redisUtil.deleteByPrefix(prefix);
+                    log.debug("🔄 缓存模糊删除: {} from {} ({} keys)", prefix, domain, deleted);
                 } else {
                     // 精确删除
                     redisUtil.delete(key);

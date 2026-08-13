@@ -61,9 +61,9 @@ public class InitAdminRunner implements CommandLineRunner {
             }
             System.out.println("✅ 初始化管理员账号：admin / 123456");
 
-            System.out.println("===== 开始批量创建1000个测试账号 =====");
-            for (int i = 1; i <= 1000; i++) {
-                // 用户名 admin_1、admin_2 ... admin_1000，避免唯一索引冲突
+            System.out.println("===== 开始批量创建100个测试账号 =====");
+            for (int i = 1; i <= 100; i++) {
+                // 用户名 admin_1、admin_2 ... admin_100，避免唯一索引冲突
                 String username = "tester_" + i;
                 // 判断账号不存在再新增，防止重启项目重复创建
                 if (userService.findAllUser(username) == null) {

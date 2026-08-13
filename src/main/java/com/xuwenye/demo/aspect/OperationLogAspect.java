@@ -5,6 +5,7 @@ import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.MQProducer;
 import com.xuwenye.demo.Service.UserService;
 import com.xuwenye.demo.annotation.OperationLog;
+import com.xuwenye.demo.common.Result;
 import com.xuwenye.demo.util.auth.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -103,26 +104,11 @@ public class OperationLogAspect {
         String errorMsg = null;
         try {
             result = joinPoint.proceed();
-            // 判断返回结果是否标记失败（约定 Result 格式）
-            if (result != null && result.toString().contains("\"code\":400") ||
-                    result != null && result.toString().contains("\"code\":401") ||
-                    result != null && result.toString().contains("\"code\":403") ||
-                    result != null && result.toString().contains("\"code\":429") ||
-                    result != null && result.toString().contains("\"code\":500")) {
+            // 判断返回结果是否标记失败（Result 的 code 非 200 即失败）
+            // 注意：不能依赖 toString() 判断，Result 未重写 toString，默认输出为对象地址
+            if (result instanceof Result<?> res && res.getCode() != 200) {
                 success = false;
-                // 尝试提取错误信息
-                try {
-                    String resStr = result.toString();
-                    int mesIdx = resStr.indexOf("\"mes\":\"");
-                    if (mesIdx > 0) {
-                        int endIdx = resStr.indexOf("\"", mesIdx + 7);
-                        if (endIdx > 0) {
-                            errorMsg = resStr.substring(mesIdx + 7, endIdx);
-                        }
-                    }
-                } catch (Exception e) {
-                    // ignore
-                }
+                errorMsg = res.getMes();
             }
         } catch (Exception e) {
             success = false;

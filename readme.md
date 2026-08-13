@@ -125,7 +125,7 @@ frontend/                               # 前端项目（Vue 3 + Vite）
 
 ### 配置数据库
 
-1. 执行 `Script/InitDataBase.sql` 创建数据库和基础表结构
+1. 执行 `Script/finalInitSql/InitDataBase.sql` 创建数据库和基础表结构
 2. 执行 `Script/InitProductData.sql` 初始化商品、商家等业务数据
 3. 修改 `application-dev.properties` 中的数据库连接信息（默认密码 `123456`）
 
@@ -356,7 +356,7 @@ spring.servlet.multipart.max-request-size=50MB
 ### Q2：数据库表创建失败
 
 按顺序执行 SQL 文件：
-1. 先执行 `Script/InitDataBase.sql` 创建基础表
+1. 先执行 `Script/finalInitSql/InitDataBase.sql` 创建基础表
 2. 再执行 `Script/InitProductData.sql` 初始化业务数据
 
 ### Q3：前端页面访问白屏

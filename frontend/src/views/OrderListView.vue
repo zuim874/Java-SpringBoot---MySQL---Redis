@@ -132,10 +132,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { getUserOrders, payOrder, cancelOrder, refundOrder } from '../api/index.js'
 
 const router = useRouter()
+const route = useRoute()
 
 // ===== 状态变量 =====
 const orders = ref([])
@@ -162,10 +163,15 @@ const statusTabs = [
 
 /**
  * 切换状态标签
+ * 同时将选中状态写入 URL query，返回本页时保持所选标签
  */
 function switchStatus(status) {
   activeStatus.value = status
   currentPage.value = 1
+  router.replace({
+    path: '/orders',
+    query: status === '' ? {} : { status: String(status) }
+  })
   fetchOrders()
 }
 
@@ -210,8 +216,11 @@ async function handlePay(order) {
   try {
     const res = await payOrder(order.id)
     if (res && res.code === 200) {
+      // 本地立即更新订单状态，支付按钮即刻消失
+      order.status = 1
       showMessage(res.mes || '支付成功', true)
-      fetchOrders()
+      // 稍后重新拉取（等待 MQ 异步清理订单列表缓存）
+      setTimeout(() => fetchOrders(), 800)
     } else {
       showMessage(res?.mes || '支付失败', false)
     }
@@ -231,8 +240,10 @@ async function handleCancel(order) {
   try {
     const res = await cancelOrder(order.id)
     if (res && res.code === 200) {
+      // 本地立即更新订单状态，操作按钮即刻消失
+      order.status = 4
       showMessage('订单已取消', true)
-      fetchOrders()
+      setTimeout(() => fetchOrders(), 800)
     } else {
       showMessage(res?.mes || '取消失败', false)
     }
@@ -252,8 +263,10 @@ async function handleRefund(order) {
   try {
     const res = await refundOrder(order.id)
     if (res && res.code === 200) {
+      // 本地立即更新订单状态，操作按钮即刻消失
+      order.status = 5
       showMessage('退款申请已提交', true)
-      fetchOrders()
+      setTimeout(() => fetchOrders(), 800)
     } else {
       showMessage(res?.mes || '申请失败', false)
     }
@@ -333,6 +346,10 @@ function handleLogout() {
 }
 
 onMounted(() => {
+  // 从 URL query 恢复上次选中的状态标签（从详情页返回时保持一致）
+  const q = route.query.status
+  const matched = statusTabs.find(t => t.value !== '' && String(t.value) === q)
+  activeStatus.value = matched ? matched.value : ''
   fetchOrders()
 })
 </script>

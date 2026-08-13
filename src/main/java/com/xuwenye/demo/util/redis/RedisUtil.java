@@ -6,6 +6,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -108,6 +109,23 @@ public class RedisUtil {
      */
     public boolean delete(String key) {
         return Boolean.TRUE.equals(redisTemplate.delete(key));
+    }
+
+    /**
+     * 按前缀模糊删除缓存（匹配 prefix* 的所有 key）
+     * 注意：仅用于缓存清理场景；生产环境 key 数量较大时应改用 SCAN 分批删除
+     * <p>
+     * @author ZuiM
+     * @param prefix 缓存 key 前缀（不含 *）
+     * @return long 实际删除的 key 数量
+     */
+    public long deleteByPrefix(String prefix) {
+        Set<String> matched = redisTemplate.keys(prefix + "*");
+        if (matched == null || matched.isEmpty()) {
+            return 0;
+        }
+        Long deleted = redisTemplate.delete(matched);
+        return deleted == null ? 0 : deleted;
     }
 
     /**
