@@ -30,8 +30,7 @@
             <span class="nav-nickname">{{ nickname }}</span>
             <button class="avatar-btn" @click="profileMenuOpen = !profileMenuOpen" aria-label="用户菜单">
               <span class="avatar-circle">
-                <img v-if="avatarUrl" :src="avatarUrl" alt="头像">
-                <span v-else>{{ avatarText }}</span>
+                <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
               </span>
               <span class="avatar-caret" :class="{ open: profileMenuOpen }">▾</span>
             </button>
@@ -39,8 +38,7 @@
               <div class="profile-menu" v-if="profileMenuOpen">
                 <div class="profile-menu-header">
                   <span class="profile-menu-avatar">
-                    <img v-if="avatarUrl" :src="avatarUrl" alt="头像">
-                    <span v-else>{{ avatarText }}</span>
+                    <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
                   </span>
                   <div class="profile-menu-id">
                     <p class="profile-menu-name">{{ nickname }}</p>
@@ -84,6 +82,9 @@
                 class="carousel-dot" :class="{ active: currentSlide === idx }"
                 @click="goToSlide(idx)" :aria-label="'Slide ' + (idx+1)"></button>
       </div>
+      <button class="carousel-pause-btn" @click="toggleCarousel" aria-label="暂停/播放">
+        {{ carouselPaused ? '▶' : '⏸' }}
+      </button>
     </section>
 
     <!-- ===== 商品列表（分页） ===== -->
@@ -278,6 +279,8 @@ import { getProductPage, getCategories, createOrder } from '../api/index.js'
 import { getUserAddresses, addAddress, getUserInfo } from '../api/index.js'
 import { getCachedRoles } from '../utils/auth.js'
 
+const DEFAULT_AVATAR = '/uploads/avatars/defaultAvatar.png'
+
 const router = useRouter()
 const nickname = ref(localStorage.getItem('nickname') || '用户')
 const scrolled = ref(false)
@@ -305,7 +308,7 @@ const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
 // ===== 用户头像菜单 =====
 const profileMenuOpen = ref(false)
 // 头像 URL（用户未上传时为空，回退为首字头像）
-const avatarUrl = ref('')
+const avatarUrl = ref(DEFAULT_AVATAR)
 // 用户余额（未加载时为 null）
 const userBalance = ref(null)
 // 取昵称首字符作为头像内容（未提供头像上传时使用首字头像）
@@ -527,10 +530,22 @@ const slides = [
   { image: '/uploads/hero/hero-3.jpg', alt: 'Digital Products' }
 ]
 const currentSlide = ref(0)
+const carouselPaused = ref(false)
 let carouselTimer = null
-function goToSlide(idx) { currentSlide.value = idx; resetCarousel() }
+
+function toggleCarousel() {
+  carouselPaused.value = !carouselPaused.value
+  if (carouselPaused.value) {
+    clearInterval(carouselTimer)
+    carouselTimer = null
+  } else {
+    carouselTimer = setInterval(nextSlide, 5000)
+  }
+}
+
+function goToSlide(idx) { currentSlide.value = idx; if (!carouselPaused.value) resetCarousel() }
 function nextSlide() { currentSlide.value = (currentSlide.value + 1) % slides.length }
-function resetCarousel() { clearInterval(carouselTimer); carouselTimer = setInterval(nextSlide, 5000) }
+function resetCarousel() { clearInterval(carouselTimer); if (!carouselPaused.value) carouselTimer = setInterval(nextSlide, 5000) }
 
 // ===== 购物车逻辑 =====
 const cart = ref(JSON.parse(localStorage.getItem('cart') || '[]'))
@@ -1046,6 +1061,16 @@ a { text-decoration: none; color: inherit; }
   border-radius: 2px; cursor: pointer; transition: all 0.5s; border: none;
 }
 .carousel-dot.active { background: rgba(255,255,255,0.85); width: 60px; }
+
+.carousel-pause-btn {
+  position: absolute; bottom: 8%; right: 56px; z-index: 2;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.75); font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.3s; backdrop-filter: blur(4px);
+}
+.carousel-pause-btn:hover { background: rgba(255,255,255,0.25); color: white; }
 
 /* ===== Section Header ===== */
 .section-header {

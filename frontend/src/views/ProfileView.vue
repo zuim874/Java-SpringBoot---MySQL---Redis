@@ -10,15 +10,32 @@
     <!-- 导航条 -->
     <nav class="nav">
       <div class="nav-logo">ZuiMShop</div>
-      <div class="nav-actions">
-        <button class="nav-btn" @click="goBackToShop">
-          <span class="nav-btn-icon">🏪</span>
-          <span class="nav-btn-text">返回商城</span>
+      <div class="avatar-wrapper" @click.stop>
+        <span class="nav-balance" v-if="userBalance !== null">余额 ¥{{ Number(userBalance).toFixed(2) }}</span>
+        <span class="nav-nickname">{{ nickname }}</span>
+        <button class="avatar-btn" @click="profileMenuOpen = !profileMenuOpen" aria-label="用户菜单">
+          <span class="avatar-circle">
+            <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+          </span>
+          <span class="avatar-caret" :class="{ open: profileMenuOpen }">▾</span>
         </button>
-        <button class="nav-btn nav-btn--outline" @click="handleLogout">
-          <span class="nav-btn-icon">🚪</span>
-          <span class="nav-btn-text">退出登录</span>
-        </button>
+        <transition name="profile">
+          <div class="profile-menu" v-if="profileMenuOpen">
+            <div class="profile-menu-header">
+              <span class="profile-menu-avatar">
+                <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+              </span>
+              <div class="profile-menu-id">
+                <p class="profile-menu-name">{{ nickname }}</p>
+                <p class="profile-menu-role">{{ roleLabel }}</p>
+              </div>
+            </div>
+            <button class="profile-menu-item" @click="profileMenuOpen = false; goBackToShop()">返回商城</button>
+            <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
+            <div class="profile-menu-divider"></div>
+            <button class="profile-menu-item profile-menu-item--logout" @click="handleLogout">退出登录</button>
+          </div>
+        </transition>
       </div>
     </nav>
 
@@ -390,12 +407,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
-import { submitRecharge, getRechargeRecords, getUserAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress } from '../api/index.js'
+import { getUserInfo, submitRecharge, getRechargeRecords, getUserAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress } from '../api/index.js'
 
 const router = useRouter()
+
+const DEFAULT_AVATAR = '/uploads/avatars/defaultAvatar.png'
 
 const nickname = ref(localStorage.getItem('nickname') || '')
 const username = ref(localStorage.getItem('username') || '')
@@ -408,6 +427,48 @@ const showConfirm = ref(false)
 const deleting = ref(false)
 const uploading = ref(false)
 const fileInput = ref(null)
+
+// 导航栏头像下拉菜单
+const profileMenuOpen = ref(false)
+const avatarUrl = ref(DEFAULT_AVATAR)
+const userBalance = ref(null)
+
+function getCachedRoles() {
+  const roles = localStorage.getItem('roles')
+  return roles ? JSON.parse(roles) : []
+}
+const cachedRoles = getCachedRoles()
+const isAdminUser = computed(() => cachedRoles.includes('ROLE_ADMIN'))
+const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
+const roleLabel = computed(() => {
+  if (isAdminUser.value) return '管理员'
+  if (isSellerUser.value) return '商家'
+  return '普通用户'
+})
+
+async function fetchUserProfile() {
+  try {
+    const res = await getUserInfo()
+    if (res && res.code === 200 && res.data) {
+      const u = res.data
+      if (u.avatar) avatarUrl.value = u.avatar
+      if (u.nickname) nickname.value = u.nickname
+      if (u.balance !== undefined && u.balance !== null) {
+        userBalance.value = Number(u.balance)
+      }
+    }
+  } catch (e) {
+    console.error('获取用户资料失败:', e)
+  }
+}
+
+function closePopups() {
+  profileMenuOpen.value = false
+}
+
+function goProfile() {
+  router.push('/profile')
+}
 
 // 编辑昵称
 const showEditNickname = ref(false)
@@ -477,6 +538,7 @@ const newEmailValid = computed(() => {
 
 // 页面加载时从后端拉取最新用户信息（含头像、邮箱）
 onMounted(async () => {
+  document.addEventListener('click', closePopups)
   try {
     const data = await request('/user/me')
     if (data && data.code === 200) {
@@ -500,6 +562,7 @@ onMounted(async () => {
   } catch {
     // 充值记录加载失败不影响页面
   }
+  fetchUserProfile()
 })
 
 // 组件卸载时清理倒计时定时器
@@ -508,6 +571,10 @@ onBeforeUnmount(() => {
     clearInterval(countdownTimer)
     countdownTimer = null
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closePopups)
 })
 
 function goBackToShop() {
@@ -1177,6 +1244,35 @@ async function handleDelete() {
 .nav-btn-text {
   line-height: 1;
 }
+.nav-nickname { font-size: 0.85rem; font-weight: 500; color: #2b6cb0; padding: 0 4px; }
+
+/* ===== 用户头像与下拉菜单 ===== */
+.avatar-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
+.nav-balance {
+  padding: 5px 12px; border-radius: 50px;
+  background: rgba(43,108,176,0.08); border: 1px solid rgba(43,108,176,0.15);
+  color: #2b6cb0; font-size: 0.75rem; font-weight: 600;
+  white-space: nowrap;
+}
+.avatar-btn { display: flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 2px; transition: transform 0.3s; }
+.avatar-btn:hover { transform: scale(1.05); }
+.avatar-circle { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(43,108,176,0.25); overflow: hidden; }
+.avatar-circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.avatar-caret { font-size: 0.7rem; color: #868e96; transition: transform 0.3s; }
+.avatar-caret.open { transform: rotate(180deg); }
+.profile-menu { position: absolute; top: calc(100% + 14px); right: 0; min-width: 180px; padding: 8px; background: rgba(255,255,255,0.96); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); border: 1px solid rgba(255,255,255,0.60); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.10); }
+.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #f1f3f5; margin-bottom: 6px; }
+.profile-menu-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+.profile-menu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.profile-menu-id { min-width: 0; }
+.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: #212529; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu-role { font-size: 0.72rem; color: #adb5bd; margin: 2px 0 0; }
+.profile-menu-item { display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; border-radius: 8px; background: transparent; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; color: #495057; transition: all 0.2s; }
+.profile-menu-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
+.profile-menu-item--logout:hover { background: rgba(220,53,69,0.06); color: #dc3545; }
+.profile-menu-divider { height: 1px; background: #f1f3f5; margin: 6px 0; }
+.profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
 
 /* ===== 个人中心卡片 ===== */
 .profile-wrapper {
