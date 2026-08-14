@@ -1,6 +1,7 @@
 package com.xuwenye.demo.Service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Order;
 import com.xuwenye.demo.Entity.OrderItem;
@@ -37,6 +38,7 @@ public class OrderService {
     private final RedisLockHelper redisLockHelper;
     private final UserService userService;
     private final MQProducer mqProducer;
+    private final CouponService couponService;
 
     // Redis 缓存 Key 前缀
     private static final String ORDER_CACHE_PREFIX = "demo:order:";
@@ -50,7 +52,8 @@ public class OrderService {
                         RedisUtil redisUtil,
                         RedisLockHelper redisLockHelper,
                         UserService userService,
-                        MQProducer mqProducer) {
+                        MQProducer mqProducer,
+                        CouponService couponService) {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.productService = productService;
@@ -58,6 +61,7 @@ public class OrderService {
         this.redisLockHelper = redisLockHelper;
         this.userService = userService;
         this.mqProducer = mqProducer;
+        this.couponService = couponService;
     }
 
     /**
@@ -84,6 +88,35 @@ public class OrderService {
                              String receiverPhone,
                              String receiverAddress,
                              String remark) {
+        return createOrder(userId, orderItems, receiverName, receiverPhone,
+                receiverAddress, remark, null);
+    }
+
+    /**
+     * 创建订单（支持优惠券，分布式锁保护库存扣减）
+     * 1.校验商品库存、扣减库存（分布式锁）
+     * 2.若携带优惠券：校验归属/状态/过期/门槛，计算优惠金额，下单后原子核销（失败则整体回滚）
+     * 3.生成订单号，写入订单（含优惠后的应付金额）与订单项
+     * 4.异步刷新缓存
+     * <p>
+     * @author ZuiM
+     * @param userId 用户ID
+     * @param orderItems 订单项信息（商品ID、数量）
+     * @param receiverName 收货人姓名
+     * @param receiverPhone 收货人电话
+     * @param receiverAddress 收货地址
+     * @param remark 订单备注
+     * @param userCouponId 用户优惠券ID（可空，不使用优惠券）
+     * @return Order 创建成功的订单（含ID和订单号）
+     */
+    @Transactional
+    public Order createOrder(Long userId,
+                             List<OrderItemRequest> orderItems,
+                             String receiverName,
+                             String receiverPhone,
+                             String receiverAddress,
+                             String remark,
+                             Long userCouponId) {
         if (orderItems == null || orderItems.isEmpty()) {
             throw new IllegalArgumentException("订单项不能为空");
         }
@@ -112,19 +145,35 @@ public class OrderService {
             totalAmount = totalAmount.add(subtotal);
         }
 
-        // 2. 生成订单号
+        // 2. 优惠券计算（先校验，下单后核销）
+        BigDecimal discount = BigDecimal.ZERO;
+        if (userCouponId != null) {
+            discount = couponService.validateAndCalcDiscount(userCouponId, userId, totalAmount);
+        }
+        BigDecimal payable = totalAmount.subtract(discount);
+        if (payable.compareTo(BigDecimal.ZERO) < 0) {
+            payable = BigDecimal.ZERO;
+        }
+
+        // 3. 生成订单号并保存订单
         String orderNo = OrderNoGenerator.generate();
 
-        // 3. 保存订单
         Order order = new Order();
         order.setUserId(userId);
         order.setOrderNo(orderNo);
-        order.setTotalAmount(totalAmount);
+        order.setTotalAmount(payable);
         order.setStatus(0); // 待支付
         order.setReceiverName(receiverName);
         order.setReceiverPhone(receiverPhone);
         order.setReceiverAddress(receiverAddress);
-        order.setRemark(remark);
+        if (remark != null) {
+            // 附带优惠信息到备注（便于对账）
+            if (discount.compareTo(BigDecimal.ZERO) > 0) {
+                order.setRemark(remark + " | 优惠券减免 ¥" + discount.stripTrailingZeros().toPlainString());
+            } else {
+                order.setRemark(remark);
+            }
+        }
 
         int orderResult = orderMapper.insert(order);
         if (orderResult <= 0) {
@@ -148,7 +197,12 @@ public class OrderService {
             orderItemMapper.insert(orderItem);
         }
 
-        // 5. 异步发送缓存刷新任务和订单创建消息
+        // 5. 核销优惠券（原子操作；失败则抛异常回滚整个订单）
+        if (userCouponId != null) {
+            couponService.markUsed(userCouponId, userId, order.getId());
+        }
+
+        // 6. 异步发送缓存刷新任务和订单创建消息
         sendOrderCacheRefreshTask(order.getId(), userId);
         mqProducer.sendOrderTask(order.getId(), "PROCESS");
 
@@ -509,6 +563,48 @@ public class OrderService {
     }
 
     /**
+     * 分页查询某卖家的订单（含 Redis 缓存）
+     * <p>
+     * @author ZuiM
+     * @param sellerId 卖家ID
+     * @param page 页码
+     * @param size 每页条数
+     * @param status 订单状态（为null则查询全部）
+     * @return Page<Order> 分页订单列表
+     */
+    @SuppressWarnings("unchecked")
+    public Page<Order> getSellerOrders(Long sellerId, int page, int size, Integer status) {
+        // 带状态筛选时不走缓存
+        if (status != null) {
+            Page<Order> pageObj = new Page<>(page, size);
+            return (Page<Order>) orderMapper.findSellerOrdersPage(pageObj, sellerId, status);
+        }
+        String cacheKey = "demo:order:seller:" + sellerId + ":page:" + page + ":" + size;
+        Page<Order> cached = (Page<Order>) redisUtil.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        Page<Order> pageObj = new Page<>(page, size);
+        Page<Order> result = (Page<Order>) orderMapper.findSellerOrdersPage(pageObj, sellerId, null);
+        if (result != null && !result.getRecords().isEmpty()) {
+            redisUtil.set(cacheKey, result);
+        }
+        return result;
+    }
+
+    /**
+     * 判断订单是否包含指定卖家的商品（卖家操作权限校验）
+     * <p>
+     * @author ZuiM
+     * @param orderId 订单ID
+     * @param sellerId 卖家ID
+     * @return boolean true=包含该卖家的商品
+     */
+    public boolean orderContainsSeller(Long orderId, Long sellerId) {
+        return orderMapper.countOrderBySeller(orderId, sellerId) > 0;
+    }
+
+    /**
      * 发送订单缓存刷新任务（异步，通过 MQ）
      * 1.清除订单详情缓存
      * 2.清除订单项缓存
@@ -527,6 +623,8 @@ public class OrderService {
         keys.add(ORDER_USER_LIST_CACHE_PREFIX + userId + ":page:*");
         // 管理员订单列表使用模糊匹配
         keys.add(ORDER_ADMIN_LIST_CACHE_PREFIX + "*");
+        // 卖家订单列表使用模糊匹配
+        keys.add("demo:order:seller:*");
         mqProducer.sendCacheRefreshTask("order", "clear", keys);
     }
 

@@ -270,7 +270,7 @@ async function handlePay() {
       showMessage(res?.mes || '支付失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -292,7 +292,7 @@ async function handleCancel() {
       showMessage(res?.mes || '取消失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -314,7 +314,7 @@ async function handleRefund() {
       showMessage(res?.mes || '申请失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }

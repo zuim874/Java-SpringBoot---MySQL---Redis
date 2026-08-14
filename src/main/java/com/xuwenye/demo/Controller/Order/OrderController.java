@@ -73,7 +73,8 @@ public class OrderController {
                     request.getReceiverName(),
                     request.getReceiverPhone(),
                     request.getReceiverAddress(),
-                    request.getRemark()
+                    request.getRemark(),
+                    request.getUserCouponId()
             );
             // 加载订单项
             List<OrderItem> items = orderService.getOrderItems(order.getId());
@@ -429,6 +430,7 @@ public class OrderController {
         private String receiverPhone;
         private String receiverAddress;
         private String remark;
+        private Long userCouponId;
 
         public List<OrderItemRequest> getItems() { return items; }
         public void setItems(List<OrderItemRequest> items) { this.items = items; }
@@ -440,5 +442,7 @@ public class OrderController {
         public void setReceiverAddress(String receiverAddress) { this.receiverAddress = receiverAddress; }
         public String getRemark() { return remark; }
         public void setRemark(String remark) { this.remark = remark; }
+        public Long getUserCouponId() { return userCouponId; }
+        public void setUserCouponId(Long userCouponId) { this.userCouponId = userCouponId; }
     }
 }

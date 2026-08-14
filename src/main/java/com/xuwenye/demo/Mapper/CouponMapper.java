@@ -1,0 +1,30 @@
+package com.xuwenye.demo.Mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.xuwenye.demo.Entity.Coupon;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
+
+/**
+ * 优惠券模板数据访问层
+ * 1.基础 CRUD 由 BaseMapper 自动生成
+ * 2.自定义操作：原子扣减剩余发放数量（并发安全，防止超发）
+ * <p>
+ * @author ZuiM
+ */
+@Mapper
+public interface CouponMapper extends BaseMapper<Coupon> {
+
+    /**
+     * 原子扣减优惠券剩余数量
+     * 仅当 remain_count > 0 时扣减成功，防止并发下超发
+     * <p>
+     * @author ZuiM
+     * @param id 优惠券ID
+     * @return int 受影响行数（0=无可发数量）
+     */
+    @Update("UPDATE sys_coupon SET remain_count = remain_count - 1 " +
+            "WHERE id = #{id} AND remain_count > 0")
+    int decrementRemain(@Param("id") Long id);
+}

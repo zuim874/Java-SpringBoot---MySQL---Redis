@@ -82,7 +82,7 @@ public interface ProductMapper extends BaseMapper<Product> {
             "SELECT * FROM sys_product WHERE status = 1 AND is_deleted = 0" +
             "<if test='category != null and category != \"\"'> AND category = #{category}</if>" +
             "<if test='keyword != null and keyword != \"\"'> AND (product_name LIKE CONCAT('%', #{keyword}, '%') OR description LIKE CONCAT('%', #{keyword}, '%'))</if>" +
-            " ORDER BY create_time DESC" +
+            " ORDER BY recommend DESC, create_time DESC" +
             "</script>")
     Page<Product> selectOnShelfProductsPage(Page<Product> page,
                                            @Param("category") String category,

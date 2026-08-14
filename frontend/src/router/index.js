@@ -18,6 +18,8 @@ import AdminDashboardView from '../views/AdminDashboardView.vue'
 import OrderListView from '../views/OrderListView.vue'
 import OrderDetailView from '../views/OrderDetailView.vue'
 import SellerProductManageView from '../views/SellerProductManageView.vue'
+import MyCouponsView from '../views/MyCouponsView.vue'
+import SellerDashboardView from '../views/SellerDashboardView.vue'
 
 // 路由规则数组
 const routes = [
@@ -61,6 +63,20 @@ const routes = [
     name: 'SellerProducts',
     component: SellerProductManageView,
     meta: { requiresAuth: true, requiredRoles: [ROLES.SELLER, ROLES.ADMIN] }
+  },
+  // 商家综合面板（订单管理+店铺+消息）
+  {
+    path: '/seller/dashboard',
+    name: 'SellerDashboard',
+    component: SellerDashboardView,
+    meta: { requiresAuth: true, requiredRoles: [ROLES.SELLER, ROLES.ADMIN] }
+  },
+  // 我的优惠券（需登录）
+  {
+    path: '/coupons',
+    name: 'MyCoupons',
+    component: MyCouponsView,
+    meta: { requiresAuth: true }
   }
 ]
 

@@ -3,7 +3,13 @@
 -- 字符集：UTF-8MB4（支持emoji和特殊字符）
 -- 说明：SpringBoot项目【完整】初始化脚本（一站式）
 -- 已合并：订单表 / 操作日志表 / 收货地址表 / 充值申请表
---         卖家（22个）/ 商品（65个）/ 商品图片（全部）
+--         优惠券表 / 用户优惠券表 / 买卖会话表 / 聊天消息表
+--         卖家（22个）/ 商品（65个）/ 商品图片（全部）/ 优惠券（4张模板）
+-- 注意：
+--   1. 商品表已内置推荐位 recommend 字段（会员卖家权益）
+--   2. 本脚本不包含任何用户账号；管理员与卖家登录账号由
+--      项目启动时的 InitAdminRunner / InitSellerAccountsRunner 自动创建
+--      （管理员 admin/123456；卖家账号=店铺名称/默认密码 Seller@123）
 -- 用法：新环境只需执行本文件一次，即可完成建库建表与全部数据初始化
 -- 注意：执行会先 DROP 旧库，请确认操作环境
 -- =============================================
@@ -72,12 +78,14 @@ CREATE TABLE sys_product (
                              description VARCHAR(500) NOT NULL COMMENT '商品描述',
                              category VARCHAR(50) NOT NULL DEFAULT '其他' COMMENT '商品分类（手机配件/电脑外设/音频设备/智能家居/穿戴设备/摄影器材/食品饮料/服装鞋帽/图书文具/家居生活/运动户外/母婴用品/美妆护肤/宠物用品/其他）',
                              main_image_url VARCHAR(255) NULL COMMENT '冗余：商品主图URL，列表页查询优化',
+                             recommend TINYINT NOT NULL DEFAULT 0 COMMENT '推荐位：0普通 1推荐（会员卖家权益，商城置顶曝光）',
                              is_deleted TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
                              create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
                              update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
                              INDEX idx_seller_id (seller_id),
                              INDEX idx_product_name (product_name),
-                             INDEX idx_category (category)
+                             INDEX idx_category (category),
+                             INDEX idx_recommend (recommend) COMMENT '推荐位索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商品表';
 
 -- 3.4 卖家表
@@ -208,6 +216,68 @@ CREATE TABLE sys_recharge_request (
     INDEX idx_user_id (user_id) COMMENT '用户ID索引',
     INDEX idx_status (status) COMMENT '状态索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户充值申请表';
+
+-- 3.11 优惠券模板表（对应实体类 Coupon，管理员创建，用于发放给买家）
+DROP TABLE IF EXISTS sys_coupon;
+CREATE TABLE sys_coupon (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    name VARCHAR(100) NOT NULL COMMENT '优惠券名称（如：新客满减券 / 会员尊享券）',
+    type TINYINT NOT NULL COMMENT '优惠类型：1满减 2折扣',
+    discount_value DECIMAL(10,2) NOT NULL COMMENT '优惠值：满减为减免金额(元)，折扣为折数(如8.00表示8折)',
+    min_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '使用门槛：订单满X元可用',
+    total_count INT NOT NULL DEFAULT 0 COMMENT '发行总量',
+    remain_count INT NOT NULL DEFAULT 0 COMMENT '剩余可发放数量',
+    status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0停用 1启用',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_status (status) COMMENT '状态索引'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='优惠券模板表';
+
+-- 3.12 用户优惠券表（对应实体类 UserCoupon，已发放到买家账户的券，含快照信息）
+DROP TABLE IF EXISTS sys_user_coupon;
+CREATE TABLE sys_user_coupon (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    user_id BIGINT NOT NULL COMMENT '持有者用户ID，关联 sys_user.id',
+    coupon_id BIGINT NOT NULL COMMENT '来源优惠券模板ID，关联 sys_coupon.id',
+    name VARCHAR(100) NOT NULL COMMENT '优惠券名称（快照）',
+    type TINYINT NOT NULL COMMENT '优惠类型（快照）：1满减 2折扣',
+    discount_value DECIMAL(10,2) NOT NULL COMMENT '优惠值（快照）',
+    min_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '使用门槛（快照）',
+    status TINYINT NOT NULL DEFAULT 0 COMMENT '状态：0未使用 1已使用 2已过期',
+    expire_time DATETIME NOT NULL COMMENT '过期时间',
+    receive_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '领取时间',
+    use_time DATETIME DEFAULT NULL COMMENT '使用时间',
+    order_id BIGINT DEFAULT NULL COMMENT '使用的订单ID（status=1时有效）',
+    INDEX idx_user_status (user_id, status) COMMENT '用户+状态索引（高频：我的优惠券）',
+    INDEX idx_expire (expire_time) COMMENT '过期时间索引（定时清理）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户优惠券表';
+
+-- 3.13 买卖会话表（对应实体类 Conversation，买卖双方一对一沟通）
+DROP TABLE IF EXISTS sys_conversation;
+CREATE TABLE sys_conversation (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    user_id BIGINT NOT NULL COMMENT '买家用户ID，关联 sys_user.id',
+    seller_id BIGINT NOT NULL COMMENT '卖家ID，关联 sys_seller.id',
+    last_message VARCHAR(500) DEFAULT NULL COMMENT '最后一条消息内容（列表预览）',
+    unread_user INT NOT NULL DEFAULT 0 COMMENT '买家未读数',
+    unread_seller INT NOT NULL DEFAULT 0 COMMENT '卖家未读数',
+    last_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后消息时间',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_user_seller (user_id, seller_id) COMMENT '唯一约束：买卖双方只允许一个会话'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='买卖会话表';
+
+-- 3.14 聊天消息表（对应实体类 ChatMessage，会话下的所有消息）
+DROP TABLE IF EXISTS sys_chat_message;
+CREATE TABLE sys_chat_message (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    conversation_id BIGINT NOT NULL COMMENT '会话ID，关联 sys_conversation.id',
+    sender_id BIGINT NOT NULL COMMENT '发送者ID（用户ID或卖家ID）',
+    sender_role VARCHAR(20) NOT NULL COMMENT '发送者身份：USER买家 / SELLER卖家',
+    content VARCHAR(500) NOT NULL COMMENT '消息内容',
+    is_read TINYINT NOT NULL DEFAULT 0 COMMENT '是否已读：0未读 1已读',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
+    INDEX idx_conversation_time (conversation_id, create_time) COMMENT '会话+时间索引（拉取消息）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天消息表';
 
 -- =============================================
 -- 第五部分：初始数据
@@ -488,3 +558,11 @@ INSERT IGNORE INTO product_image (product_id, image_url, sort, is_main) VALUES
 (64, 'https://images.unsplash.com/photo-1559268950-2d4e5c1f1b0e?w=800&h=800&fit=crop', 0, 1),
 -- 商品65：手持稳定器
 (65, 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=800&h=800&fit=crop', 0, 1);
+
+-- 5.5 插入优惠券模板示例数据
+-- 普通买家券：力度较小；会员买家券：力度更大
+INSERT IGNORE INTO sys_coupon (id, name, type, discount_value, min_amount, total_count, remain_count, status) VALUES
+(1, '新客满减券',            1, 5.00,  50,   10000, 10000, 1),
+(2, '普通用户折扣券',        2, 9.50,  100,  10000, 10000, 1),
+(3, '会员尊享满减券',        1, 30.00, 200,  5000,  5000,  1),
+(4, '会员尊享折扣券',        2, 8.50,  300,  5000,  5000,  1);

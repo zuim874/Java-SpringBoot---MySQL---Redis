@@ -47,6 +47,7 @@
                 </div>
                 <button class="profile-menu-item" @click="profileMenuOpen = false; goOrders()">我的订单</button>
                 <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
+                <button class="profile-menu-item" @click="profileMenuOpen = false; goCoupons()">我的优惠券</button>
                 <button class="profile-menu-item" v-if="isAdminUser" @click="profileMenuOpen = false; goAdmin()">管理后台</button>
                 <button class="profile-menu-item" v-if="isSellerUser" @click="profileMenuOpen = false; goSeller()">商家管理</button>
                 <div class="profile-menu-divider"></div>
@@ -142,7 +143,10 @@
               </div>
               <div class="product-bottom">
                 <span class="product-price">¥{{ (prod.price || 0).toFixed(2) }}</span>
-                <button class="add-cart-btn" @click.stop="addToCart(prod)">加入购物车</button>
+                <div class="product-actions">
+                  <button class="chat-btn" v-if="prod.sellerId" @click.stop="openChat(prod)">💬 客服</button>
+                  <button class="add-cart-btn" @click.stop="addToCart(prod)">加入购物车</button>
+                </div>
               </div>
             </div>
           </div>
@@ -245,6 +249,26 @@
 
           <p v-if="addressMsg" :class="['address-msg', addressMsgSuccess ? 'address-msg--success' : 'address-msg--error']">{{ addressMsg }}</p>
 
+          <!-- 优惠券选择 -->
+          <div class="coupon-select" v-if="availableCoupons.length > 0">
+            <p class="address-section-label">使用优惠券</p>
+            <div class="coupon-options">
+              <button class="coupon-option" :class="{ selected: selectedCoupon === null }"
+                      @click="selectedCoupon = null">
+                <span>不使用</span>
+              </button>
+              <button v-for="c in availableCoupons" :key="c.id"
+                      class="coupon-option" :class="{ selected: selectedCoupon && selectedCoupon.id === c.id }"
+                      @click="selectedCoupon = c">
+                <span class="co-name">{{ c.name }}</span>
+                <span class="co-value">
+                  {{ c.type === 2 ? Number(c.discountValue).toFixed(1) + '折' : '减¥' + Number(c.discountValue).toFixed(0) }}
+                </span>
+                <span class="co-threshold">满¥{{ Number(c.minAmount || 0).toFixed(0) }}可用</span>
+              </button>
+            </div>
+          </div>
+
           <div class="address-modal-actions">
             <button class="address-btn address-btn--cancel" @click="cancelCheckout">取消</button>
             <button class="address-btn address-btn--confirm" @click="confirmCheckout" :disabled="checkouting">
@@ -269,14 +293,20 @@
         <div class="footer-copy">© 2026 ZuiMShop. All rights reserved.</div>
       </div>
     </footer>
+
+    <!-- ===== 聊天抽屉 ===== -->
+    <ChatDrawer :show="showChat" :sellerId="chatSellerId" :sellerName="chatSellerName" :sellerAvatar="chatSellerAvatar"
+                @close="showChat = false" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { getProductPage, getCategories, createOrder } from '../api/index.js'
+import { getProductPage, getCategories, createOrder, getAvailableCoupons } from '../api/index.js'
 import { getUserAddresses, addAddress, getUserInfo } from '../api/index.js'
+import { toastError } from '../utils/toast.js'
+import ChatDrawer from '../components/ChatDrawer.vue'
 import { getCachedRoles } from '../utils/auth.js'
 
 const DEFAULT_AVATAR = '/uploads/avatars/defaultAvatar.png'
@@ -291,6 +321,11 @@ const catMenuOpen = ref(false)
 // ===== 地址选择弹窗状态 =====
 const showAddressModal = ref(false)
 const addresses = ref([])
+// ===== 聊天抽屉状态 =====
+const showChat = ref(false)
+const chatSellerId = ref(0)
+const chatSellerName = ref('')
+const chatSellerAvatar = ref('')
 const selectedAddressId = ref(null)
 const formReceiverName = ref('')
 const formReceiverPhone = ref('')
@@ -299,6 +334,9 @@ const formSaveAddress = ref(false)
 const addressMsg = ref('')
 const addressMsgSuccess = ref(false)
 const checkouting = ref(false)
+// ===== 优惠券状态 =====
+const availableCoupons = ref([])
+const selectedCoupon = ref(null)
 
 // ===== 角色判断（用于导航中显示按钮） =====
 const cachedRoles = getCachedRoles()
@@ -503,6 +541,21 @@ const pageNumbers = computed(() => {
 })
 
 /**
+ * 打开与卖家的聊天抽屉
+ */
+function openChat(prod) {
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  chatSellerId.value = prod.sellerId
+  chatSellerName.value = (prod.seller && prod.seller.sellerName) || prod.sellerName || '卖家'
+  chatSellerAvatar.value = (prod.seller && prod.seller.sellerAvatar) || ''
+  showChat.value = true
+}
+
+/**
  * 跳转商品详情页
  */
 function goToProductDetail(id) {
@@ -519,8 +572,9 @@ function handleLogout() {
 function closeMenu() { menuOpen.value = false }
 function goProfile() { router.push('/profile') }
 function goOrders() { router.push('/orders') }
+function goCoupons() { router.push('/coupons') }
 function goAdmin() { router.push('/admin/dashboard') }
-function goSeller() { router.push('/seller/products') }
+function goSeller() { router.push('/seller/dashboard') }
 function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
 // ===== 轮播数据 =====
@@ -606,7 +660,7 @@ async function goToCheckout() {
   }
   // 检查购物车是否为空
   if (cart.value.length === 0) {
-    alert('购物车是空的，先去挑选商品吧')
+    toastError('购物车是空的，先去挑选商品吧')
     return
   }
 
@@ -636,6 +690,18 @@ async function goToCheckout() {
   } catch {
     addresses.value = []
     selectedAddressId.value = null
+  }
+
+  // 加载可用优惠券
+  availableCoupons.value = []
+  selectedCoupon.value = null
+  try {
+    const cres = await getAvailableCoupons()
+    if (cres && cres.code === 200) {
+      availableCoupons.value = cres.data || []
+    }
+  } catch {
+    // 优惠券加载失败不影响下单
   }
 
   showAddressModal.value = true
@@ -704,7 +770,8 @@ async function confirmCheckout() {
       receiverName: name,
       receiverPhone: phone,
       receiverAddress: addr,
-      remark: ''
+      remark: '',
+      userCouponId: selectedCoupon.value ? selectedCoupon.value.id : null
     })
     if (res && res.code === 200) {
       // 下单成功
@@ -722,7 +789,7 @@ async function confirmCheckout() {
       addressMsgSuccess.value = false
     }
   } catch (err) {
-    addressMsg.value = '下单失败：' + ((err && err.message) || '网络错误')
+    addressMsg.value = '下单失败：' + ((err && err.message) || '服务连接失败，请稍后重试')
     addressMsgSuccess.value = false
   } finally {
     checkouting.value = false
@@ -1181,6 +1248,13 @@ a { text-decoration: none; color: inherit; }
 .product-seller { color: #2b6cb0; font-weight: 500; }
 .product-bottom { display: flex; align-items: center; justify-content: space-between; }
 .product-price { font-size: 1.15rem; font-weight: 700; color: #2b6cb0; }
+.product-actions { display: flex; align-items: center; gap: 8px; }
+.chat-btn {
+  padding: 8px 12px; border: 1px solid rgba(43,108,176,0.3); border-radius: 50px;
+  background: transparent; color: #2b6cb0; font-family: 'DM Sans', sans-serif;
+  font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.3s;
+}
+.chat-btn:hover { background: rgba(43,108,176,0.06); border-color: #2b6cb0; transform: translateY(-1px); }
 .add-cart-btn {
   padding: 8px 16px; border: none; border-radius: 50px;
   background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
@@ -1356,6 +1430,23 @@ a { text-decoration: none; color: inherit; }
   font-size: 0.8rem; font-weight: 600; color: #868e96;
   margin-bottom: 10px; letter-spacing: 0.02em;
 }
+/* ===== 优惠券选择 ===== */
+.coupon-select { margin-bottom: 16px; }
+.coupon-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.coupon-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 14px; border: 1px solid #dee2e6; border-radius: 12px;
+  background: #fff; cursor: pointer; transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif; text-align: left;
+}
+.coupon-option:hover { border-color: #4a9eff; }
+.coupon-option.selected {
+  border-color: #2b6cb0; background: rgba(43,108,176,0.05);
+  box-shadow: 0 0 0 2px rgba(43,108,176,0.12);
+}
+.co-name { font-size: 0.78rem; font-weight: 600; color: #212529; }
+.co-value { font-size: 0.85rem; font-weight: 700; color: #2b6cb0; }
+.co-threshold { font-size: 0.68rem; color: #adb5bd; }
 .address-list { margin-bottom: 20px; }
 .address-card {
   padding: 12px 16px; border: 1px solid #dee2e6; border-radius: 12px;

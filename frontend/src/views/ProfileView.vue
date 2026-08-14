@@ -50,7 +50,10 @@
             <span class="avatar-loading" v-if="uploading"></span>
           </div>
           <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden-file-input" @change="handleFileChange">
-          <h2 class="profile-title">个人中心</h2>
+          <h2 class="profile-title">
+            个人中心
+            <span v-if="isVipUser" class="vip-chip">★ 会员</span>
+          </h2>
           <p class="profile-desc">管理您的账号信息</p>
         </div>
 
@@ -103,6 +106,10 @@
             <button class="edit-profile-btn edit-profile-btn--recharge" @click="openRecharge">
               <span class="edit-profile-btn-icon">💰</span>
               <span>申请充值</span>
+            </button>
+            <button class="edit-profile-btn" @click="goCoupons">
+              <span class="edit-profile-btn-icon">🎟️</span>
+              <span>我的优惠券</span>
             </button>
             <button class="edit-profile-btn" @click="openAddressManager">
               <span class="edit-profile-btn-icon">📍</span>
@@ -421,6 +428,7 @@ const username = ref(localStorage.getItem('username') || '')
 const email = ref(localStorage.getItem('email') || '')
 const avatar = ref('')
 const balance = ref(0)
+const isVipUser = ref(false)
 const message = ref('')
 const success = ref(false)
 const showConfirm = ref(false)
@@ -549,6 +557,9 @@ onMounted(async () => {
       email.value = u.email || ''
       balance.value = u.balance || 0
       avatar.value = u.avatar || ''
+      // 会员买家标识
+      const role = u.userRole || ''
+      isVipUser.value = role.includes('ROLE_VIP_USER')
     }
   } catch (err) {
     // 拉取失败时保留 localStorage 中的缓存信息
@@ -579,6 +590,9 @@ onUnmounted(() => {
 
 function goBackToShop() {
   router.push('/home')
+}
+function goCoupons() {
+  router.push('/coupons')
 }
 
 function handleLogout() {
@@ -630,7 +644,7 @@ async function handleSubmitRecharge() {
     }
   } catch (err) {
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     recharging.value = false
   }
@@ -799,7 +813,7 @@ async function submitEditNickname() {
     }
   } catch (err) {
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     editingNickname.value = false
   }
@@ -860,7 +874,7 @@ async function sendOldEmailCode() {
     }
   } catch (err) {
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     oldCodeSending.value = false
   }
@@ -893,7 +907,7 @@ async function sendNewEmailCode() {
     }
   } catch (err) {
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     newCodeSending.value = false
   }
@@ -936,7 +950,7 @@ async function submitChangeEmail() {
     }
   } catch (err) {
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     changingEmail.value = false
   }
@@ -994,7 +1008,7 @@ async function submitChangePassword() {
   } catch (err) {
     console.error('请求异常详情:', err)
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     changingPassword.value = false
   }
@@ -1088,7 +1102,7 @@ async function sendDeleteCode() {
     }
   } catch (err) {
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     deleteCodeSending.value = false
   }
@@ -1123,7 +1137,7 @@ async function handleDelete() {
     }
   } catch (err) {
     success.value = false
-    message.value = (err && err.message) ? ('请求异常：' + err.message) : '网络错误，请检查后端服务是否启动'
+    message.value = (err && err.message) ? ('请求异常：' + err.message) : '服务连接失败，请稍后重试'
   } finally {
     deleting.value = false
     // 仅注销成功时关闭弹窗；失败保留弹窗，让错误消息显示在弹窗内
@@ -1385,6 +1399,16 @@ async function handleDelete() {
   font-weight: 700;
   color: #212529;
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.vip-chip {
+  padding: 3px 12px; border-radius: 50px;
+  background: linear-gradient(135deg, #7c3aed, #4a9eff);
+  color: #fff; font-size: 0.72rem; font-weight: 700;
+  vertical-align: middle;
 }
 .profile-desc {
   font-size: 0.9rem;

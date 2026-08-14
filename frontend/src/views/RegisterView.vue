@@ -267,7 +267,7 @@ async function sendVerificationCode() {
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = '服务连接失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -300,7 +300,7 @@ async function handleRegister() {
     }
   } catch (err) {
     success.value = false
-    message.value = '网络错误，请检查后端服务是否启动'
+    message.value = '服务连接失败，请稍后重试'
   } finally {
     loading.value = false
   }

@@ -1,6 +1,8 @@
 package com.xuwenye.demo.Mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Order;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -61,4 +63,38 @@ public interface OrderMapper extends BaseMapper<Order> {
             " ORDER BY create_time DESC" +
             "</script>")
     List<Order> findOrdersByStatus(@Param("status") Integer status);
+
+    /**
+     * 分页查询某卖家的订单（通过订单项关联商品归属，DISTINCT 去重）
+     * <p>
+     * @author ZuiM
+     * @param page 分页对象
+     * @param sellerId 卖家ID
+     * @param status 订单状态（为null则查询全部）
+     * @return IPage<Order> 分页订单
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT o.* FROM sys_order o " +
+            "JOIN sys_order_item oi ON oi.order_id = o.id " +
+            "JOIN sys_product p ON p.id = oi.product_id " +
+            "WHERE p.seller_id = #{sellerId} AND o.is_deleted = 0" +
+            "<if test='status != null'> AND o.status = #{status}</if>" +
+            " ORDER BY o.create_time DESC" +
+            "</script>")
+    IPage<Order> findSellerOrdersPage(Page<Order> page,
+                                      @Param("sellerId") Long sellerId,
+                                      @Param("status") Integer status);
+
+    /**
+     * 判断某订单是否包含该卖家的商品
+     * <p>
+     * @author ZuiM
+     * @param orderId 订单ID
+     * @param sellerId 卖家ID
+     * @return int 命中数量（>0 表示包含）
+     */
+    @Select("SELECT COUNT(*) FROM sys_order_item oi " +
+            "JOIN sys_product p ON p.id = oi.product_id " +
+            "WHERE oi.order_id = #{orderId} AND p.seller_id = #{sellerId}")
+    int countOrderBySeller(@Param("orderId") Long orderId, @Param("sellerId") Long sellerId);
 }

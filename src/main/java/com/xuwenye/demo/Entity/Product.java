@@ -27,6 +27,8 @@ public class Product {
     private String description;   // 商品描述
     private String category;      // 商品分类（如：手机配件、电脑外设等）
     private String mainImageUrl;  // 冗余：商品主图URL
+    /** 推荐位：0普通 1推荐（会员卖家权益，商城置顶曝光） */
+    private Integer recommend;
     @TableField("create_time")
     private LocalDateTime createTime;  // 创建时间
     @TableField("update_time")

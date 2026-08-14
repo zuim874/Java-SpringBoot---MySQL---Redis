@@ -371,6 +371,72 @@ public class AdminController {
         }
     }
 
+    // ======================== 会员（VIP）管理 ========================
+
+    /**
+     * 升级/降级买家为会员买家（ROLE_VIP_USER）
+     * 会员买家可享受更多/更强的优惠券福利
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 用户ID
+     * @param enable true=升级为VIP false=取消VIP
+     * @return Result 200 操作成功
+     */
+    @OperationLog("买家会员升级/降级")
+    @PutMapping("/user/vip/{id}")
+    @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
+    public Result<?> setUserVip(
+            @RequestHeader("Authorization") String token,
+            @PathVariable @Min(1) Long id,
+            @RequestParam boolean enable) {
+        if (!validateAdmin(token)) {
+            return Result.error(403, "权限不足，仅管理员可操作");
+        }
+        boolean success = userService.updateUserRole(id, "ROLE_VIP_USER", enable);
+        if (success) {
+            return Result.ok(enable ? "已升级为会员买家" : "已取消会员买家");
+        }
+        return Result.error(400, "操作失败，用户不存在");
+    }
+
+    /**
+     * 升级/降级卖家为会员卖家（ROLE_VIP_SELLER）
+     * 会员卖家福利：旗舰店标识、商品推荐位（商城置顶曝光）
+     * 通过卖家名称匹配关联的用户账号进行角色变更
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 卖家ID（关联 sys_seller.id）
+     * @param enable true=升级为VIP卖家 false=取消VIP卖家
+     * @return Result 200 操作成功
+     */
+    @OperationLog("卖家会员升级/降级")
+    @PutMapping("/seller/vip/{id}")
+    @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
+    public Result<?> setSellerVip(
+            @RequestHeader("Authorization") String token,
+            @PathVariable @Min(1) Long id,
+            @RequestParam boolean enable) {
+        if (!validateAdmin(token)) {
+            return Result.error(403, "权限不足，仅管理员可操作");
+        }
+        Seller seller = sellerService.getSellerById(id);
+        if (seller == null) {
+            return Result.error(400, "卖家不存在");
+        }
+        // 卖家与用户通过名称关联（卖家账号的用户名 = 卖家名称）
+        com.xuwenye.demo.Entity.User user = userService.findAllUser(seller.getSellerName());
+        if (user == null) {
+            return Result.error(400, "未找到该卖家关联的用户账号");
+        }
+        boolean success = userService.updateUserRole(user.getId(), "ROLE_VIP_SELLER", enable);
+        if (success) {
+            return Result.ok(enable ? "已升级为会员卖家" : "已取消会员卖家");
+        }
+        return Result.error(400, "操作失败");
+    }
+
     // ======================== 内部工具方法 ========================
 
     /**

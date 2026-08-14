@@ -10,32 +10,13 @@
     <!-- 导航条 -->
     <nav class="nav">
       <div class="nav-logo">ZuiMShop</div>
-      <div class="avatar-wrapper" @click.stop>
-        <span class="nav-balance" v-if="userBalance !== null">余额 ¥{{ Number(userBalance).toFixed(2) }}</span>
-        <span class="nav-nickname">{{ nickname }}</span>
-        <button class="avatar-btn" @click="profileMenuOpen = !profileMenuOpen" aria-label="用户菜单">
-          <span class="avatar-circle">
-            <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
-          </span>
-          <span class="avatar-caret" :class="{ open: profileMenuOpen }">▾</span>
+      <div class="nav-actions">
+        <button class="nav-btn" @click="goHome">
+          <span class="nav-btn-icon">🏪</span>
+          <span class="nav-btn-text">返回商城</span>
         </button>
-        <transition name="profile">
-          <div class="profile-menu" v-if="profileMenuOpen">
-            <div class="profile-menu-header">
-              <span class="profile-menu-avatar">
-                <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
-              </span>
-              <div class="profile-menu-id">
-                <p class="profile-menu-name">{{ nickname }}</p>
-                <p class="profile-menu-role">{{ roleLabel }}</p>
-              </div>
-            </div>
-            <button class="profile-menu-item" @click="profileMenuOpen = false; goHome()">返回商城</button>
-            <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
-            <div class="profile-menu-divider"></div>
-            <button class="profile-menu-item profile-menu-item--logout" @click="handleLogout">退出登录</button>
-          </div>
-        </transition>
+        <button class="nav-btn" @click="goSellerDashboard">商家工作台</button>
+        <button class="nav-btn nav-btn--outline" @click="handleLogout">退出登录</button>
       </div>
     </nav>
 
@@ -383,7 +364,7 @@ async function toggleStatus(prod) {
       showMessage(res?.mes || '操作失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -396,6 +377,7 @@ function showMessage(msg, success) {
 }
 
 function goHome() { router.push('/home') }
+function goSellerDashboard() { router.push('/seller/dashboard') }
 function handleLogout() {
   localStorage.removeItem('token')
   localStorage.removeItem('nickname')
@@ -449,8 +431,9 @@ onUnmounted(() => {
   font-size: 0.8rem; font-weight: 600; color: #2b6cb0; cursor: pointer; transition: all 0.3s;
 }
 .nav-btn:hover { background: #2b6cb0; color: white; border-color: #2b6cb0; }
-.nav-btn--logout { color: #c92a2a; border-color: rgba(201,42,42,0.20); }
-.nav-btn--logout:hover { background: #c92a2a; border-color: #c92a2a; color: white; }
+.nav-btn--outline { color: #c92a2a; border-color: rgba(201,42,42,0.20); }
+.nav-btn--outline:hover { background: #c92a2a; border-color: #c92a2a; color: white; }
+.nav-btn-icon { font-size: 0.9rem; }
 .nav-nickname { font-size: 0.85rem; font-weight: 500; color: #2b6cb0; padding: 0 4px; }
 
 /* ===== 用户头像与下拉菜单 ===== */

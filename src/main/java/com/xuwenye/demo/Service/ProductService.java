@@ -294,6 +294,30 @@ public class ProductService {
     }
 
     /**
+     * 设置商品推荐位（会员卖家权益）
+     * <p>
+     * @author ZuiM
+     * @param id 商品ID
+     * @param recommend 1推荐 0取消
+     * @return boolean true=设置成功
+     */
+    @Transactional
+    public boolean setRecommend(Long id, int recommend) {
+        Product product = new Product();
+        product.setId(id);
+        product.setRecommend(recommend);
+        boolean result = productMapper.updateById(product) > 0;
+        if (result) {
+            // 异步发送缓存刷新任务（商城列表置顶需刷新分页缓存）
+            sendProductCacheRefreshTask();
+            List<String> keys = new ArrayList<>();
+            keys.add(PRODUCT_DETAIL_CACHE_PREFIX + id);
+            mqProducer.sendCacheRefreshTask("product", "refresh", keys);
+        }
+        return result;
+    }
+
+    /**
      * 扣减库存（使用分布式锁保护）
      * 1.获取分布式锁
      * 2.检查库存

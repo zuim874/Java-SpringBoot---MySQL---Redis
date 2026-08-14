@@ -460,6 +460,18 @@ public class UserService {
     }
 
     /**
+     * 按自定义查询条件分页查询用户列表
+     * <p>
+     * @author ZuiM
+     * @param wrapper 查询条件（如角色筛选）
+     * @param pageObj 分页对象
+     * @return Page<User> 分页用户列表
+     */
+    public Page<User> getUserListByQuery(QueryWrapper<User> wrapper, Page<User> pageObj) {
+        return userMapper.selectPage(pageObj, wrapper);
+    }
+
+    /**
      * 更新用户状态（启用/禁用）
      * 1.更新数据库
      * 2.清除关联缓存
@@ -477,6 +489,57 @@ public class UserService {
         User update = new User();
         update.setId(id);
         update.setStatus(status);
+        boolean result = userMapper.updateById(update) > 0;
+        if (result) {
+            sendUserCacheRefreshTask(user);
+        }
+        return result;
+    }
+
+    /**
+     * 更新用户角色（新增/移除指定角色编码，逗号分隔多角色）
+     * 1.读取当前角色串，去重后增删目标角色
+     * 2.保证至少保留 ROLE_USER 基础角色
+     * 3.更新数据库并异步刷新缓存
+     * <p>
+     * @author ZuiM
+     * @param id 用户ID
+     * @param roleCode 角色编码（如 ROLE_VIP_USER）
+     * @param enable true=新增角色 false=移除角色
+     * @return boolean true=更新成功
+     */
+    public boolean updateUserRole(Long id, String roleCode, boolean enable) {
+        if (roleCode == null || roleCode.trim().isEmpty()) {
+            return false;
+        }
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            return false;
+        }
+        // 解析当前角色（去空去重）
+        java.util.LinkedHashSet<String> roles = new java.util.LinkedHashSet<>();
+        if (user.getUserRole() != null && !user.getUserRole().trim().isEmpty()) {
+            for (String r : user.getUserRole().split(",")) {
+                String trimmed = r.trim();
+                if (!trimmed.isEmpty()) {
+                    roles.add(trimmed);
+                }
+            }
+        }
+        if (enable) {
+            roles.add(roleCode.trim());
+        } else {
+            roles.remove(roleCode.trim());
+        }
+        // 保证至少保留基础买家角色
+        if (roles.isEmpty()) {
+            roles.add("ROLE_USER");
+        }
+        String newRole = String.join(",", roles);
+
+        User update = new User();
+        update.setId(id);
+        update.setUserRole(newRole);
         boolean result = userMapper.updateById(update) > 0;
         if (result) {
             sendUserCacheRefreshTask(user);

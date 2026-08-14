@@ -762,6 +762,63 @@ public class ProductController {
         return Result.error(400, "商品下架失败");
     }
 
+    /**
+     * 商家设置商品为推荐/取消推荐（会员卖家权益，商城置顶曝光）
+     * 1.校验商家身份
+     * 2.校验商品归属
+     * 3.校验是否为会员卖家（ROLE_VIP_SELLER）
+     * 4.设置推荐位
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @param id 商品ID
+     * @param recommend 1推荐 0取消
+     * @return Result 200 操作成功
+     */
+    @OperationLog("商家设置商品推荐位")
+    @PutMapping("/seller/recommend/{id}")
+    @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
+    public Result<?> setSellerRecommend(
+            @RequestHeader("Authorization") String token,
+            @PathVariable @Min(1) Long id,
+            @RequestParam int recommend) {
+        // 校验商家身份
+        Long sellerId = validateSeller(token);
+        if (sellerId == null) {
+            return Result.error(403, "权限不足，仅商家可操作");
+        }
+        // 校验商品归属
+        Product existing = productService.getProductById(id);
+        if (existing == null) {
+            return Result.error(400, "商品不存在");
+        }
+        if (!existing.getSellerId().equals(sellerId)) {
+            return Result.error(403, "无权操作其他商家的商品");
+        }
+        // 校验会员卖家身份
+        if (!isVipSeller(token)) {
+            return Result.error(403, "推荐位为会员卖家专属权益，请先升级为会员卖家");
+        }
+        boolean success = productService.setRecommend(id, recommend);
+        if (success) {
+            return Result.ok(recommend == 1 ? "商品已置顶推荐" : "已取消推荐");
+        }
+        return Result.error(400, "操作失败");
+    }
+
+    /**
+     * 校验商家是否为会员卖家（ROLE_VIP_SELLER）
+     * <p>
+     * @author ZuiM
+     * @param token 登录令牌
+     * @return boolean true=会员卖家
+     */
+    private boolean isVipSeller(String token) {
+        String username = jwtUtil.parseUsername(token.substring(7));
+        com.xuwenye.demo.Entity.User user = userService.findAllUser(username);
+        return user != null && user.getUserRole() != null && user.getUserRole().contains("VIP_SELLER");
+    }
+
     // ======================== 内部工具方法 ========================
 
     /**
@@ -853,6 +910,7 @@ public class ProductController {
         item.put("description", product.getDescription());
         item.put("category", product.getCategory());
         item.put("mainImageUrl", product.getMainImageUrl());
+        item.put("recommend", product.getRecommend());
         item.put("createTime", product.getCreateTime());
         item.put("updateTime", product.getUpdateTime());
 

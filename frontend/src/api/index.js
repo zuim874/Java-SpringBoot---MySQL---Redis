@@ -431,4 +431,237 @@ export function getUserInfo() {
   return api.get('/user/me')
 }
 
+// ==================== 优惠券 API ====================
+
+/**
+ * 获取当前用户可用优惠券
+ * @returns {Promise}
+ */
+export function getAvailableCoupons() {
+  return api.get('/coupon/user/available')
+}
+
+/**
+ * 获取当前用户全部优惠券（含已用/已过期）
+ * @returns {Promise}
+ */
+export function getAllCoupons() {
+  return api.get('/coupon/user/all')
+}
+
+/**
+ * 管理员创建优惠券模板
+ * @param {object} coupon - { name, type, discountValue, minAmount, totalCount }
+ * @returns {Promise}
+ */
+export function adminCreateCoupon(coupon) {
+  return api.post('/coupon/admin/create', coupon)
+}
+
+/**
+ * 管理员分页查询优惠券模板
+ * @param {number} page
+ * @param {number} size
+ * @returns {Promise}
+ */
+export function adminListCoupons(page = 1, size = 10) {
+  return api.get('/coupon/admin/list', { params: { page, size } })
+}
+
+/**
+ * 管理员向指定用户发放优惠券
+ * @param {number} userId
+ * @param {number} couponId
+ * @param {number} expireDays
+ * @returns {Promise}
+ */
+export function adminGrantCoupon(userId, couponId, expireDays = 30) {
+  return api.post('/coupon/admin/grant', null, { params: { userId, couponId, expireDays } })
+}
+
+/**
+ * 管理员向全部会员买家批量发放优惠券
+ * @param {number} couponId
+ * @param {number} expireDays
+ * @returns {Promise}
+ */
+export function adminGrantCouponAllVip(couponId, expireDays = 30) {
+  return api.post('/coupon/admin/grant-all-vip', null, { params: { couponId, expireDays } })
+}
+
+// ==================== 买家聊天 API ====================
+
+/**
+ * 买家获取或创建与卖家的会话
+ * @param {number} sellerId
+ * @returns {Promise}
+ */
+export function userOpenChat(sellerId) {
+  return api.post('/chat/user/open', null, { params: { sellerId } })
+}
+
+/**
+ * 获取买家的会话列表
+ * @returns {Promise}
+ */
+export function getUserConversations() {
+  return api.get('/chat/user/conversations')
+}
+
+/**
+ * 买家发送消息
+ * @param {number} sellerId
+ * @param {string} content
+ * @returns {Promise}
+ */
+export function sendUserMessage(sellerId, content) {
+  return api.post('/chat/user/send', null, { params: { sellerId, content } })
+}
+
+/**
+ * 买家拉取会话消息（支持增量）
+ * @param {number} conversationId
+ * @param {number} afterId - 增量起点（可选）
+ * @returns {Promise}
+ */
+export function getUserMessages(conversationId, afterId) {
+  const params = { conversationId }
+  if (afterId) params.afterId = afterId
+  return api.get('/chat/user/messages', { params })
+}
+
+/**
+ * 买家标记会话已读
+ * @param {number} conversationId
+ * @returns {Promise}
+ */
+export function markUserConversationRead(conversationId) {
+  return api.post('/chat/user/read', null, { params: { conversationId } })
+}
+
+// ==================== 卖家聊天 API ====================
+
+/**
+ * 获取卖家的会话列表
+ * @returns {Promise}
+ */
+export function getSellerConversations() {
+  return api.get('/chat/seller/conversations')
+}
+
+/**
+ * 卖家发送消息
+ * @param {number} userId
+ * @param {string} content
+ * @returns {Promise}
+ */
+export function sendSellerMessage(userId, content) {
+  return api.post('/chat/seller/send', null, { params: { userId, content } })
+}
+
+/**
+ * 卖家拉取会话消息（支持增量）
+ * @param {number} conversationId
+ * @param {number} afterId
+ * @returns {Promise}
+ */
+export function getSellerMessages(conversationId, afterId) {
+  const params = { conversationId }
+  if (afterId) params.afterId = afterId
+  return api.get('/chat/seller/messages', { params })
+}
+
+/**
+ * 卖家标记会话已读
+ * @param {number} conversationId
+ * @returns {Promise}
+ */
+export function markSellerConversationRead(conversationId) {
+  return api.post('/chat/seller/read', null, { params: { conversationId } })
+}
+
+// ==================== 卖家订单与店铺 API ====================
+
+/**
+ * 获取卖家店铺信息
+ * @returns {Promise}
+ */
+export function getSellerShop() {
+  return api.get('/seller/shop')
+}
+
+/**
+ * 更新卖家店铺信息
+ * @param {object} seller - { sellerName, address, sellerContact, sellerAvatar }
+ * @returns {Promise}
+ */
+export function updateSellerShop(seller) {
+  return api.put('/seller/shop/update', seller)
+}
+
+/**
+ * 卖家分页查询订单
+ * @param {number} page
+ * @param {number} size
+ * @param {string} status - 订单状态筛选（可选）
+ * @returns {Promise}
+ */
+export function getSellerOrders(page = 1, size = 10, status = '') {
+  const params = { page, size }
+  if (status !== '' && status !== null && status !== undefined) {
+    params.status = status
+  }
+  return api.get('/seller/orders', { params })
+}
+
+/**
+ * 卖家查询订单详情
+ * @param {number} id
+ * @returns {Promise}
+ */
+export function getSellerOrderDetail(id) {
+  return api.get(`/seller/order/${id}`)
+}
+
+/**
+ * 卖家发货
+ * @param {number} id
+ * @returns {Promise}
+ */
+export function sellerShipOrder(id) {
+  return api.put(`/seller/order/ship/${id}`)
+}
+
+/**
+ * 卖家设置商品推荐位（会员卖家权益）
+ * @param {number} id
+ * @param {number} recommend - 1推荐 0取消
+ * @returns {Promise}
+ */
+export function sellerSetRecommend(id, recommend) {
+  return api.put(`/product/seller/recommend/${id}`, null, { params: { recommend } })
+}
+
+// ==================== 管理员 VIP 管理 API ====================
+
+/**
+ * 管理员升级/降级买家为会员买家
+ * @param {number} id - 用户ID
+ * @param {boolean} enable
+ * @returns {Promise}
+ */
+export function setUserVip(id, enable) {
+  return api.put(`/admin/user/vip/${id}`, null, { params: { enable } })
+}
+
+/**
+ * 管理员升级/降级卖家为会员卖家
+ * @param {number} id - 卖家ID
+ * @param {boolean} enable
+ * @returns {Promise}
+ */
+export function setSellerVip(id, enable) {
+  return api.put(`/admin/seller/vip/${id}`, null, { params: { enable } })
+}
+
 export default api

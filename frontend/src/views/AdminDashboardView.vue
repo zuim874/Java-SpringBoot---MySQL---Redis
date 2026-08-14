@@ -105,6 +105,10 @@
                             :disabled="actionLoading" :title="user.status === 1 ? '禁用' : '启用'">
                       {{ user.status === 1 ? '禁用' : '启用' }}
                     </button>
+                    <button class="action-btn action-btn--vip" @click="toggleUserVip(user)"
+                            :disabled="actionLoading" :title="isVipUser(user) ? '取消会员' : '升级会员'">
+                      {{ isVipUser(user) ? '取消会员' : '设为会员' }}
+                    </button>
                     <button class="action-btn action-btn--delete" @click="handleDeleteUser(user)"
                             :disabled="actionLoading" title="删除">删除</button>
                     <button class="action-btn action-btn--recover" @click="handleRecoverUser(user)"
@@ -279,6 +283,8 @@
                   <td>{{ seller.address || '-' }}</td>
                   <td>{{ seller.sellerContact || '-' }}</td>
                   <td class="action-cell">
+                    <button class="action-btn action-btn--vip" @click="toggleSellerVip(seller)"
+                            :disabled="actionLoading">设为会员卖家</button>
                     <button class="action-btn" @click="editSeller(seller)">编辑</button>
                     <button class="action-btn action-btn--delete" @click="handleDeleteSeller(seller)">删除</button>
                   </td>
@@ -295,6 +301,68 @@
             <button class="page-btn" :disabled="sellerPage >= sellerTotalPages" @click="sellerPage++; fetchSellers()">›</button>
           </div>
           <button class="add-btn" @click="showSellerForm = true">新增卖家</button>
+        </div>
+
+        <!-- ===== 优惠券管理标签 ===== -->
+        <div v-if="activeTab === 'coupons'" class="section">
+          <h3 class="section-title">优惠券管理</h3>
+          <div class="coupon-create">
+            <h4 class="coupon-create-title">创建优惠券模板</h4>
+            <div class="coupon-create-row">
+              <input v-model="couponForm.name" type="text" placeholder="优惠券名称" class="coupon-input" />
+              <select v-model="couponForm.type" class="coupon-input coupon-input--select">
+                <option :value="1">满减</option>
+                <option :value="2">折扣</option>
+              </select>
+              <input v-model="couponForm.discountValue" type="number" step="0.01" placeholder="优惠值" class="coupon-input" />
+              <input v-model="couponForm.minAmount" type="number" step="0.01" placeholder="使用门槛(元)" class="coupon-input" />
+              <input v-model="couponForm.totalCount" type="number" placeholder="发行量" class="coupon-input" />
+              <button class="charge-btn" :disabled="actionLoading" @click="handleCreateCoupon">创建</button>
+            </div>
+            <p class="coupon-hint">提示：满减填减免金额（如 30），折扣填折数（如 8.5 表示 8.5 折）</p>
+          </div>
+
+          <div class="table-loading" v-if="couponsLoading">
+            <div class="loading-spinner"></div>
+            <p>加载优惠券...</p>
+          </div>
+          <div class="table-wrap" v-else-if="coupons.length > 0">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th><th>名称</th><th>类型</th><th>优惠值</th>
+                  <th>门槛</th><th>剩余/总量</th><th>状态</th><th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="c in coupons" :key="c.id">
+                  <td>{{ c.id }}</td>
+                  <td>{{ c.name }}</td>
+                  <td>{{ c.type === 1 ? '满减' : '折扣' }}</td>
+                  <td>{{ c.type === 2 ? Number(c.discountValue).toFixed(1) + '折' : '¥' + Number(c.discountValue).toFixed(2) }}</td>
+                  <td>满¥{{ Number(c.minAmount || 0).toFixed(0) }}</td>
+                  <td>{{ c.remainCount }} / {{ c.totalCount }}</td>
+                  <td>
+                    <span :class="['status-badge', c.status === 1 ? 'status--active' : 'status--disabled']">
+                      {{ c.status === 1 ? '启用' : '停用' }}
+                    </span>
+                  </td>
+                  <td class="action-cell">
+                    <button class="action-btn action-btn--vip" @click="handleGrantCoupon(c)">发给用户</button>
+                    <button class="action-btn action-btn--complete" @click="handleGrantAllVip(c)">发全部会员</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="empty-state" v-else-if="!couponsLoading">
+            <p>暂无优惠券模板，请先创建</p>
+          </div>
+          <div class="pagination" v-if="couponTotalPages > 1">
+            <button class="page-btn" :disabled="couponPage <= 1" @click="couponPage--; fetchCoupons()">‹</button>
+            <span class="page-info">{{ couponPage }} / {{ couponTotalPages }}</span>
+            <button class="page-btn" :disabled="couponPage >= couponTotalPages" @click="couponPage++; fetchCoupons()">›</button>
+          </div>
         </div>
 
         <!-- ===== 充值审核标签 ===== -->
@@ -413,7 +481,8 @@ import {
   onshelfProduct, offshelfProduct,
   chargeUserBalance,
   getAdminRechargeRequests, approveRechargeRequest, rejectRechargeRequest,
-  getUserInfo
+  adminListCoupons, adminCreateCoupon, adminGrantCoupon, adminGrantCouponAllVip,
+  setUserVip, setSellerVip
 } from '../api/index.js'
 
 const router = useRouter()
@@ -455,7 +524,8 @@ const tabs = [
   { key: 'products', label: '商品管理', icon: '📦' },
   { key: 'orders', label: '订单管理', icon: '📋' },
   { key: 'sellers', label: '卖家管理', icon: '🏪' },
-  { key: 'recharge', label: '充值审核', icon: '💰' }
+  { key: 'recharge', label: '充值审核', icon: '💰' },
+  { key: 'coupons', label: '优惠券管理', icon: '🎟️' }
 ]
 
 // ===== 通用状态 =====
@@ -495,7 +565,7 @@ async function toggleUserStatus(user) {
       showMessage(res?.mes || '操作失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -513,7 +583,7 @@ async function handleDeleteUser(user) {
       showMessage(res?.mes || '删除失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -531,7 +601,7 @@ async function handleRecoverUser(user) {
       showMessage(res?.mes || '恢复失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -562,7 +632,7 @@ async function handleCharge() {
       showMessage(res?.mes || '充值失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -601,7 +671,7 @@ async function toggleProductStatus(prod) {
       showMessage(res?.mes || '操作失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -654,7 +724,7 @@ async function handleShipOrder(order) {
       showMessage(res?.mes || '发货失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -671,7 +741,7 @@ async function handleCompleteOrder(order) {
       showMessage(res?.mes || '操作失败', false)
     }
   } catch {
-    showMessage('网络错误', false)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
@@ -782,6 +852,141 @@ async function handleRejectRecharge(id) {
   }
 }
 
+// ===== 优惠券管理 =====
+const coupons = ref([])
+const couponsLoading = ref(false)
+const couponPage = ref(1)
+const couponTotalPages = ref(1)
+const couponForm = ref({ name: '', type: 1, discountValue: '', minAmount: '', totalCount: '' })
+
+async function fetchCoupons() {
+  couponsLoading.value = true
+  try {
+    const res = await adminListCoupons(couponPage.value, 10)
+    if (res && res.code === 200 && res.data) {
+      coupons.value = res.data.records || []
+      couponTotalPages.value = res.data.pages || 1
+    }
+  } catch (e) {
+    console.error('获取优惠券列表失败:', e)
+  } finally {
+    couponsLoading.value = false
+  }
+}
+
+async function handleCreateCoupon() {
+  if (!couponForm.value.name.trim()) { showMessage('请输入优惠券名称', false); return }
+  if (!couponForm.value.discountValue || Number(couponForm.value.discountValue) <= 0) {
+    showMessage('请输入有效的优惠值', false); return
+  }
+  if (!couponForm.value.totalCount || Number(couponForm.value.totalCount) <= 0) {
+    showMessage('请输入有效的发行量', false); return
+  }
+  actionLoading.value = true
+  try {
+    const res = await adminCreateCoupon({
+      name: couponForm.value.name.trim(),
+      type: Number(couponForm.value.type),
+      discountValue: Number(couponForm.value.discountValue),
+      minAmount: Number(couponForm.value.minAmount) || 0,
+      totalCount: Number(couponForm.value.totalCount)
+    })
+    if (res && res.code === 200) {
+      showMessage('优惠券创建成功', true)
+      couponForm.value = { name: '', type: 1, discountValue: '', minAmount: '', totalCount: '' }
+      fetchCoupons()
+    } else {
+      showMessage((res && res.mes) || '创建失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function handleGrantCoupon(c) {
+  const userId = prompt(`请输入要发放「${c.name}」的目标用户 ID：`)
+  if (!userId) return
+  const days = prompt('请输入有效天数（默认 30）：', '30')
+  actionLoading.value = true
+  try {
+    const res = await adminGrantCoupon(userId, c.id, Number(days) || 30)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '发放成功', true)
+      fetchCoupons()
+    } else {
+      showMessage((res && res.mes) || '发放失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function handleGrantAllVip(c) {
+  if (!confirm(`确定要向全部会员买家发放「${c.name}」吗？`)) return
+  const days = prompt('请输入有效天数（默认 30）：', '30')
+  actionLoading.value = true
+  try {
+    const res = await adminGrantCouponAllVip(c.id, Number(days) || 30)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '批量发放完成', true)
+      fetchCoupons()
+    } else {
+      showMessage((res && res.mes) || '发放失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// ===== 会员（VIP）管理 =====
+function isVipUser(user) {
+  const role = user.userRole || ''
+  return role.includes('ROLE_VIP_USER')
+}
+
+async function toggleUserVip(user) {
+  const enable = !isVipUser(user)
+  if (!confirm(`确定要${enable ? '升级' : '取消'}用户「${user.username}」的会员身份吗？`)) return
+  actionLoading.value = true
+  try {
+    const res = await setUserVip(user.id, enable)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '操作成功', true)
+      fetchUsers()
+    } else {
+      showMessage((res && res.mes) || '操作失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function toggleSellerVip(seller) {
+  if (!confirm(`确定要升级卖家「${seller.sellerName}」为会员卖家吗？（会员卖家可享推荐位/旗舰店权益）`)) return
+  actionLoading.value = true
+  try {
+    const res = await setSellerVip(seller.id, true)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '操作成功', true)
+      fetchSellers()
+    } else {
+      showMessage((res && res.mes) || '操作失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 // ===== 工具函数 =====
 function formatRole(roles) {
   if (!roles) return '用户'
@@ -844,6 +1049,7 @@ onMounted(() => {
   fetchProducts()
   fetchOrders()
   fetchSellers()
+  fetchCoupons()
 })
 
 onUnmounted(() => {
@@ -853,6 +1059,9 @@ onUnmounted(() => {
 watch(activeTab, (tab) => {
   if (tab === 'recharge') {
     fetchRechargeRequests()
+  }
+  if (tab === 'coupons') {
+    fetchCoupons()
   }
 })
 </script>
@@ -1039,6 +1248,8 @@ watch(activeTab, (tab) => {
 .action-btn--recover:hover:not(:disabled) { border-color: #2b8a3e; background: rgba(43,138,62,0.04); }
 .action-btn--complete { color: #2b8a3e; border-color: rgba(43,138,62,0.2); }
 .action-btn--complete:hover:not(:disabled) { border-color: #2b8a3e; background: rgba(43,138,62,0.04); }
+.action-btn--vip { color: #7c3aed; border-color: rgba(124,58,237,0.2); }
+.action-btn--vip:hover:not(:disabled) { border-color: #7c3aed; background: rgba(124,58,237,0.04); }
 
 /* ===== 筛选标签 ===== */
 .order-status-filter {
@@ -1228,6 +1439,52 @@ watch(activeTab, (tab) => {
 .charge-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ===== 优惠券管理 ===== */
+.coupon-create {
+  margin-bottom: 20px;
+  padding: 20px 24px;
+  background: rgba(124,58,237,0.04);
+  border: 1px solid rgba(124,58,237,0.12);
+  border-radius: 12px;
+}
+.coupon-create-title {
+  margin: 0 0 14px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #7c3aed;
+  letter-spacing: 0.02em;
+}
+.coupon-create-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.coupon-input {
+  padding: 10px 14px;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  color: #212529;
+  font-size: 0.85rem;
+  min-width: 110px;
+  flex: 1;
+  outline: none;
+  transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.coupon-input--select { flex: 0 0 90px; }
+.coupon-input:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.10);
+}
+.coupon-input::placeholder { color: #adb5bd; }
+.coupon-hint {
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  color: #adb5bd;
 }
 
 /* ===== 用户头像与下拉菜单 ===== */

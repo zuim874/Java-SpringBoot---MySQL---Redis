@@ -110,6 +110,10 @@
                 <p class="seller-address">📍 {{ product.seller.address }}</p>
                 <p class="seller-contact" v-if="product.seller.sellerContact">📞 {{ product.seller.sellerContact }}</p>
               </div>
+              <button class="seller-chat-btn" @click="openChat">
+                <span>💬</span>
+                <span>联系卖家</span>
+              </button>
             </div>
           </div>
 
@@ -193,6 +197,26 @@
 
           <p v-if="addressMsg" :class="['address-msg', addressMsgSuccess ? 'address-msg--success' : 'address-msg--error']">{{ addressMsg }}</p>
 
+          <!-- 优惠券选择 -->
+          <div class="coupon-select" v-if="availableCoupons.length > 0">
+            <p class="address-section-label">使用优惠券</p>
+            <div class="coupon-options">
+              <button class="coupon-option" :class="{ selected: selectedCoupon === null }"
+                      @click="selectedCoupon = null">
+                <span>不使用</span>
+              </button>
+              <button v-for="c in availableCoupons" :key="c.id"
+                      class="coupon-option" :class="{ selected: selectedCoupon && selectedCoupon.id === c.id }"
+                      @click="selectedCoupon = c">
+                <span class="co-name">{{ c.name }}</span>
+                <span class="co-value">
+                  {{ c.type === 2 ? Number(c.discountValue).toFixed(1) + '折' : '减¥' + Number(c.discountValue).toFixed(0) }}
+                </span>
+                <span class="co-threshold">满¥{{ Number(c.minAmount || 0).toFixed(0) }}可用</span>
+              </button>
+            </div>
+          </div>
+
           <div class="address-modal-actions">
             <button class="address-btn address-btn--cancel" @click="cancelCheckout">取消</button>
             <button class="address-btn address-btn--confirm" @click="confirmCheckout" :disabled="checkouting">
@@ -203,13 +227,21 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- ===== 聊天抽屉 ===== -->
+    <ChatDrawer :show="showChat" :sellerId="product && product.seller ? product.seller.id : 0"
+                :sellerName="product && product.seller ? product.seller.sellerName : ''"
+                :sellerAvatar="product && product.seller ? product.seller.sellerAvatar : ''"
+                @close="showChat = false" />
   </div></template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getProductDetail, createOrder, getUserInfo } from '../api/index.js'
+import { getProductDetail, createOrder, getAvailableCoupons } from '../api/index.js'
 import { getUserAddresses, addAddress } from '../api/index.js'
+import { toastError } from '../utils/toast.js'
+import ChatDrawer from '../components/ChatDrawer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -273,6 +305,11 @@ const formSaveAddress = ref(false)
 const addressMsg = ref('')
 const addressMsgSuccess = ref(false)
 const checkouting = ref(false)
+// ===== 优惠券状态 =====
+const availableCoupons = ref([])
+const selectedCoupon = ref(null)
+// ===== 聊天抽屉状态 =====
+const showChat = ref(false)
 
 // 当前显示的图片
 const currentImage = computed(() => {
@@ -372,6 +409,18 @@ async function buyNow() {
     selectedAddressId.value = null
   }
 
+  // 加载可用优惠券
+  availableCoupons.value = []
+  selectedCoupon.value = null
+  try {
+    const cres = await getAvailableCoupons()
+    if (cres && cres.code === 200) {
+      availableCoupons.value = cres.data || []
+    }
+  } catch {
+    // 优惠券加载失败不影响下单
+  }
+
   showAddressModal.value = true
 }
 
@@ -428,7 +477,8 @@ async function confirmCheckout() {
       receiverName: name,
       receiverPhone: phone,
       receiverAddress: addr,
-      remark: ''
+      remark: '',
+      userCouponId: selectedCoupon.value ? selectedCoupon.value.id : null
     })
     if (res && res.code === 200) {
       showAddressModal.value = false
@@ -442,7 +492,7 @@ async function confirmCheckout() {
       addressMsgSuccess.value = false
     }
   } catch (err) {
-    addressMsg.value = '下单失败：' + ((err && err.message) || '网络错误')
+    addressMsg.value = '下单失败：' + ((err && err.message) || '服务连接失败，请稍后重试')
     addressMsgSuccess.value = false
   } finally {
     checkouting.value = false
@@ -470,6 +520,15 @@ function handleLogout() {
 // 返回首页
 function goHome() {
   router.push('/home')
+}
+// 打开与卖家的聊天
+function openChat() {
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  showChat.value = true
 }
 function goOrders() {
   router.push('/orders')
@@ -738,6 +797,14 @@ onUnmounted(() => {
 .seller-address, .seller-contact {
   font-size: 0.85rem; color: #868e96; margin: 0;
 }
+.seller-chat-btn {
+  flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border: 1px solid rgba(43,108,176,0.3); border-radius: 50px;
+  background: transparent; color: #2b6cb0; font-family: 'DM Sans', sans-serif;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.3s;
+  margin-left: auto;
+}
+.seller-chat-btn:hover { background: rgba(43,108,176,0.06); border-color: #2b6cb0; transform: translateY(-1px); }
 
 /* Action Section */
 .action-section {
@@ -879,6 +946,23 @@ onUnmounted(() => {
   font-size: 0.8rem; font-weight: 600; color: #868e96;
   margin-bottom: 10px; letter-spacing: 0.02em;
 }
+/* ===== 优惠券选择 ===== */
+.coupon-select { margin-bottom: 16px; }
+.coupon-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.coupon-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 14px; border: 1px solid #dee2e6; border-radius: 12px;
+  background: #fff; cursor: pointer; transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif; text-align: left;
+}
+.coupon-option:hover { border-color: #4a9eff; }
+.coupon-option.selected {
+  border-color: #2b6cb0; background: rgba(43,108,176,0.05);
+  box-shadow: 0 0 0 2px rgba(43,108,176,0.12);
+}
+.co-name { font-size: 0.78rem; font-weight: 600; color: #212529; }
+.co-value { font-size: 0.85rem; font-weight: 700; color: #2b6cb0; }
+.co-threshold { font-size: 0.68rem; color: #adb5bd; }
 .address-list { margin-bottom: 20px; }
 .address-card {
   padding: 12px 16px; border: 1px solid #dee2e6; border-radius: 12px;
