@@ -848,6 +848,8 @@ onUnmounted(() => {
 @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
 .modal-card {
   width: 560px; max-width: 100%; padding: 26px;
+  /* 内容过长时卡片内部滚动，避免按钮被挤出视口 */
+  max-height: calc(100vh - 40px); overflow-y: auto;
   background: var(--surface); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg); animation: modalIn 0.3s ease;
 }

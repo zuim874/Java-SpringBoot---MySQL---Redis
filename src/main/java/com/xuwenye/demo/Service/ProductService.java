@@ -566,9 +566,19 @@ public class ProductService {
             return cached;
         }
 
-        // 第 2 步：Redis 没有，查 MySQL
+        // 第 2 步：分类参数翻译为分类ID（兼容前端传分类名称）
+        String categoryId = null;
+        if (category != null && !category.trim().isEmpty()) {
+            categoryId = translateCategoryParam(category);
+            if (categoryId == null) {
+                // 分类未匹配，返回空结果
+                return new Page<>(page, size);
+            }
+        }
+
+        // 第 3 步：查 MySQL（使用分类ID匹配）
         Page<Product> pageObj = new Page<>(page, size);
-        Page<Product> result = productMapper.selectOnShelfProductsPage(pageObj, category, keyword);
+        Page<Product> result = productMapper.selectOnShelfProductsPage(pageObj, categoryId, keyword);
 
         // 第 3 步：写入 Redis
         if (result != null && !result.getRecords().isEmpty()) {

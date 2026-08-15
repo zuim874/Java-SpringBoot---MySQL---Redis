@@ -290,6 +290,46 @@
               <label>商品描述</label>
               <div class="modal-field"><textarea v-model="form.description" class="modal-textarea" placeholder="请输入商品描述"></textarea></div>
             </div>
+            <!-- ===== 图片上传区域 ===== -->
+            <div class="modal-field-row">
+              <label>商品主图</label>
+              <div class="image-upload-row">
+                <div class="upload-box upload-box--main" @click="triggerMainUpload">
+                  <input ref="mainImageInput" type="file" accept="image/*" hidden @change="onMainImageChange" />
+                  <span v-if="mainImagePreview" class="upload-preview-wrap">
+                    <img :src="mainImagePreview" alt="主图预览" class="upload-preview" />
+                    <button type="button" class="upload-preview-del" @click.stop="clearMainImage">×</button>
+                  </span>
+                  <span v-else-if="form.mainImageUrl" class="upload-preview-wrap">
+                    <img :src="form.mainImageUrl" alt="当前主图" class="upload-preview" />
+                  </span>
+                  <span v-else class="upload-placeholder">
+                    <span class="upload-icon">📷</span>
+                    <span class="upload-text">点击上传主图</span>
+                  </span>
+                </div>
+                <div class="main-image-info">
+                  <p class="image-info-text">将作为首页展示的商品主图</p>
+                  <p class="image-info-text" v-if="form.mainImageUrl">已上传：{{ form.mainImageUrl }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>商品细节图（可多张）</label>
+              <div class="detail-image-grid">
+                <div v-for="(img, di) in detailImages" :key="di" class="detail-image-item">
+                  <img :src="img.preview || img.url" alt="细节图" class="detail-image-preview" />
+                  <button type="button" class="upload-preview-del" @click="removeDetailImage(di)">×</button>
+                </div>
+                <div class="upload-box upload-box--detail" @click="triggerDetailUpload">
+                  <input ref="detailImageInput" type="file" accept="image/*" multiple hidden @change="onDetailImageChange" />
+                  <span class="upload-placeholder">
+                    <span class="upload-icon">🖼️</span>
+                    <span class="upload-text">添加图片</span>
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showDialog = false">取消</button>
@@ -346,7 +386,7 @@ import {
   getSellerOrders, getSellerOrderDetail, sellerShipOrder,
   getSellerShop, updateSellerShop,
   getSellerConversations, sendSellerMessage, getSellerMessages, markSellerConversationRead,
-  getUserInfo, getCategoryList
+  getUserInfo, getCategoryList, getProductDetail, uploadSellerProductImage, deleteSellerProductImage
 } from '../api/index.js'
 import { getCachedAvatar } from '../utils/avatarCache.js'
 import { toastError } from '../utils/toast.js'
@@ -385,13 +425,22 @@ const productTotalPages = ref(1)
 const showDialog = ref(false)
 const editingProduct = ref(null)
 const formLoading = ref(false)
-const form = ref({ productName: '', price: '', stock: '', category: '', description: '' })
+const form = ref({ productName: '', price: '', stock: '', category: '', description: '', mainImageUrl: '' })
 // 预置分类（管理员维护，卖家只能从中选取，不可自定义）
 const presetCategories = ref([])
 // 分类ID → 名称 映射（用于回显/展示）
 const categoryNameById = ref({})
 // 已选分类ID列表（以英文逗号分隔存储到 form.category）
 const selectedCategories = ref([])
+
+// 图片上传状态
+const mainImageInput = ref(null)
+const detailImageInput = ref(null)
+const mainImagePreview = ref('')      // 主图本地预览 URL
+const mainImageFile = ref(null)       // 主图待上传文件
+const detailImages = ref([])          // 细节图列表（含已上传的 url 和待上传的 file）
+const detailImageFiles = ref([])      // 细节图待上传文件列表
+const oldMainImageId = ref(null)      // 编辑时已存在的主图记录ID（换主图时删除）
 
 async function loadCategories() {
   try {
@@ -427,6 +476,97 @@ function removeCategory(index) {
   selectedCategories.value.splice(index, 1)
 }
 
+// ===== 主图上传 =====
+
+/**
+ * 触发主图文件选择
+ */
+function triggerMainUpload() {
+  mainImageInput.value?.click()
+}
+
+/**
+ * 主图选择回调（生成本地预览）
+ */
+function onMainImageChange(e) {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    showMessage('请选择图片文件', false)
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showMessage('图片大小不能超过 10MB', false)
+    return
+  }
+  // 释放旧预览，绑定新文件
+  if (mainImagePreview.value) URL.revokeObjectURL(mainImagePreview.value)
+  mainImageFile.value = file
+  mainImagePreview.value = URL.createObjectURL(file)
+  e.target.value = ''
+}
+
+/**
+ * 清除主图选择
+ */
+function clearMainImage() {
+  if (mainImagePreview.value) URL.revokeObjectURL(mainImagePreview.value)
+  mainImageFile.value = null
+  mainImagePreview.value = ''
+}
+
+// ===== 细节图上传 =====
+
+/**
+ * 触发细节图文件选择（可多选）
+ */
+function triggerDetailUpload() {
+  detailImageInput.value?.click()
+}
+
+/**
+ * 细节图选择回调（生成本地预览）
+ */
+function onDetailImageChange(e) {
+  const files = Array.from(e.target.files || [])
+  files.forEach(file => {
+    if (!file.type.startsWith('image/')) {
+      showMessage('请选择图片文件', false)
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showMessage('图片大小不能超过 10MB', false)
+      return
+    }
+    detailImageFiles.value.push(file)
+    detailImages.value.push({ file, preview: URL.createObjectURL(file) })
+  })
+  e.target.value = ''
+}
+
+/**
+ * 删除细节图
+ * 1.本地待上传：直接移除
+ * 2.已上传：调用后端接口删除
+ */
+async function removeDetailImage(index) {
+  const img = detailImages.value[index]
+  if (img.preview) URL.revokeObjectURL(img.preview)
+  detailImages.value.splice(index, 1)
+  if (img.file) {
+    // 本地待上传文件，仅从列表移除
+    const fi = detailImageFiles.value.indexOf(img.file)
+    if (fi !== -1) detailImageFiles.value.splice(fi, 1)
+  } else if (img.id && editingProduct.value) {
+    // 已上传图片，调用接口删除
+    try {
+      await deleteSellerProductImage(img.id, editingProduct.value.id)
+    } catch (e) {
+      console.error('删除细节图失败:', e)
+    }
+  }
+}
+
 async function fetchProducts() {
   productsLoading.value = true
   try {
@@ -444,23 +584,51 @@ async function fetchProducts() {
 
 function openAddDialog() {
   editingProduct.value = null
-  form.value = { productName: '', price: '', stock: '', category: '', description: '' }
+  form.value = { productName: '', price: '', stock: '', category: '', description: '', mainImageUrl: '' }
   selectedCategories.value = []
+  mainImagePreview.value = ''
+  mainImageFile.value = null
+  detailImages.value = []
+  detailImageFiles.value = []
+  oldMainImageId.value = null
   showDialog.value = true
 }
 
-function openEditDialog(prod) {
+async function openEditDialog(prod) {
   editingProduct.value = prod
   form.value = {
     productName: prod.productName || '',
     price: prod.price || '',
     stock: prod.stock || '',
     category: prod.category || '',
-    description: prod.description || ''
+    description: prod.description || '',
+    mainImageUrl: prod.mainImageUrl || ''
   }
   // 分类ID集合解析为已选分类ID数组（商品的 category 存分类ID）
   selectedCategories.value = String(prod.category || '').split(',').map(s => Number(s.trim())).filter(n => n > 0)
+  mainImagePreview.value = ''
+  mainImageFile.value = null
+  detailImages.value = []
+  detailImageFiles.value = []
+  oldMainImageId.value = null
   showDialog.value = true
+
+  // 加载已有图片回显
+  try {
+    const res = await getProductDetail(prod.id)
+    if (res && res.code === 200 && res.data && Array.isArray(res.data.images)) {
+      res.data.images.forEach(img => {
+        if (img.isMain === 1) {
+          form.value.mainImageUrl = img.imageUrl
+          oldMainImageId.value = img.id
+        } else {
+          detailImages.value.push({ url: img.imageUrl, id: img.id })
+        }
+      })
+    }
+  } catch (e) {
+    console.error('加载商品图片失败:', e)
+  }
 }
 
 async function submitForm() {
@@ -469,23 +637,62 @@ async function submitForm() {
   if (selectedCategories.value.length === 0) { showMessage('请至少选择一个分类', false); return }
   formLoading.value = true
   try {
+    const categoryStr = selectedCategories.value.join(',')
+    let productId = editingProduct.value?.id
+    let res
     const payload = {
       productName: form.value.productName,
       price: Number(form.value.price),
       stock: Number(form.value.stock) || 0,
-      category: selectedCategories.value.join(','),
+      category: categoryStr,
       description: form.value.description
     }
-    const res = editingProduct.value
-      ? await updateSellerProduct(editingProduct.value.id, payload)
-      : await addSellerProduct(payload)
-    if (res && res.code === 200) {
-      showMessage(editingProduct.value ? '商品已更新' : '商品已新增', true)
-      showDialog.value = false
-      fetchProducts()
+    if (editingProduct.value) {
+      res = await updateSellerProduct(editingProduct.value.id, payload)
     } else {
-      showMessage((res && res.mes) || '操作失败', false)
+      res = await addSellerProduct(payload)
+      if (res && res.code === 200 && res.data && res.data.id) {
+        productId = res.data.id
+      }
     }
+    if (!res || res.code !== 200) {
+      showMessage((res && res.mes) || '操作失败', false)
+      return
+    }
+
+    // 编辑场景：更换了主图，先删除旧主图记录（避免重复主图）
+    if (mainImageFile.value && oldMainImageId.value) {
+      try {
+        await deleteSellerProductImage(oldMainImageId.value, productId)
+        oldMainImageId.value = null
+      } catch (e) {
+        console.error('删除旧主图失败:', e)
+      }
+    }
+
+    // 上传主图
+    if (mainImageFile.value) {
+      const imgRes = await uploadSellerProductImage(productId, mainImageFile.value, 1, 0)
+      if (!imgRes || imgRes.code !== 200) {
+        showMessage('主图上传失败，商品信息已保存', false)
+        showDialog.value = false
+        fetchProducts()
+        return
+      }
+    }
+
+    // 上传新增细节图（按顺序排序）
+    for (let i = 0; i < detailImageFiles.value.length; i++) {
+      const imgRes = await uploadSellerProductImage(productId, detailImageFiles.value[i], 0, i)
+      if (!imgRes || imgRes.code !== 200) {
+        showMessage('细节图上传失败，请稍后重试', false)
+        break
+      }
+    }
+
+    showMessage(editingProduct.value ? '商品已更新' : '商品已新增', true)
+    showDialog.value = false
+    fetchProducts()
   } catch {
     toastError('操作失败，网络异常')
   } finally {
@@ -1082,6 +1289,8 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
 .modal-card {
   width: 480px; max-width: 100%; padding: 26px;
+  /* 内容过长时卡片内部滚动，避免按钮被挤出视口 */
+  max-height: calc(100vh - 40px); overflow-y: auto;
   background: var(--surface); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg); animation: modalIn 0.3s ease;
 }
@@ -1156,6 +1365,36 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 }
 .cat-preset-chip:hover { border-color: var(--primary); color: var(--primary); }
 .cat-preset-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* ===== 图片上传 ===== */
+.image-upload-row { display: flex; align-items: flex-start; gap: 14px; }
+.upload-box {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  border: 1.5px dashed var(--border-strong); border-radius: var(--radius);
+  background: var(--surface-2); cursor: pointer; overflow: hidden;
+  transition: all 0.2s ease;
+}
+.upload-box:hover { border-color: var(--primary); background: var(--primary-softer); }
+.upload-box--main { width: 120px; height: 120px; flex-shrink: 0; }
+.upload-box--detail { width: 88px; height: 88px; }
+.upload-placeholder { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-3); }
+.upload-icon { font-size: 1.6rem; }
+.upload-text { font-size: 0.72rem; font-weight: 600; }
+.upload-preview-wrap { position: relative; width: 100%; height: 100%; }
+.upload-preview { width: 100%; height: 100%; object-fit: cover; }
+.upload-preview-del {
+  position: absolute; top: 6px; right: 6px;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border: none; border-radius: 50%;
+  background: rgba(23, 35, 61, 0.55); color: #fff; font-size: 0.9rem;
+  line-height: 1; cursor: pointer; transition: all 0.2s ease;
+}
+.upload-preview-del:hover { background: var(--danger); }
+.main-image-info { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+.image-info-text { font-size: 0.76rem; color: var(--text-3); line-height: 1.4; word-break: break-all; }
+.detail-image-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.detail-image-item { position: relative; width: 88px; height: 88px; }
+.detail-image-preview { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); }
 
 /* ===== 消息提示 ===== */
 .msg {
