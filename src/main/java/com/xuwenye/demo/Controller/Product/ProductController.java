@@ -869,7 +869,7 @@ public class ProductController {
     // ======================== 内部工具方法 ========================
 
     /**
-     * 根据登录用户名解析卖家ID（卖家账号的用户名 = 卖家名称）
+     * 根据登录用户ID解析卖家ID（卖家登录后经 user_id 直查店铺，替代「用户名 = 卖家名称」约定）
      * 登录态与 SELLER 角色校验已由 @UserCheck 切面完成，此处仅做卖家归属解析
      * <p>
      * @author ZuiM
@@ -880,7 +880,7 @@ public class ProductController {
         if (currentUser == null) {
             return null;
         }
-        Seller seller = sellerService.getSellerBySellerName(currentUser.getUsername());
+        Seller seller = sellerService.getSellerByUserId(currentUser.getId());
         return seller == null ? null : seller.getId();
     }
 

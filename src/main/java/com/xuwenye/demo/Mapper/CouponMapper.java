@@ -33,6 +33,17 @@ public interface CouponMapper extends BaseMapper<Coupon> {
     int decrementRemain(@Param("id") Long id);
 
     /**
+     * 归还优惠券剩余数量（发放失败回滚时调用）
+     * 1.用于唯一索引兜底命中后的库存回滚，保证不超发也不漏发
+     * <p>
+     * @author ZuiM
+     * @param id 优惠券ID
+     * @return int 受影响行数
+     */
+    @Update("UPDATE sys_coupon SET remain_count = remain_count + 1 WHERE id = #{id}")
+    int incrementRemain(@Param("id") Long id);
+
+    /**
      * 查询可自助领取的优惠券模板（启用中且仍有剩余数量，按创建时间倒序）
      * 供首页「领券中心」使用
      * <p>

@@ -148,6 +148,10 @@ public class AuthController {
         if (username.length() < 2 || username.length() > 20) {
             return Result.error(400, "用户名长度需在2-20个字符之间");
         }
+        // 用户名格式校验：仅允许字母和数字，拒绝中文、下划线及其他特殊符号
+        if (!username.matches("^[A-Za-z0-9]+$")) {
+            return Result.error(400, "用户名只能包含字母和数字，不能包含中文、下划线及其他特殊符号");
+        }
         // 密码强度检验（替换原来的简单长度校验）
         PasswordStrengthUtils.StrengthResult strengthResult =
                 passwordStrengthUtils.checkStrength(password);

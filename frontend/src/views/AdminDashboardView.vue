@@ -338,6 +338,7 @@
               <tr>
                 <th>ID</th>
                 <th>名称</th>
+                <th>登录账号</th>
                 <th>地址</th>
                 <th>联系方式</th>
                 <th>操作</th>
@@ -347,6 +348,10 @@
               <tr v-for="seller in sellers" :key="seller.id">
                 <td class="cell-dim">{{ seller.id }}</td>
                 <td class="name-cell">{{ seller.sellerName }}</td>
+                <td>
+                  <span v-if="seller.username" class="account-cell">{{ seller.username }}</span>
+                  <span v-else class="cell-dim">未绑定</span>
+                </td>
                 <td>{{ seller.address || '-' }}</td>
                 <td>{{ seller.sellerContact || '-' }}</td>
                 <td class="action-cell">
@@ -518,6 +523,20 @@
                 <input v-model="sellerForm.sellerName" type="text" placeholder="请输入卖家名称" />
               </div>
             </div>
+            <!-- 登录账号绑定：仅新增时填写，编辑时保持原有绑定关系 -->
+            <div class="modal-field-row" v-if="!editingSeller">
+              <label>登录账号（用户名）<span class="required-mark">*</span></label>
+              <div class="modal-field">
+                <input v-model="sellerForm.username" type="text" placeholder="已存在的用户账号用户名（必填）" />
+              </div>
+            </div>
+            <div class="modal-field-row" v-if="!editingSeller">
+              <label>登录账号邮箱<span class="required-mark">*</span></label>
+              <div class="modal-field">
+                <input v-model="sellerForm.email" type="email" placeholder="该账号绑定的邮箱（用于校验身份，必填）" />
+              </div>
+            </div>
+            <p class="modal-hint" v-if="!editingSeller">提示：绑定已存在的用户账号（用户名 + 邮箱双重校验），不会新建账号；绑定后该账号自动获得卖家身份</p>
             <div class="modal-field-row">
               <label>地址</label>
               <div class="modal-field">
@@ -562,6 +581,7 @@ import {
   chargeUserBalance,
   getAdminRechargeRequests, approveRechargeRequest, rejectRechargeRequest,
   adminListCoupons, adminCreateCoupon, adminGrantCoupon, adminGrantCouponAllVip, adminGrantCouponAllUsers,
+  adminAddSeller, adminUpdateSeller, adminDeleteSeller,
   setUserVip, setSellerVip,
   getUserInfo,
   getCategoryList, adminAddCategory, adminDeleteCategory
@@ -918,7 +938,7 @@ const sellerPage = ref(1)
 const sellerTotalPages = ref(1)
 const showSellerForm = ref(false)
 const editingSeller = ref(null)
-const sellerForm = ref({ sellerName: '', address: '', sellerContact: '' })
+const sellerForm = ref({ sellerName: '', address: '', sellerContact: '', username: '', email: '' })
 
 async function fetchSellers() {
   sellersLoading.value = true
@@ -940,28 +960,94 @@ function editSeller(seller) {
   sellerForm.value = {
     sellerName: seller.sellerName || '',
     address: seller.address || '',
-    sellerContact: seller.sellerContact || ''
+    sellerContact: seller.sellerContact || '',
+    // 编辑时清空账号绑定字段：绑定关系在「新增」时确定，避免误改登录账号
+    username: '',
+    email: ''
   }
   showSellerForm.value = true
 }
 
+function resetSellerForm() {
+  editingSeller.value = null
+  sellerForm.value = { sellerName: '', address: '', sellerContact: '', username: '', email: '' }
+  showSellerForm.value = false
+}
+
 async function submitSellerForm() {
+  if (!sellerForm.value.sellerName.trim()) {
+    showMessage('请输入卖家名称', false)
+    return
+  }
+  if (!editingSeller.value) {
+    // 新增：必须填写用户名与邮箱以绑定已有账号，避免绑定错误
+    if (!sellerForm.value.username.trim()) {
+      showMessage('请填写要绑定的登录账号用户名', false)
+      return
+    }
+    if (!sellerForm.value.email.trim()) {
+      showMessage('请填写该账号绑定的邮箱，用于校验身份', false)
+      return
+    }
+  }
   actionLoading.value = true
   try {
-    // 简单提示，实际需要后端接口支持
-    showMessage('卖家管理功能已提交', true)
-    showSellerForm.value = false
+    if (editingSeller.value) {
+      // 编辑：仅更新店铺资料，账号绑定关系保持不变（后端忽略 username/email）
+      const res = await adminUpdateSeller(editingSeller.value.id, {
+        sellerName: sellerForm.value.sellerName.trim(),
+        address: sellerForm.value.address.trim(),
+        sellerContact: sellerForm.value.sellerContact.trim()
+      })
+      if (res && res.code === 200) {
+        showMessage(res.mes || '卖家更新成功', true)
+      } else {
+        showMessage((res && res.mes) || '卖家更新失败', false)
+        return
+      }
+    } else {
+      // 新增：绑定已存在的用户账号（不新建账号）
+      const res = await adminAddSeller({
+        sellerName: sellerForm.value.sellerName.trim(),
+        address: sellerForm.value.address.trim(),
+        sellerContact: sellerForm.value.sellerContact.trim(),
+        username: sellerForm.value.username.trim(),
+        email: sellerForm.value.email.trim()
+      })
+      if (res && res.code === 200) {
+        showMessage('卖家新增成功，已绑定登录账号', true)
+      } else {
+        showMessage((res && res.mes) || '卖家新增失败', false)
+        return
+      }
+    }
+    resetSellerForm()
     fetchSellers()
-  } catch {
-    showMessage('操作失败', false)
+  } catch (e) {
+    console.error('卖家操作失败:', e)
+    showMessage('服务连接失败，请稍后重试', false)
   } finally {
     actionLoading.value = false
   }
 }
 
-function handleDeleteSeller(seller) {
-  if (!confirm(`确定要删除卖家 ${seller.sellerName} 吗？`)) return
-  showMessage('卖家删除功能依赖后端接口', true)
+async function handleDeleteSeller(seller) {
+  if (!confirm(`确定要删除卖家 ${seller.sellerName} 吗？（其账号的卖家身份将被移除，账号本身保留）`)) return
+  actionLoading.value = true
+  try {
+    const res = await adminDeleteSeller(seller.id)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '卖家删除成功', true)
+      fetchSellers()
+    } else {
+      showMessage((res && res.mes) || '删除失败', false)
+    }
+  } catch (e) {
+    console.error('删除卖家失败:', e)
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
 }
 
 // ===== 充值审核管理 =====
@@ -1409,6 +1495,11 @@ watch(activeTab, (tab) => {
   display: inline-block; padding: 2px 10px; border-radius: var(--radius-pill);
   background: var(--surface-3); color: var(--text-2); font-size: 0.72rem; font-weight: 600;
 }
+.account-cell {
+  display: inline-flex; align-items: center; padding: 2px 10px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent); font-size: 0.74rem; font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
 .price { color: var(--price); font-weight: 700; white-space: nowrap; }
 .action-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -1572,6 +1663,8 @@ watch(activeTab, (tab) => {
   font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--text); margin: 0;
 }
 .modal-form { margin-bottom: 20px; }
+.modal-hint { margin: -6px 0 14px; font-size: 0.74rem; color: var(--text-4); }
+.required-mark { color: #e5484d; margin-left: 2px; }
 .modal-field-row { margin-bottom: 14px; }
 .modal-field-row label {
   display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-2); margin-bottom: 6px;

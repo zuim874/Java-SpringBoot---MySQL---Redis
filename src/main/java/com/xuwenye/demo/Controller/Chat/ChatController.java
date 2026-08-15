@@ -255,7 +255,7 @@ public class ChatController {
     // ======================== 内部工具方法 ========================
 
     /**
-     * 根据登录用户名解析卖家ID（卖家账号的用户名 = 卖家名称）
+     * 根据登录用户ID解析卖家ID（卖家登录后经 user_id 直查店铺，替代「用户名 = 卖家名称」约定）
      * <p>
      * @author ZuiM
      * @param currentUser 当前登录用户（切面注入）
@@ -265,7 +265,7 @@ public class ChatController {
         if (currentUser == null) {
             return null;
         }
-        Seller seller = sellerService.getSellerBySellerName(currentUser.getUsername());
+        Seller seller = sellerService.getSellerByUserId(currentUser.getId());
         return seller == null ? null : seller.getId();
     }
 

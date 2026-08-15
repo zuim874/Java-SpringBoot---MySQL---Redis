@@ -17,6 +17,8 @@ import java.time.LocalDateTime;
 public class Seller {
     @TableId(type = IdType.AUTO)  // 主键自增
     private Long id;
+    @TableField("user_id")
+    private Long userId;          // 关联登录账号ID（sys_user.id，一对一绑定）
     private String sellerName;    // 卖家名称
     private String address;       // 卖家地址
     private String sellerAvatar;  // 卖家头像URL
@@ -25,6 +27,13 @@ public class Seller {
     private LocalDateTime createTime;  // 创建时间
     @TableField("update_time")
     private LocalDateTime updateTime;  // 更新时间
+
+    // ===== 表单临时字段（@TableField(exist=false) 不映射数据库列） =====
+    // 仅用于「新增卖家」表单传参：管理员填入登录账号的用户名/邮箱，服务端据此创建 sys_user 账号并绑定
+    @TableField(exist = false)
+    private String username;          // 登录账号用户名（为空时默认取卖家名称）
+    @TableField(exist = false)
+    private String email;             // 登录账号邮箱（选填）
 
     // 逻辑删除（MyBatis-Plus 需要这个注解识别逻辑删除字段）
     @TableLogic

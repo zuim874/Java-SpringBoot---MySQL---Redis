@@ -5,6 +5,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -186,5 +187,81 @@ public class RedisUtil {
     public Boolean setIfAbsent(String key, String value) {
         return redisTemplate.opsForValue()
                 .setIfAbsent(key, value, redisCodeSendTimeOut, TimeUnit.SECONDS);
+    }
+
+    // ======================== Set 集合操作（用于优惠券已领取集合等场景） ========================
+
+    /**
+     * 向 Set 添加一个元素
+     * <p>
+     * @author ZuiM
+     * @param key Set 的 key
+     * @param value 元素值
+     * @return boolean true=添加成功（新元素）
+     */
+    public boolean sAdd(String key, Object value) {
+        Long result = redisTemplate.opsForSet().add(key, value);
+        return result != null && result > 0;
+    }
+
+    /**
+     * 批量向 Set 添加元素
+     * <p>
+     * @author ZuiM
+     * @param key Set 的 key
+     * @param values 元素值集合
+     * @return long 实际新增元素数量
+     */
+    public long sAddAll(String key, Collection<?> values) {
+        Long result = redisTemplate.opsForSet().add(key, values.toArray());
+        return result != null ? result : 0;
+    }
+
+    /**
+     * 判断元素是否存在于 Set 中（O(1) 时间复杂度）
+     * <p>
+     * @author ZuiM
+     * @param key Set 的 key
+     * @param value 元素值
+     * @return boolean true=存在
+     */
+    public boolean sIsMember(String key, Object value) {
+        return Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key, value));
+    }
+
+    /**
+     * 获取 Set 的全部元素
+     * <p>
+     * @author ZuiM
+     * @param key Set 的 key
+     * @return Set<Object> 元素集合
+     */
+    public Set<Object> sMembers(String key) {
+        return redisTemplate.opsForSet().members(key);
+    }
+
+    /**
+     * 从 Set 中移除一个元素
+     * <p>
+     * @author ZuiM
+     * @param key Set 的 key
+     * @param value 元素值
+     * @return boolean true=移除成功
+     */
+    public boolean sRemove(String key, Object value) {
+        Long result = redisTemplate.opsForSet().remove(key, value);
+        return result != null && result > 0;
+    }
+
+    /**
+     * 获取 Set 的大小
+     * <p>
+     * @author ZuiM
+     * @param key Set 的 key
+     * @return long 元素数量
+     */
+    public long sSize(String key) {
+        Long size = redisTemplate.opsForSet().size(key);
+        return size != null ? size : 0;
     }
 }

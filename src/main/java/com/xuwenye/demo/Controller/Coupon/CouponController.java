@@ -86,8 +86,9 @@ public class CouponController {
             @RequestParam @Min(1) Long couponId,
             @RequestParam(defaultValue = "30") int expireDays) {
         try {
-            int count = couponService.grantToAllVipUsers(couponId, expireDays);
-            return Result.ok("已向 " + count + " 名会员买家发放优惠券");
+            // 异步提交：实际发放由消息队列在后台削峰执行，避免长时间占用请求线程与数据库连接
+            couponService.grantToAllVipUsersAsync(couponId, expireDays);
+            return Result.ok("批量发放任务已提交，正在后台向会员买家发放");
         } catch (IllegalArgumentException | IllegalStateException e) {
             return Result.error(400, e.getMessage());
         }
@@ -102,8 +103,9 @@ public class CouponController {
             @RequestParam @Min(1) Long couponId,
             @RequestParam(defaultValue = "30") int expireDays) {
         try {
-            int count = couponService.grantToAllUsers(couponId, expireDays);
-            return Result.ok("已向 " + count + " 名注册用户发放优惠券");
+            // 异步提交：实际发放由消息队列在后台削峰执行，避免长时间占用请求线程与数据库连接
+            couponService.grantToAllUsersAsync(couponId, expireDays);
+            return Result.ok("批量发放任务已提交，正在后台向注册用户发放");
         } catch (IllegalArgumentException | IllegalStateException e) {
             return Result.error(400, e.getMessage());
         }

@@ -124,6 +124,9 @@ public class OrderService {
         // 1. 计算总金额并扣减库存
         BigDecimal totalAmount = BigDecimal.ZERO;
 
+        // 缓存本轮已查询的商品，供第 4 步写入订单项时复用，避免同一商品重复查库/查缓存
+        List<Product> products = new ArrayList<>(orderItems.size());
+
         for (OrderItemRequest item : orderItems) {
             // 查询商品
             Product product = productService.getProductById(item.getProductId());
@@ -133,6 +136,7 @@ public class OrderService {
             if (product.getStatus() != 1) {
                 throw new IllegalArgumentException("商品已下架：" + product.getProductName());
             }
+            products.add(product);
 
             // 扣减库存（分布式锁保护）
             boolean deducted = productService.deductStock(item.getProductId(), item.getQuantity());
@@ -180,10 +184,10 @@ public class OrderService {
             throw new RuntimeException("订单创建失败");
         }
 
-        // 4. 保存订单项
+        // 4. 保存订单项（复用第 1 步已缓存的商品对象，避免重复查询）
         for (int i = 0; i < orderItems.size(); i++) {
             OrderItemRequest item = orderItems.get(i);
-            Product product = productService.getProductById(item.getProductId());
+            Product product = products.get(i);
 
             OrderItem orderItem = new OrderItem();
             orderItem.setOrderId(order.getId());
@@ -287,7 +291,7 @@ public class OrderService {
         // 更新订单状态
         Order update = new Order();
         update.setId(orderId);
-        update.setStatus(4); // 已取消 // 已取消
+        update.setStatus(4); // 已取消
         update.setCancelTime(LocalDateTime.now());
         boolean result = orderMapper.updateById(update) > 0;
 
@@ -336,7 +340,7 @@ public class OrderService {
         // 更新订单状态
         Order update = new Order();
         update.setId(orderId);
-        update.setStatus(5); // 已退款 // 已退款
+        update.setStatus(5); // 已退款
         update.setCompleteTime(LocalDateTime.now());
         boolean result = orderMapper.updateById(update) > 0;
 

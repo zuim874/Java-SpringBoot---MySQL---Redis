@@ -17,7 +17,8 @@ import java.util.Map;
  * 消息队列消费者
  * 1.监听各业务队列/主题，消费 TaskMessage
  * 2.邮件任务：调用 EmailUtil 发送验证码邮件，失败进入重试逻辑
- * 3.统计/文件/通知/广播/告警：预留 TODO 处理
+ * 3.优惠券任务：后台批量发放（向全部用户/VIP会员），异步削峰
+ * 4.统计/文件/通知/广播/告警：预留 TODO 处理
  * <p>
  * @author ZuiM
  */
@@ -27,10 +28,13 @@ public class MQConsumer {
     private final EmailUtil emailUtil;
     private final OperationLogService operationLogService;
     private final RedisUtil redisUtil;
-    public MQConsumer(EmailUtil emailUtil, OperationLogService operationLogService, RedisUtil redisUtil) {
+    private final CouponService couponService;
+    public MQConsumer(EmailUtil emailUtil, OperationLogService operationLogService,
+                      RedisUtil redisUtil, CouponService couponService) {
         this.emailUtil = emailUtil;
         this.operationLogService = operationLogService;
         this.redisUtil = redisUtil;
+        this.couponService = couponService;
     }
 
     // ========== 1. 消费邮件任务 ==========
@@ -218,6 +222,37 @@ public class MQConsumer {
             log.info("✅ 缓存刷新成功: {} - {} ({} keys)", domain, action, keys.size());
         } catch (Exception e) {
             log.error("❌ 缓存刷新失败: {}", e.getMessage(), e);
+        }
+    }
+
+    // ========== 4c. 消费优惠券任务 ==========
+    /**
+     * 消费优惠券任务（批量发放等费时任务，异步削峰执行）
+     * 1.解析优惠券发放任务数据（couponId/expireDays/target）
+     * 2.target：1=全部用户；2=全部VIP会员
+     * 3.转发给 CouponService.executeBatchGrant 在后台逐步执行
+     * <p>
+     * @author ZuiM
+     * @param message 优惠券任务消息
+     */
+    @JmsListener(destination = ActiveMQConfig.QUEUE_COUPON)
+    public void handleCouponTask(TaskMessage message) {
+        try {
+            log.info("🎫 处理优惠券任务: {}", message.getTaskId());
+            Map<String, Object> data = message.getData();
+            Long couponId = ((Number) data.get("couponId")).longValue();
+            int expireDays = ((Number) data.get("expireDays")).intValue();
+            int target = ((Number) data.get("target")).intValue();
+
+            if ("GRANT".equals(message.getBusinessType())) {
+                int granted = couponService.executeBatchGrant(couponId, expireDays, target);
+                log.info("✅ 优惠券批量发放完成: couponId={}, target={}, granted={}", couponId, target, granted);
+            } else {
+                log.warn("🎫 未知优惠券业务类型: {}", message.getBusinessType());
+            }
+        } catch (Exception e) {
+            log.error("❌ 优惠券任务处理失败: {}", e.getMessage(), e);
+            handleRetry(message);
         }
     }
 

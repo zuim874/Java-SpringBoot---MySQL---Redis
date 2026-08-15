@@ -5,59 +5,50 @@ import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Mapper.SellerMapper;
 import com.xuwenye.demo.Service.UserService;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 启动时自动为卖家创建登录账号
+ * 启动时为存量卖家补填登录账号绑定（user_id）
  * <p>
- * 背景：sys_seller 表与 sys_user 表之前未关联，卖家（商家）无法登录系统。
- * 本启动器通过「店铺名 = 用户名」的约定建立一对一关联：
- * 1.扫描 sys_seller 表全部未删除卖家
- * 2.为每个卖家在 sys_user 表创建对应登录账号（用户名=店铺名称，默认密码 Seller@123）
- * 3.已有同名账号则跳过（防止重启重复创建）
+ * 背景：sys_seller 表通过 user_id 与 sys_user 表建立一对一绑定。
+ * 新策略下「新增卖家」不再自动新建账号，而是由管理员绑定已存在的用户账号
+ * （SellerService.saveSeller 处理）。本启动器仅兜底存量数据：
+ * 1.扫描 sys_seller 表全部未删除、且未绑定账号（user_id IS NULL）的卖家
+ * 2.若存在「用户名 = 店铺名称」的可用账号（兼容旧版「店铺名 = 用户名」自动创建的账号），
+ *   直接回填 user_id 完成绑定，不重复新建
+ * 3.无匹配账号则打印提示，等待管理员在后台用「用户名 + 邮箱」手动绑定
  * <p>
- * 登录打通说明：
- * - 卖家登录后，SellerOrderController.validateSeller() 用登录用户名
- *   调用 sellerService.getSellerBySellerName(username) 反查卖家ID，
- *   因此用户名必须与店铺名称一致，本启动器正是按此约定创建。
- * - 商品归属校验（orderContainsSeller）、店铺信息等接口随之自动生效。
+ * 说明：不再自动新建账号 —— 注册用户名已限定字母/数字（店铺名可为中文），
+ * 按店铺名新建账号会生成非法用户名，故一律改为绑定已有账号。
  * <p>
  * @author ZuiM
  */
 @Component      // 标记为组件，Spring 启动时会自动执行
 public class InitSellerAccountsRunner implements CommandLineRunner {
 
-    /** 卖家默认登录密码（统一初始密码，首次登录后可自行修改） */
-    private static final String DEFAULT_SELLER_PASSWORD = "Seller@123";
-
     private final SellerMapper sellerMapper;
     private final UserService userService;
-    private final PasswordEncoder passwordEncoder;
 
     public InitSellerAccountsRunner(SellerMapper sellerMapper,
-                                    UserService userService,
-                                    PasswordEncoder passwordEncoder) {
+                                    UserService userService) {
         this.sellerMapper = sellerMapper;
         this.userService = userService;
-        this.passwordEncoder = passwordEncoder;
     }
 
     /**
      * 项目启动后执行初始化（CommandLineRunner 回调）
      * 1.直接查库获取全部未删除卖家（不走 Redis 缓存，保证拿到最新店铺数据）
-     * 2.逐卖家创建 sys_user 登录账号
-     * 3.打印创建结果
+     * 2.对未绑定账号的卖家，按「店铺名 = 用户名」匹配已有账号并回填 user_id
+     * 3.无匹配账号则提示手动绑定
      * <p>
      * @author ZuiM
      * @param args 启动参数
      */
     @Override
     public void run(String... args) {
-        System.out.println("===== 开始为卖家创建登录账号 =====");
+        System.out.println("===== 开始为存量卖家补填登录账号绑定 =====");
 
         // 直接查库，避免启动阶段读到 Redis 中的旧缓存卖家数据
         List<Seller> sellers = sellerMapper.findAllSellers();
@@ -66,36 +57,43 @@ public class InitSellerAccountsRunner implements CommandLineRunner {
             return;
         }
 
-        int created = 0;   // 本次新建账号数
-        int skipped = 0;   // 已存在账号数（防止重复创建）
+        int bound = 0;   // 本次完成绑定（补填 user_id）的卖家数
+        int skipped = 0; // 已绑定/名称缺失跳过的卖家数
+        int unmatched = 0; // 无同名账号、需人工绑定的卖家数
         for (Seller seller : sellers) {
+            // 已绑定账号的卖家直接跳过（幂等，防止重复处理）
+            if (seller.getUserId() != null) {
+                skipped++;
+                continue;
+            }
             String username = seller.getSellerName();
             // 用户名（店铺名）为空则跳过，避免脏数据
             if (username == null || username.trim().isEmpty()) {
                 System.out.println("⚠️ 卖家ID=" + seller.getId() + " 店铺名称为空，跳过");
+                skipped++;
                 continue;
             }
             username = username.trim();
 
-            // 账号已存在（含逻辑删除）则跳过，防止唯一索引冲突与重复创建
-            if (userService.findAllUser(username) != null) {
-                skipped++;
-                continue;
+            // 兼容旧版「店铺名 = 用户名」约定：若存在该可用账号则直接绑定，不新建账号
+            User account = userService.findUserableUser(username);
+            if (account != null) {
+                // 回填 user_id，完成「卖家 ↔ 用户」一对一绑定
+                Seller update = new Seller();
+                update.setId(seller.getId());
+                update.setUserId(account.getId());
+                sellerMapper.updateById(update);
+                bound++;
+            } else {
+                // 无可用同名账号：记录，等待管理员用「用户名 + 邮箱」手动绑定
+                unmatched++;
+                System.out.println("⚠️ 卖家ID=" + seller.getId() + "（" + seller.getSellerName()
+                        + "）未绑定登录账号，请在管理后台通过「用户名 + 邮箱」绑定已有账号");
             }
-
-            User sellerAccount = new User();
-            sellerAccount.setUsername(username);
-            sellerAccount.setPassword(passwordEncoder.encode(DEFAULT_SELLER_PASSWORD)); // BCrypt 加密存储
-            sellerAccount.setNickname(username);
-            sellerAccount.setStatus(1);
-            sellerAccount.setUserRole("ROLE_SELLER");
-            sellerAccount.setCreateTime(LocalDateTime.now());
-            userService.saveUser(sellerAccount);
-            created++;
         }
 
-        System.out.println("✅ 卖家账号初始化完成：共 " + sellers.size() + " 个卖家，新建 " + created
-                + " 个，已存在跳过 " + skipped + " 个");
-        System.out.println("    默认登录：账号=店铺名称，密码=" + DEFAULT_SELLER_PASSWORD);
+        System.out.println("✅ 卖家账号初始化完成：共 " + sellers.size() + " 个卖家，本次补填绑定 " + bound
+                + " 个，已绑定跳过 " + skipped + " 个，待人工绑定 " + unmatched + " 个");
+        System.out.println("    备注：新增卖家请在管理后台填写「用户名 + 邮箱」绑定已有账号，不再自动新建账号");
     }
 }

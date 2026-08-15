@@ -66,7 +66,7 @@
             <label for="username">用户名</label>
             <div class="input-wrap">
               <span class="input-icon">👤</span>
-              <input id="username" v-model="username" type="text" placeholder="2-20个字符" autocomplete="username" required />
+              <input id="username" v-model="username" type="text" placeholder="2-20个字符，仅限字母和数字" autocomplete="username" required />
             </div>
           </div>
 
@@ -298,6 +298,12 @@ async function sendVerificationCode() {
 async function handleRegister() {
   loading.value = true
   message.value = ''
+  // 用户名格式校验：仅允许字母和数字，拒绝中文、下划线及其他特殊符号
+  if (!/^[A-Za-z0-9]+$/.test(username.value.trim())) {
+    message.value = '用户名只能包含字母和数字，不能包含中文、下划线及其他特殊符号'
+    loading.value = false
+    return
+  }
   try {
     const params = new URLSearchParams()
     params.append('username', username.value.trim())

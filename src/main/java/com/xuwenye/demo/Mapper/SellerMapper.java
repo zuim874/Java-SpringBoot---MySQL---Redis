@@ -39,12 +39,12 @@ public interface SellerMapper extends BaseMapper<Seller> {
     Seller findSellerById(@Param("id") Long id);
 
     /**
-     * 按名称查询卖家
+     * 按关联用户ID查询卖家（卖家登录后经 user_id 直查店铺，替代「名称=用户名」约定）
      * <p>
      * @author ZuiM
-     * @param sellerName 卖家名称
+     * @param userId 关联的用户ID（sys_user.id）
      * @return Seller 卖家（可能为null）
      */
-    @Select("SELECT * FROM sys_seller WHERE seller_name = #{sellerName} AND is_deleted = 0")
-    Seller findSellerByName(@Param("sellerName") String sellerName);
+    @Select("SELECT * FROM sys_seller WHERE user_id = #{userId} AND is_deleted = 0")
+    Seller findSellerByUserId(@Param("userId") Long userId);
 }

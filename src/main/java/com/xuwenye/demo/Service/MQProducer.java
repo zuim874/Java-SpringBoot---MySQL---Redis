@@ -38,6 +38,7 @@ public class MQProducer {
     private final Queue fileQueue;
     private final Queue notificationQueue;
     private final Queue cacheQueue;
+    private final Queue couponQueue;
     private final Topic broadcastTopic;
     private final Topic alertTopic;
     public MQProducer(JmsMessagingTemplate jmsMessagingTemplate,
@@ -49,6 +50,7 @@ public class MQProducer {
                       Queue fileQueue,
                       Queue notificationQueue,
                       Queue cacheQueue,
+                      Queue couponQueue,
                       Topic broadcastTopic,
                       Topic alertTopic) {
         this.jmsMessagingTemplate = jmsMessagingTemplate;
@@ -60,6 +62,7 @@ public class MQProducer {
         this.fileQueue = fileQueue;
         this.notificationQueue = notificationQueue;
         this.cacheQueue = cacheQueue;
+        this.couponQueue = couponQueue;
         this.broadcastTopic = broadcastTopic;
         this.alertTopic = alertTopic;
     }
@@ -239,6 +242,29 @@ public class MQProducer {
 
         sendMessage(cacheQueue, "CACHE", domain + ":" + action, data);
         log.info("🔄 缓存刷新任务已发送: {} - {} ({} keys)", domain, action, keys.size());
+    }
+
+    // ========== 7c. 发送优惠券批量发放任务 ==========
+    /**
+     * 发送优惠券批量发放任务（异步）
+     * 1.向全部用户 / 全部VIP会员批量发券是费时事务，用户量大时同步执行会长时间占用
+     *   数据库连接与线程资源，甚至拖垮后端，故通过消息队列异步执行（削峰解耦）
+     * 2.target：1=全部启用用户；2=全部VIP会员（VIP用户 + VIP卖家）
+     * <p>
+     * @author ZuiM
+     * @param couponId 优惠券模板ID
+     * @param expireDays 有效天数
+     * @param target 发放目标：1全部用户 2全部VIP会员
+     */
+    @Async
+    public void sendCouponGrantTask(Long couponId, int expireDays, int target) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("couponId", couponId);
+        data.put("expireDays", expireDays);
+        data.put("target", target);
+
+        sendMessage(couponQueue, "COUPON", "GRANT", data);
+        log.info("🎫 优惠券批量发放任务已发送: couponId={}, target={}, expireDays={}", couponId, target, expireDays);
     }
 
     // ========== 8. 发送广播消息（所有订阅者收到） ==========

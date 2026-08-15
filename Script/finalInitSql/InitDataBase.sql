@@ -106,6 +106,7 @@ CREATE TABLE sys_product (
 DROP TABLE IF EXISTS sys_seller;
 CREATE TABLE sys_seller (
                             id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+                            user_id BIGINT NULL COMMENT '关联用户ID，sys_user.id（一对一绑定，管理员新增卖家时自动创建user账号）',
                             seller_name VARCHAR(50) NOT NULL COMMENT '卖家名称',
                             seller_avatar VARCHAR(255) NULL COMMENT '卖家头像URL（店铺Logo）',
                             seller_contact VARCHAR(100) NULL COMMENT '卖家联系方式（客服电话/邮箱）',
@@ -113,7 +114,8 @@ CREATE TABLE sys_seller (
                             is_deleted TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
                             create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
                             update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-                            INDEX idx_seller_name (seller_name)
+                            INDEX idx_seller_name (seller_name),
+                            UNIQUE INDEX uk_user_id (user_id) COMMENT '唯一约束：卖家与用户一对一绑定'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='卖家信息表';
 
 -- 3.5 商品图片表（一对多）
@@ -265,7 +267,8 @@ CREATE TABLE sys_user_coupon (
     use_time DATETIME DEFAULT NULL COMMENT '使用时间',
     order_id BIGINT DEFAULT NULL COMMENT '使用的订单ID（status=1时有效）',
     INDEX idx_user_status (user_id, status) COMMENT '用户+状态索引（高频：我的优惠券）',
-    INDEX idx_expire (expire_time) COMMENT '过期时间索引（定时清理）'
+    INDEX idx_expire (expire_time) COMMENT '过期时间索引（定时清理）',
+    UNIQUE INDEX uk_user_coupon (user_id, coupon_id) COMMENT '唯一约束：同类优惠券每人最多收到/领取一次'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户优惠券表';
 
 -- 3.13 买卖会话表（对应实体类 Conversation，买卖双方一对一沟通）

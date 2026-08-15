@@ -7,24 +7,33 @@ import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Entity.UserCoupon;
 import com.xuwenye.demo.Mapper.CouponMapper;
 import com.xuwenye.demo.Mapper.UserCouponMapper;
+import com.xuwenye.demo.util.redis.RedisLockHelper;
 import com.xuwenye.demo.util.redis.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 优惠券业务层
  * 1.模板管理：管理员创建/分页查询优惠券模板（支持适用人群区分：普通券/VIP券）
- * 2.发放：向单个用户或全部VIP会员发放（VIP会员 = VIP用户 + VIP卖家）
+ * 2.发放：向单个用户发放；向全部用户/VIP会员批量发放（费时事务，走消息队列异步削峰）
  * 3.自助领取：领券中心按适用人群校验后发放
  * 4.使用：校验归属/状态/过期时间/门槛/适用人群后原子核销，防止并发重复使用
  * 5.计算：根据类型（满减/折扣）计算优惠金额
+ * 6.限领约束：同类优惠券每人最多收到或领取一次（Redis 已领取集合预校验 + 数据库唯一索引兜底）
+ * 7.数据安全：领取等敏感写操作使用分布式锁串行化，原子扣减库存防止超发
  * 查询均带 Redis 缓存（Cache-Aside），数据变更后通过 MQ 异步清理关联缓存
  * <p>
  * @author ZuiM
@@ -38,22 +47,37 @@ public class CouponService {
     private final UserService userService;
     private final RedisUtil redisUtil;
     private final MQProducer mqProducer;
+    private final RedisLockHelper redisLockHelper;
+    private final TransactionTemplate transactionTemplate;
 
     // Redis缓存Key前缀
     private static final String COUPON_PAGE_CACHE_PREFIX = "demo:coupon:page:";
     private static final String USER_COUPON_CACHE_PREFIX = "demo:coupon:user:";
     private static final String CLAIMABLE_TEMPLATE_CACHE_PREFIX = "demo:coupon:claimable:";
+    // 已领取用户集合：记录「已收到或已领取某模板」的全部用户ID（同类券每人限领一次的 O(1) 预校验）
+    private static final String RECEIVED_SET_PREFIX = "demo:coupon:received:set:";
+    // 已领取集合 TTL（天）：过期后由数据库唯一索引兜底，避免集合无限膨胀
+    private static final int RECEIVED_SET_TTL_DAYS = 30;
+    // 领取/发放分布式锁前缀（粒度：用户 + 优惠券，串行化同一用户的同一券操作）
+    private static final String COUPON_CLAIM_LOCK_PREFIX = "demo:coupon:claim:lock:";
+    // 批量发放每页加载用户数
+    private static final int BATCH_PAGE_SIZE = 100;
 
     public CouponService(CouponMapper couponMapper,
                          UserCouponMapper userCouponMapper,
                          UserService userService,
                          RedisUtil redisUtil,
-                         MQProducer mqProducer) {
+                         MQProducer mqProducer,
+                         RedisLockHelper redisLockHelper,
+                         PlatformTransactionManager transactionManager) {
         this.couponMapper = couponMapper;
         this.userCouponMapper = userCouponMapper;
         this.userService = userService;
         this.redisUtil = redisUtil;
         this.mqProducer = mqProducer;
+        this.redisLockHelper = redisLockHelper;
+        // 程序化事务模板：批量发放时逐用户开启独立小事务，避免单个长事务占用连接池
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     // ======================== 模板管理（管理员） ========================
@@ -135,8 +159,10 @@ public class CouponService {
     /**
      * 向单个用户发放优惠券
      * 1.校验模板存在且启用、剩余数量充足
-     * 2.原子扣减剩余数量（防止超发）
-     * 3.写入用户优惠券（含快照信息）
+     * 2.分布式锁串行化同一用户对同一券的发放操作
+     * 3.Redis 已领取集合 O(1) 预校验：同类券每人限领一次
+     * 4.原子扣减剩余数量（防止超发）
+     * 5.写入用户优惠券，失败时利用数据库唯一索引兜底回滚扣减
      * <p>
      * @author ZuiM
      * @param userId 用户ID
@@ -157,103 +183,204 @@ public class CouponService {
         if (coupon.getTargetType() != null && coupon.getTargetType() == 2 && !isVipMember(user)) {
             throw new IllegalArgumentException("VIP优惠券仅可发放给会员用户或会员卖家");
         }
-        // 原子扣减剩余数量
-        if (couponMapper.decrementRemain(couponId) <= 0) {
-            throw new IllegalStateException("优惠券库存不足，发放失败");
+
+        // 分布式锁：粒度 = 用户 + 优惠券，防止并发重复发放/领取
+        String lockKey = COUPON_CLAIM_LOCK_PREFIX + userId + ":" + couponId;
+        try {
+            boolean locked = redisLockHelper.tryLock(lockKey, 3, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new IllegalStateException("系统繁忙，请稍后再试");
+            }
+            // Redis 已领取集合预校验：O(1) 判断，同类券每人限领一次
+            String receivedSetKey = RECEIVED_SET_PREFIX + couponId;
+            if (redisUtil.sIsMember(receivedSetKey, userId)) {
+                throw new IllegalStateException("该用户已收到过同类优惠券，请勿重复发放");
+            }
+            // 数据库兜底校验（防止 Redis 缓存过期后数据不一致）
+            if (userCouponMapper.countByUserAndCoupon(userId, couponId) > 0) {
+                // 缓存已过期，同步写入 Redis Set
+                redisUtil.sAdd(receivedSetKey, userId);
+                redisUtil.expire(receivedSetKey, RECEIVED_SET_TTL_DAYS, TimeUnit.DAYS);
+                throw new IllegalStateException("该用户已收到过同类优惠券，请勿重复发放");
+            }
+            // 原子扣减剩余数量
+            if (couponMapper.decrementRemain(couponId) <= 0) {
+                throw new IllegalStateException("优惠券库存不足，发放失败");
+            }
+            UserCoupon uc = buildUserCoupon(userId, coupon, expireDays);
+            try {
+                userCouponMapper.insert(uc);
+            } catch (DuplicateKeyException e) {
+                // 唯一索引兜底：已有相同 (user_id, coupon_id) 记录
+                // @Transactional 会随异常整体回滚，原子扣减一并还原
+                throw new IllegalStateException("该用户已收到过同类优惠券，请勿重复发放");
+            }
+            // 发放后写入 Redis 已领取集合
+            redisUtil.sAdd(receivedSetKey, userId);
+            redisUtil.expire(receivedSetKey, RECEIVED_SET_TTL_DAYS, TimeUnit.DAYS);
+            // 异步清理该用户优惠券缓存
+            sendUserCouponCacheRefresh(userId);
+            log.info("向用户 {} 发放优惠券 {} 成功", userId, coupon.getName());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("系统中断，请稍后再试", e);
+        } finally {
+            redisLockHelper.unlock(lockKey);
         }
-        UserCoupon uc = buildUserCoupon(userId, coupon, expireDays);
-        userCouponMapper.insert(uc);
-        // 发放后异步清理该用户优惠券缓存
-        sendUserCouponCacheRefresh(userId);
-        log.info("向用户 {} 发放优惠券 {} 成功", userId, coupon.getName());
     }
 
     /**
-     * 向全部 VIP 会员（VIP用户 + VIP卖家）发放优惠券
-     * 逐个发放，某用户失败不影响其余用户
+     * 向全部 VIP 会员（VIP用户 + VIP卖家）批量发放优惠券（异步提交）
+     * 1.仅做模板存在/启用的快速校验，随后立即返回，不阻塞管理员请求
+     * 2.实际发放通过消息队列在后台削峰执行（用户量大时为费时事务，避免拖垮后端）
      * <p>
      * @author ZuiM
      * @param couponId 优惠券模板ID
      * @param expireDays 有效天数
-     * @return int 成功发放数量
      */
-    @Transactional
-    public int grantToAllVipUsers(Long couponId, int expireDays) {
+    public void grantToAllVipUsersAsync(Long couponId, int expireDays) {
+        validateGrantTarget(couponId);
+        mqProducer.sendCouponGrantTask(couponId, expireDays, 2);
+    }
+
+    /**
+     * 向全部启用用户批量发放优惠券（异步提交）
+     * 1.仅做模板存在/启用的快速校验，随后立即返回，不阻塞管理员请求
+     * 2.实际发放通过消息队列在后台削峰执行（用户量大时为费时事务，避免拖垮后端）
+     * <p>
+     * @author ZuiM
+     * @param couponId 优惠券模板ID
+     * @param expireDays 有效天数
+     */
+    public void grantToAllUsersAsync(Long couponId, int expireDays) {
+        validateGrantTarget(couponId);
+        mqProducer.sendCouponGrantTask(couponId, expireDays, 1);
+    }
+
+    /**
+     * 批量发放异步入口的快速校验：模板必须存在且启用
+     * <p>
+     * @author ZuiM
+     * @param couponId 优惠券模板ID
+     */
+    private void validateGrantTarget(Long couponId) {
         Coupon coupon = couponMapper.selectById(couponId);
         if (coupon == null || coupon.getStatus() != 1) {
             throw new IllegalArgumentException("优惠券不存在或已停用");
         }
-        // 查询全部启用且为 VIP 会员（VIP用户 + VIP卖家）的用户
-        List<User> vipUsers = listVipUsers();
-        if (vipUsers.isEmpty()) {
-            log.info("没有符合条件的 VIP 会员，跳过批量发放");
+    }
+
+    /**
+     * 批量发放优惠券后台执行器（由 MQConsumer 异步调用，削峰执行）
+     * 1.不占用 HTTP 请求线程，通过消息队列逐步消费
+     * 2.逐用户开启独立小事务 + Redis 已领取集合去重，某用户失败不影响其余
+     * 3.逐页加载用户，库存不足时提前终止
+     * <p>
+     * @author ZuiM
+     * @param couponId 优惠券模板ID
+     * @param expireDays 有效天数
+     * @param target 发放目标：1全部用户 2全部VIP会员
+     * @return int 成功发放数量
+     */
+    public int executeBatchGrant(Long couponId, int expireDays, int target) {
+        Coupon coupon = couponMapper.selectById(couponId);
+        if (coupon == null || coupon.getStatus() != 1) {
+            log.warn("批量发放终止：优惠券 {} 不存在或已停用", couponId);
             return 0;
         }
+        // 预热 Redis 已领取集合（懒加载，避免每次发放都查数据库）
+        String receivedSetKey = RECEIVED_SET_PREFIX + couponId;
+        if (!redisUtil.hasKey(receivedSetKey)) {
+            loadReceivedSet(couponId);
+        }
+        // 快照已领取集合到内存：批量循环内直接 O(1) 判断去重，避免每个用户一次 Redis 往返
+        // （数据一致性仍由数据库唯一索引 uk_user_coupon 兜底，快照略滞后无安全风险）
+        Set<Object> members = redisUtil.sMembers(receivedSetKey);
+        Set<Object> receivedSetSnapshot = members == null ? new HashSet<>() : members;
         int granted = 0;
-        for (User u : vipUsers) {
-            if (couponMapper.decrementRemain(couponId) <= 0) {
-                break; // 库存不足，停止发放
-            }
-            userCouponMapper.insert(buildUserCoupon(u.getId(), coupon, expireDays));
-            granted++;
-        }
-        if (granted > 0) {
-            // 批量发放后异步清理全部用户优惠券缓存
-            sendAllUserCouponCacheRefresh();
-        }
-        log.info("向 VIP 会员批量发放优惠券 {} 完成，共 {} 张", coupon.getName(), granted);
-        return granted;
-    }
-
-    /**
-     * 向全部启用用户发放优惠券（含普通用户、VIP用户、卖家、VIP卖家）
-     * 逐页加载全部启用用户，逐个发放，某用户失败不影响其余用户
-     * <p>
-     * @author ZuiM
-     * @param couponId 优惠券模板ID
-     * @param expireDays 有效天数
-     * @return int 成功发放数量
-     */
-    @Transactional
-    public int grantToAllUsers(Long couponId, int expireDays) {
-        Coupon coupon = couponMapper.selectById(couponId);
-        if (coupon == null || coupon.getStatus() != 1) {
-            throw new IllegalArgumentException("优惠券不存在或已停用");
-        }
-        // 分页加载全部启用用户（is_deleted=0 由 @TableLogic 自动过滤）
-        int pageSize = 100;
-        int granted = 0;
-        Page<User> page = new Page<>(1, pageSize);
+        int page = 1;
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         wrapper.eq("status", 1);
         while (true) {
-            Page<User> p = userService.getUserListByQuery(wrapper, page);
-            if (p.getRecords().isEmpty()) {
+            Page<User> p = new Page<>(page, BATCH_PAGE_SIZE);
+            Page<User> userPage = userService.getUserListByQuery(wrapper, p);
+            if (userPage.getRecords().isEmpty()) {
                 break;
             }
-            for (User u : p.getRecords()) {
-                if (couponMapper.decrementRemain(couponId) <= 0) {
-                    // 库存不足，停止发放
-                    log.info("优惠券 {} 库存不足，发放提前结束", coupon.getName());
-                    if (granted > 0) {
-                        sendAllUserCouponCacheRefresh();
-                    }
-                    return granted;
+            for (User u : userPage.getRecords()) {
+                // 目标过滤：仅VIP会员发放
+                if (target == 2 && !isVipMember(u)) {
+                    continue;
                 }
-                userCouponMapper.insert(buildUserCoupon(u.getId(), coupon, expireDays));
-                granted++;
+                // 内存快照去重：同类券每人限领一次（O(1) 判断，避免逐用户 Redis 往返）
+                if (receivedSetSnapshot.contains(u.getId())) {
+                    continue;
+                }
+                // 逐用户小事务：独立提交，不阻塞整体进度
+                Boolean ok = transactionTemplate.execute(status -> {
+                    try {
+                        if (couponMapper.decrementRemain(couponId) <= 0) {
+                            return false; // 库存不足，跳过该用户
+                        }
+                        UserCoupon uc = buildUserCoupon(u.getId(), coupon, expireDays);
+                        try {
+                            userCouponMapper.insert(uc);
+                        } catch (DuplicateKeyException e) {
+                            // 唯一索引兜底，回滚库存
+                            couponMapper.incrementRemain(couponId);
+                            return false;
+                        }
+                        // 写入 Redis 已领取集合，并同步内存快照（TTL 已由懒加载/首次写入时设定）
+                        redisUtil.sAdd(receivedSetKey, u.getId());
+                        receivedSetSnapshot.add(u.getId());
+                        return true;
+                    } catch (Exception e) {
+                        log.warn("向用户 {} 发放优惠券 {} 失败: {}", u.getId(), couponId, e.getMessage());
+                        status.setRollbackOnly();
+                        return false;
+                    }
+                });
+                if (ok != null && ok) {
+                    granted++;
+                } else {
+                    // 库存不足，检查是否还有剩余
+                    Coupon latest = couponMapper.selectById(couponId);
+                    if (latest == null || latest.getRemainCount() == null || latest.getRemainCount() <= 0) {
+                        log.info("优惠券 {} 库存不足，批量发放提前终止，已发放 {} 张", coupon.getName(), granted);
+                        // 强制刷新一次可领模板缓存（库存已变）
+                        sendClaimableTemplateCacheRefresh();
+                        sendAllUserCouponCacheRefresh();
+                        return granted;
+                    }
+                }
             }
-            if (p.getRecords().size() < pageSize) {
+            if (userPage.getRecords().size() < BATCH_PAGE_SIZE) {
                 break;
             }
-            page.setCurrent(page.getCurrent() + 1);
+            page++;
         }
         if (granted > 0) {
-            // 批量发放后异步清理全部用户优惠券缓存
+            sendClaimableTemplateCacheRefresh();
             sendAllUserCouponCacheRefresh();
         }
-        log.info("向全部用户批量发放优惠券 {} 完成，共 {} 张", coupon.getName(), granted);
+        log.info("批量发放完成: couponId={}, target={}, granted={}", couponId, target, granted);
         return granted;
+    }
+
+    /**
+     * 懒加载 Redis「已领取用户集合」：从数据库查询已领取某模板的用户 ID 并写入 Redis Set
+     * <p>
+     * @author ZuiM
+     * @param couponId 优惠券模板ID
+     */
+    private void loadReceivedSet(Long couponId) {
+        String receivedSetKey = RECEIVED_SET_PREFIX + couponId;
+        List<Long> userIds = userCouponMapper.selectUserIdsByCouponId(couponId);
+        if (!userIds.isEmpty()) {
+            redisUtil.sAddAll(receivedSetKey, userIds);
+        }
+        redisUtil.expire(receivedSetKey, RECEIVED_SET_TTL_DAYS, TimeUnit.DAYS);
+        log.debug("已领取集合加载: couponId={}, userIds={}", couponId, userIds.size());
     }
 
     /**
@@ -280,26 +407,6 @@ public class CouponService {
         int days = Math.max(expireDays, 1);
         uc.setExpireTime(LocalDateTime.now().plusDays(days));
         return uc;
-    }
-
-    /**
-     * 查询所有启用且为 VIP 会员的用户（VIP买家 + VIP卖家）
-     * <p>
-     * @author ZuiM
-     * @return List<User> VIP 会员列表
-     */
-    private List<User> listVipUsers() {
-        List<User> result = new ArrayList<>();
-        Page<User> page = new Page<>(1, 100);
-        QueryWrapper<User> wrapper = new QueryWrapper<>();
-        wrapper.eq("status", 1);
-        Page<User> p = userService.getUserListByQuery(wrapper, page);
-        for (User u : p.getRecords()) {
-            if (isVipMember(u)) {
-                result.add(u);
-            }
-        }
-        return result;
     }
 
     /**
@@ -392,9 +499,9 @@ public class CouponService {
 
     /**
      * 用户自助领取优惠券（首页「领券中心」）
-     * 1.校验模板存在且启用、剩余数量充足
-     * 2.校验适用人群：VIP券仅限 VIP 用户 / VIP 卖家领取
-     * 3.校验同一用户未重复领取同一模板
+     * 1.分布式锁串行化同一用户对同一模板的领取，保证限领校验的原子性（防并发重复领取）
+     * 2.Redis 已领取集合 O(1) 预校验，未命中时再查数据库兜底（减少 MySQL 查询）
+     * 3.校验模板存在且启用、剩余数量充足、适用人群（VIP券仅限会员）
      * 4.原子扣减剩余数量（防止超发）
      * 5.写入用户优惠券（含快照信息，默认有效期 30 天）
      * <p>
@@ -404,35 +511,64 @@ public class CouponService {
      */
     @Transactional
     public void claimCoupon(Long userId, Long couponId) {
-        User user = userService.getUserById(userId);
-        if (user == null) {
-            throw new IllegalArgumentException("用户不存在");
+        String lockKey = COUPON_CLAIM_LOCK_PREFIX + userId + ":" + couponId;
+        try {
+            // 分布式锁：防止同一用户并发领取同一模板造成重复（粒度 = 用户 + 优惠券）
+            boolean locked = redisLockHelper.tryLock(lockKey, 3, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new IllegalStateException("系统繁忙，请稍后再试");
+            }
+            // 限领校验：Redis 已领取集合 O(1) 预判，减少数据库查询
+            String receivedSetKey = RECEIVED_SET_PREFIX + couponId;
+            if (redisUtil.sIsMember(receivedSetKey, userId)) {
+                throw new IllegalStateException("您已领取过该优惠券，请勿重复领取");
+            }
+            // 数据库兜底校验（Redis 集合过期/未命中时，保证数据一致）
+            if (userCouponMapper.countByUserAndCoupon(userId, couponId) > 0) {
+                // 补写 Redis 集合，避免下次再次查库
+                redisUtil.sAdd(receivedSetKey, userId);
+                redisUtil.expire(receivedSetKey, RECEIVED_SET_TTL_DAYS, TimeUnit.DAYS);
+                throw new IllegalStateException("您已领取过该优惠券，请勿重复领取");
+            }
+            User user = userService.getUserById(userId);
+            if (user == null) {
+                throw new IllegalArgumentException("用户不存在");
+            }
+            Coupon coupon = couponMapper.selectById(couponId);
+            if (coupon == null || coupon.getStatus() != 1) {
+                throw new IllegalArgumentException("优惠券不存在或已停用");
+            }
+            // VIP券仅限 VIP 用户 / VIP 卖家领取
+            if (coupon.getTargetType() != null && coupon.getTargetType() == 2 && !isVipMember(user)) {
+                throw new IllegalArgumentException("该优惠券为VIP专属，仅会员用户或会员卖家可领取");
+            }
+            if (coupon.getRemainCount() == null || coupon.getRemainCount() <= 0) {
+                throw new IllegalStateException("优惠券已被领完");
+            }
+            // 原子扣减剩余数量
+            if (couponMapper.decrementRemain(couponId) <= 0) {
+                throw new IllegalStateException("优惠券已被领完，请稍后再试");
+            }
+            UserCoupon uc = buildUserCoupon(userId, coupon, 30);
+            try {
+                userCouponMapper.insert(uc);
+            } catch (DuplicateKeyException e) {
+                // 数据库唯一索引兜底：极端并发下拦截重复领取，随事务回滚扣减
+                throw new IllegalStateException("您已领取过该优惠券，请勿重复领取");
+            }
+            // 写入 Redis 已领取集合
+            redisUtil.sAdd(receivedSetKey, userId);
+            redisUtil.expire(receivedSetKey, RECEIVED_SET_TTL_DAYS, TimeUnit.DAYS);
+            // 领取后异步清理该用户优惠券缓存与可领模板缓存
+            sendUserCouponCacheRefresh(userId);
+            sendClaimableTemplateCacheRefresh();
+            log.info("用户 {} 自助领取优惠券 {} 成功", userId, coupon.getName());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("系统繁忙，请稍后再试");
+        } finally {
+            redisLockHelper.unlock(lockKey);
         }
-        Coupon coupon = couponMapper.selectById(couponId);
-        if (coupon == null || coupon.getStatus() != 1) {
-            throw new IllegalArgumentException("优惠券不存在或已停用");
-        }
-        // VIP券仅限 VIP 用户 / VIP 卖家领取
-        if (coupon.getTargetType() != null && coupon.getTargetType() == 2 && !isVipMember(user)) {
-            throw new IllegalArgumentException("该优惠券为VIP专属，仅会员用户或会员卖家可领取");
-        }
-        if (coupon.getRemainCount() == null || coupon.getRemainCount() <= 0) {
-            throw new IllegalStateException("优惠券已被领完");
-        }
-        // 同一用户对同一模板仅可领取一次
-        if (userCouponMapper.countByUserAndCoupon(userId, couponId) > 0) {
-            throw new IllegalStateException("您已领取过该优惠券，请勿重复领取");
-        }
-        // 原子扣减剩余数量
-        if (couponMapper.decrementRemain(couponId) <= 0) {
-            throw new IllegalStateException("优惠券已被领完，请稍后再试");
-        }
-        UserCoupon uc = buildUserCoupon(userId, coupon, 30);
-        userCouponMapper.insert(uc);
-        // 领取后异步清理该用户优惠券缓存与可领模板缓存
-        sendUserCouponCacheRefresh(userId);
-        sendClaimableTemplateCacheRefresh();
-        log.info("用户 {} 自助领取优惠券 {} 成功", userId, coupon.getName());
     }
 
     // ======================== 使用（结算时调用） ========================

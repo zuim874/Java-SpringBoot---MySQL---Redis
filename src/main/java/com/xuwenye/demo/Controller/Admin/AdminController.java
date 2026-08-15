@@ -264,6 +264,16 @@ public class AdminController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
         Page<Seller> sellerPage = sellerService.getSellerPage(page, size);
+        // 填充绑定的登录账号用户名（表单临时字段 username），便于后台展示「账号绑定」关系
+        if (sellerPage.getRecords() != null) {
+            for (Seller seller : sellerPage.getRecords()) {
+                User account = sellerService.getUserForSeller(seller);
+                if (account != null) {
+                    seller.setUsername(account.getUsername());
+                    seller.setEmail(account.getEmail());
+                }
+            }
+        }
         return Result.ok(sellerPage);
     }
 

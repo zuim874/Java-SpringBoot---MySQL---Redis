@@ -64,4 +64,15 @@ public interface UserCouponMapper extends BaseMapper<UserCoupon> {
      */
     @Select("SELECT COUNT(*) FROM sys_user_coupon WHERE user_id = #{userId} AND coupon_id = #{couponId}")
     int countByUserAndCoupon(@Param("userId") Long userId, @Param("couponId") Long couponId);
+
+    /**
+     * 查询已领取指定优惠券模板的全部用户ID
+     * 用于初始化 Redis「已领取用户集合」（懒加载），配合唯一索引实现「同类券每人限领一次」
+     * <p>
+     * @author ZuiM
+     * @param couponId 优惠券模板ID
+     * @return List<Long> 已领取用户ID列表
+     */
+    @Select("SELECT user_id FROM sys_user_coupon WHERE coupon_id = #{couponId}")
+    List<Long> selectUserIdsByCouponId(@Param("couponId") Long couponId);
 }

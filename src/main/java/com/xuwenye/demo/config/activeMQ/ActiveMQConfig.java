@@ -25,7 +25,7 @@ import jakarta.jms.Topic;
  * 1.定义连接工厂（broker-url/账号密码/信任所有包）
  * 2.定义 JMS 模板（发送消息）与消息监听容器工厂（消费消息）
  * 3.定义 JSON 消息转换器（支持 LocalDateTime）
- * 4.注册业务队列 Bean（邮件/日志/订单/短信/统计/文件/通知）与主题 Bean（广播/告警）
+ * 4.注册业务队列 Bean（邮件/日志/订单/短信/统计/文件/通知/缓存/优惠券）与主题 Bean（广播/告警）
  * <p>
  * @author ZuiM
  */
@@ -51,6 +51,7 @@ public class ActiveMQConfig {
     public static final String QUEUE_FILE = "queue.file";
     public static final String QUEUE_NOTIFICATION = "queue.notification";
     public static final String QUEUE_CACHE = "queue.cache";
+    public static final String QUEUE_COUPON = "queue.coupon";
 
     // ========== 主题定义（发布订阅） ==========
     public static final String TOPIC_BROADCAST = "topic.broadcast";
@@ -261,6 +262,18 @@ public class ActiveMQConfig {
     @Bean
     public Queue cacheQueue() {
         return new ActiveMQQueue(QUEUE_CACHE);
+    }
+
+    /**
+     * 优惠券队列 Bean
+     * 用于消费批量发放等费时任务（如向全部用户/VIP会员批量发券），异步解耦
+     * <p>
+     * @author ZuiM
+     * @return Queue 优惠券队列
+     */
+    @Bean
+    public Queue couponQueue() {
+        return new ActiveMQQueue(QUEUE_COUPON);
     }
 
     // ========== 8. 主题 Bean ==========
