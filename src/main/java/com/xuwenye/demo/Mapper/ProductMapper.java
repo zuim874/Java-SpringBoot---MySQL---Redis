@@ -31,12 +31,13 @@ public interface ProductMapper extends BaseMapper<Product> {
 
     /**
      * 按分类查询上架商品
+     * 支持多分类：商品 category 字段以英文逗号分隔多个分类，如 "手机,数码"
      * <p>
      * @author ZuiM
-     * @param category 商品分类
-     * @return List<Product> 指定分类的上架商品列表
+     * @param category 商品分类（单个）
+     * @return List<Product> 包含该分类的上架商品列表
      */
-    @Select("SELECT * FROM sys_product WHERE category = #{category} AND status = 1 AND is_deleted = 0")
+    @Select("SELECT * FROM sys_product WHERE FIND_IN_SET(#{category}, category) > 0 AND status = 1 AND is_deleted = 0")
     List<Product> findProductsByCategory(@Param("category") String category);
 
     /**
@@ -72,6 +73,7 @@ public interface ProductMapper extends BaseMapper<Product> {
 
     /**
      * 分页查询上架商品（支持按分类筛选）
+     * 分类筛选使用 FIND_IN_SET 兼容商品多分类（逗号分隔）存储
      * <p>
      * @author ZuiM
      * @param page 分页参数
@@ -80,7 +82,7 @@ public interface ProductMapper extends BaseMapper<Product> {
      */
     @Select("<script>" +
             "SELECT * FROM sys_product WHERE status = 1 AND is_deleted = 0" +
-            "<if test='category != null and category != \"\"'> AND category = #{category}</if>" +
+            "<if test='category != null and category != \"\"'> AND FIND_IN_SET(#{category}, category) > 0</if>" +
             "<if test='keyword != null and keyword != \"\"'> AND (product_name LIKE CONCAT('%', #{keyword}, '%') OR description LIKE CONCAT('%', #{keyword}, '%'))</if>" +
             " ORDER BY recommend DESC, create_time DESC" +
             "</script>")

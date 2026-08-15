@@ -1,26 +1,24 @@
 package com.xuwenye.demo.Controller.Coupon;
 
 import com.xuwenye.demo.Entity.Coupon;
-import com.xuwenye.demo.Entity.Seller;
 import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.CouponService;
-import com.xuwenye.demo.Service.SellerService;
-import com.xuwenye.demo.Service.UserService;
 import com.xuwenye.demo.annotation.OperationLog;
 import com.xuwenye.demo.annotation.RateLimit;
+import com.xuwenye.demo.annotation.UserCheck;
 import com.xuwenye.demo.common.Result;
-import com.xuwenye.demo.util.auth.JwtUtil;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.constraints.Min;
-import java.util.List;
 
 /**
  * 优惠券接口
- * 1.管理端：创建、分页查询、向用户/向VIP买家批量发放
- * 2.用户端：可用优惠券查询、全部优惠券查询
- * 3.所有接口需登录
+ * 1.管理端：创建、分页查询、向用户/向VIP会员批量发放（@UserCheck 切面校验 ROLE_ADMIN 角色）
+ * 2.用户端：可用优惠券查询、全部优惠券查询（@UserCheck 切面校验登录态）
+ * 3.领券中心：可领模板列表（公开，无需登录）、用户自助领取（@UserCheck 切面校验登录态）
+ * <p>
+ * 适用人群：targetType=1 普通券（全部用户可领）；targetType=2 VIP券（受众=VIP用户 + VIP卖家）
  * <p>
  * @author ZuiM
  */
@@ -30,31 +28,20 @@ import java.util.List;
 public class CouponController {
 
     private final CouponService couponService;
-    private final UserService userService;
-    private final SellerService sellerService;
-    private final JwtUtil jwtUtil;
 
-    public CouponController(CouponService couponService,
-                            UserService userService,
-                            SellerService sellerService,
-                            JwtUtil jwtUtil) {
+    public CouponController(CouponService couponService) {
         this.couponService = couponService;
-        this.userService = userService;
-        this.sellerService = sellerService;
-        this.jwtUtil = jwtUtil;
     }
 
     // ======================== 管理员接口 ========================
 
     @OperationLog("创建优惠券")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PostMapping("/admin/create")
     @RateLimit(window = 60, maxRequests = 5, message = "操作过于频繁，请稍后再试")
     public Result<?> createCoupon(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestBody Coupon coupon) {
-        if (!validateAdmin(token)) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
         try {
             couponService.createCoupon(coupon);
             return Result.ok("优惠券创建成功");
@@ -63,29 +50,25 @@ public class CouponController {
         }
     }
 
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @GetMapping("/admin/list")
     @RateLimit(window = 60, maxRequests = 20, message = "请求过于频繁，请稍后再试")
     public Result<?> listCoupons(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        if (!validateAdmin(token)) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
         return Result.ok(couponService.getCouponPage(page, size));
     }
 
     @OperationLog("发放优惠券")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PostMapping("/admin/grant")
     @RateLimit(window = 60, maxRequests = 5, message = "操作过于频繁，请稍后再试")
     public Result<?> grantCoupon(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestParam @Min(1) Long userId,
             @RequestParam @Min(1) Long couponId,
             @RequestParam(defaultValue = "30") int expireDays) {
-        if (!validateAdmin(token)) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
         try {
             couponService.grantToUser(userId, couponId, expireDays);
             return Result.ok("优惠券发放成功");
@@ -95,15 +78,13 @@ public class CouponController {
     }
 
     @OperationLog("批量发放优惠券")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PostMapping("/admin/grant-all-vip")
     @RateLimit(window = 60, maxRequests = 3, message = "操作过于频繁，请稍后再试")
     public Result<?> grantAllVip(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestParam @Min(1) Long couponId,
             @RequestParam(defaultValue = "30") int expireDays) {
-        if (!validateAdmin(token)) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
         try {
             int count = couponService.grantToAllVipUsers(couponId, expireDays);
             return Result.ok("已向 " + count + " 名会员买家发放优惠券");
@@ -112,52 +93,73 @@ public class CouponController {
         }
     }
 
+    @OperationLog("向全部用户发放优惠券")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
+    @PostMapping("/admin/grant-all-users")
+    @RateLimit(window = 60, maxRequests = 3, message = "操作过于频繁，请稍后再试")
+    public Result<?> grantAllUsers(
+            User currentUser,
+            @RequestParam @Min(1) Long couponId,
+            @RequestParam(defaultValue = "30") int expireDays) {
+        try {
+            int count = couponService.grantToAllUsers(couponId, expireDays);
+            return Result.ok("已向 " + count + " 名注册用户发放优惠券");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return Result.error(400, e.getMessage());
+        }
+    }
+
+    // ======================== 领券中心（用户自助领取） ========================
+
+    /**
+     * 查询可自助领取的优惠券模板列表（公开，无需登录）
+     * 供首页「领券中心」展示
+     * <p>
+     * @author ZuiM
+     * @return Result<List<Coupon>> 可领取的模板列表
+     */
+    @GetMapping("/user/templates")
+    @RateLimit(window = 60, maxRequests = 30, message = "请求过于频繁，请稍后再试")
+    public Result<?> claimableTemplates() {
+        return Result.ok(couponService.getClaimableTemplates());
+    }
+
+    /**
+     * 用户自助领取优惠券
+     * <p>
+     * @author ZuiM
+     * @param currentUser 当前登录用户（@UserCheck 切面注入）
+     * @param couponId 优惠券模板ID
+     * @return Result<?> 领取结果
+     */
+    @OperationLog("领取优惠券")
+    @UserCheck
+    @PostMapping("/user/claim")
+    @RateLimit(window = 60, maxRequests = 10, message = "操作过于频繁，请稍后再试")
+    public Result<?> claimCoupon(
+            User currentUser,
+            @RequestParam @Min(1) Long couponId) {
+        try {
+            couponService.claimCoupon(currentUser.getId(), couponId);
+            return Result.ok("优惠券领取成功");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return Result.error(400, e.getMessage());
+        }
+    }
+
     // ======================== 用户接口 ========================
 
+    @UserCheck
     @GetMapping("/user/available")
     @RateLimit(window = 60, maxRequests = 30, message = "请求过于频繁，请稍后再试")
-    public Result<?> availableCoupons(@RequestHeader("Authorization") String token) {
-        Long userId = validateLogin(token);
-        if (userId == null) {
-            return Result.error(401, "未登录或登录已过期");
-        }
-        return Result.ok(couponService.getAvailableCoupons(userId));
+    public Result<?> availableCoupons(User currentUser) {
+        return Result.ok(couponService.getAvailableCoupons(currentUser.getId()));
     }
 
+    @UserCheck
     @GetMapping("/user/all")
     @RateLimit(window = 60, maxRequests = 30, message = "请求过于频繁，请稍后再试")
-    public Result<?> allCoupons(@RequestHeader("Authorization") String token) {
-        Long userId = validateLogin(token);
-        if (userId == null) {
-            return Result.error(401, "未登录或登录已过期");
-        }
-        return Result.ok(couponService.getUserCoupons(userId));
-    }
-
-    // ======================== 内部工具 ========================
-
-    private boolean validateAdmin(String token) {
-        if (token == null || !token.startsWith("Bearer ")) {
-            return false;
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return false;
-        }
-        String username = jwtUtil.parseUsername(realToken);
-        return userService.isAdmin(username);
-    }
-
-    private Long validateLogin(String token) {
-        if (token == null || !token.startsWith("Bearer ")) {
-            return null;
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return null;
-        }
-        String username = jwtUtil.parseUsername(realToken);
-        User user = userService.findUserableUser(username);
-        return user == null ? null : user.getId();
+    public Result<?> allCoupons(User currentUser) {
+        return Result.ok(couponService.getUserCoupons(currentUser.getId()));
     }
 }

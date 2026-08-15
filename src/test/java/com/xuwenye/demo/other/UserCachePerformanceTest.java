@@ -1,4 +1,4 @@
-package com.xuwenye.demo;
+package com.xuwenye.demo.other;
 
 import com.xuwenye.demo.Service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -6,12 +6,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
 @SpringBootTest
+@ActiveProfiles("test")
 public class UserCachePerformanceTest {
 
     @Autowired

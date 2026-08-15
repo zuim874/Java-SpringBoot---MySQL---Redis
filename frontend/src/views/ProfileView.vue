@@ -15,7 +15,7 @@
         <span class="nav-nickname">{{ nickname }}</span>
         <button class="avatar-btn" @click="profileMenuOpen = !profileMenuOpen" aria-label="用户菜单">
           <span class="avatar-circle">
-            <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+            <img :src="getCachedAvatar(avatarUrl)" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
           </span>
           <span class="avatar-caret" :class="{ open: profileMenuOpen }">▾</span>
         </button>
@@ -23,7 +23,7 @@
           <div class="profile-menu" v-if="profileMenuOpen">
             <div class="profile-menu-header">
               <span class="profile-menu-avatar">
-                <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+                <img :src="getCachedAvatar(avatarUrl)" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
               </span>
               <div class="profile-menu-id">
                 <p class="profile-menu-name">{{ nickname }}</p>
@@ -31,7 +31,11 @@
               </div>
             </div>
             <button class="profile-menu-item" @click="profileMenuOpen = false; goBackToShop()">返回商城</button>
+            <button class="profile-menu-item" @click="profileMenuOpen = false; goOrders()">我的订单</button>
             <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
+            <button class="profile-menu-item" @click="profileMenuOpen = false; goCoupons()">我的优惠券</button>
+            <button class="profile-menu-item" v-if="isAdminUser" @click="profileMenuOpen = false; goAdmin()">管理后台</button>
+            <button class="profile-menu-item" v-if="isSellerUser" @click="profileMenuOpen = false; goSeller()">商家管理</button>
             <div class="profile-menu-divider"></div>
             <button class="profile-menu-item profile-menu-item--logout" @click="handleLogout">退出登录</button>
           </div>
@@ -39,116 +43,189 @@
       </div>
     </nav>
 
-    <!-- 用户信息卡片 -->
-    <div class="profile-wrapper">
-      <div class="profile-card">
-        <div class="profile-header">
-          <div class="profile-avatar" :class="{ 'profile-avatar--editable': !uploading }" @click="triggerFileSelect" title="点击更换头像">
-            <img v-if="avatar" :src="avatar" class="avatar-img" alt="头像">
-            <span v-else class="avatar-text">{{ userInitial }}</span>
-            <span class="avatar-edit-hint" v-if="!uploading">✏️</span>
-            <span class="avatar-loading" v-if="uploading"></span>
-          </div>
-          <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden-file-input" @change="handleFileChange">
-          <h2 class="profile-title">
-            个人中心
+    <!-- 主内容 -->
+    <main class="profile-main">
+      <!-- 会员横幅 -->
+      <section class="member-banner">
+        <div class="member-banner__deco member-banner__deco--1"></div>
+        <div class="member-banner__deco member-banner__deco--2"></div>
+        <div class="member-avatar" :class="{ 'member-avatar--editable': !uploading }" @click="triggerFileSelect" title="点击更换头像">
+          <img v-if="avatar" :src="getCachedAvatar(avatar)" class="member-avatar__img" alt="头像">
+          <span v-else class="member-avatar__text">{{ userInitial }}</span>
+          <span class="member-avatar__edit" v-if="!uploading">✏️</span>
+          <span class="member-avatar__loading" v-if="uploading"></span>
+        </div>
+        <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden-file-input" @change="handleFileChange">
+        <div class="member-info">
+          <h1 class="member-nickname">
+            {{ nickname }}
             <span v-if="isVipUser" class="vip-chip">★ 会员</span>
-          </h2>
-          <p class="profile-desc">管理您的账号信息</p>
+            <span v-else class="role-tag">{{ roleLabel }}</span>
+          </h1>
+          <p class="member-username">@{{ username }}</p>
+          <p class="member-email">{{ email || '未绑定邮箱' }}</p>
         </div>
-
-        <div class="profile-info">
-          <div class="info-row">
-            <div class="info-label">用户名</div>
-            <div class="info-value">{{ username }}</div>
-          </div>
-          <div class="info-divider"></div>
-          <div class="info-row">
-            <div class="info-label">昵称</div>
-            <div class="info-value">
-              {{ nickname }}
-              <button class="info-edit-btn" @click="openEditNickname" title="编辑昵称">✏️</button>
-            </div>
-          </div>
-          <div class="info-divider"></div>
-          <div class="info-row">
-            <div class="info-label">邮箱</div>
-            <div class="info-value">
-              {{ email || '未绑定' }}
-              <button class="info-edit-btn" @click="openChangeEmail" title="换绑邮箱">✏️</button>
-            </div>
-          </div>
-          <div class="info-divider"></div>
-          <div class="info-row">
-            <div class="info-label">余额</div>
-            <div class="info-value">
-              <span class="balance-amount">¥{{ (balance || 0).toFixed(2) }}</span>
-            </div>
-          </div>
+        <div class="member-balance">
+          <span class="member-balance__label">账户余额</span>
+          <span class="member-balance__amount">¥{{ (balance || 0).toFixed(2) }}</span>
+          <button class="member-balance__btn" @click="openRecharge">申请充值</button>
         </div>
+      </section>
 
-        <!-- 账号操作区 -->
-        <div class="profile-actions">
-          <h3 class="actions-title">账号操作</h3>
-          <div class="action-btns">
-            <button class="edit-profile-btn" @click="openEditNickname">
-              <span class="edit-profile-btn-icon">✏️</span>
-              <span>编辑昵称</span>
-            </button>
-            <button class="edit-profile-btn" @click="openChangeEmail">
-              <span class="edit-profile-btn-icon">📧</span>
-              <span>换绑邮箱</span>
-            </button>
-            <button class="edit-profile-btn" @click="openChangePassword">
-              <span class="edit-profile-btn-icon">🔒</span>
-              <span>修改密码</span>
-            </button>
-            <button class="edit-profile-btn edit-profile-btn--recharge" @click="openRecharge">
-              <span class="edit-profile-btn-icon">💰</span>
-              <span>申请充值</span>
-            </button>
-            <button class="edit-profile-btn" @click="goCoupons">
-              <span class="edit-profile-btn-icon">🎟️</span>
-              <span>我的优惠券</span>
-            </button>
-            <button class="edit-profile-btn" @click="openAddressManager">
-              <span class="edit-profile-btn-icon">📍</span>
-              <span>地址管理</span>
-            </button>
-          </div>
-          <button class="delete-btn" @click="confirmDelete">
-            <span class="delete-btn-icon">⚠️</span>
-            <span>注销账号</span>
+      <!-- 订单中心 -->
+      <section class="stats-card card">
+        <div class="stats-card__head">
+          <h2 class="section-title">订单中心</h2>
+          <button class="section-link" @click="router.push('/orders')">全部订单 ›</button>
+        </div>
+        <div class="stats-grid">
+          <button class="stat-item" @click="router.push({ path: '/orders', query: { status: '0' } })">
+            <span class="stat-item__icon">💰</span>
+            <span class="stat-item__label">待付款</span>
           </button>
-          <p class="actions-desc">注销后账号将被停用，可通过恢复功能重新激活</p>
+          <button class="stat-item" @click="router.push({ path: '/orders', query: { status: '1' } })">
+            <span class="stat-item__icon">📦</span>
+            <span class="stat-item__label">待发货</span>
+          </button>
+          <button class="stat-item" @click="router.push({ path: '/orders', query: { status: '2' } })">
+            <span class="stat-item__icon">🚚</span>
+            <span class="stat-item__label">待收货</span>
+          </button>
+          <button class="stat-item" @click="router.push('/orders')">
+            <span class="stat-item__icon">🧾</span>
+            <span class="stat-item__label">全部订单</span>
+          </button>
         </div>
+      </section>
 
-        <p v-if="message" :class="['msg', success ? 'msg--success' : 'msg--error']">
-          {{ message }}
-        </p>
-      </div>
-    </div>
+      <!-- 常用功能宫格 -->
+      <section class="menu-card card">
+        <div class="section-head">
+          <h2 class="section-title">常用功能</h2>
+        </div>
+        <div class="menu-grid">
+          <button class="menu-item" @click="router.push('/orders')">
+            <span class="menu-item__icon">📦</span>
+            <span class="menu-item__text">我的订单</span>
+          </button>
+          <button class="menu-item" @click="goCoupons">
+            <span class="menu-item__icon">🎟️</span>
+            <span class="menu-item__text">我的优惠券</span>
+          </button>
+          <button class="menu-item" @click="openAddressManager">
+            <span class="menu-item__icon">📍</span>
+            <span class="menu-item__text">收货地址</span>
+          </button>
+          <button class="menu-item" @click="openRecharge">
+            <span class="menu-item__icon">💰</span>
+            <span class="menu-item__text">申请充值</span>
+          </button>
+          <button class="menu-item" @click="openEditNickname">
+            <span class="menu-item__icon">✏️</span>
+            <span class="menu-item__text">修改昵称</span>
+          </button>
+          <button class="menu-item" @click="openChangeEmail">
+            <span class="menu-item__icon">📧</span>
+            <span class="menu-item__text">换绑邮箱</span>
+          </button>
+          <button class="menu-item" @click="openChangePassword">
+            <span class="menu-item__icon">🔒</span>
+            <span class="menu-item__text">修改密码</span>
+          </button>
+          <button class="menu-item" @click="goBackToShop">
+            <span class="menu-item__icon">🏪</span>
+            <span class="menu-item__text">返回商城</span>
+          </button>
+        </div>
+      </section>
 
-    <!-- 充值记录 -->
-    <div class="recharge-records" v-if="rechargeRecords.length > 0">
-      <h3 class="records-title">充值记录</h3>
-      <div class="records-list">
-        <div v-for="record in rechargeRecords" :key="record.id" class="record-item">
-          <div class="record-info">
-            <span class="record-amount">¥{{ record.amount.toFixed(2) }}</span>
-            <span :class="['record-status', 'record-status--' + record.status]">
-              {{ record.status === 0 ? '待审核' : record.status === 1 ? '已通过' : '已拒绝' }}
+      <!-- 余额充值 -->
+      <section class="recharge-card card">
+        <div class="section-head">
+          <h2 class="section-title">余额充值</h2>
+          <span class="section-sub">提交申请后由管理员审核到账</span>
+        </div>
+        <div class="recharge-panel">
+          <div class="recharge-input">
+            <span class="recharge-input__prefix">¥</span>
+            <input v-model="rechargeAmount" type="number" min="0.01" step="0.01" placeholder="请输入充值金额，最低 0.01 元" />
+          </div>
+          <button class="btn btn--primary recharge-btn" @click="handleSubmitRecharge" :disabled="recharging">
+            <span v-if="recharging" class="btn-loading"></span>
+            <span v-else>申请充值</span>
+          </button>
+        </div>
+        <p v-if="message" :class="['msg', success ? 'msg--success' : 'msg--error']">{{ message }}</p>
+
+        <div class="recharge-records" v-if="rechargeRecords.length > 0">
+          <h3 class="records-title">充值记录</h3>
+          <div class="records-list">
+            <div v-for="record in rechargeRecords" :key="record.id" class="record-item">
+              <div class="record-info">
+                <span class="record-amount">¥{{ Number(record.amount || 0).toFixed(2) }}</span>
+                <span :class="['record-status', 'record-status--' + record.status]">
+                  {{ record.status === 0 ? '待审核' : record.status === 1 ? '已通过' : '已拒绝' }}
+                </span>
+              </div>
+              <div class="record-time">
+                <span>{{ record.createTime }}</span>
+                <span v-if="record.remark" class="record-remark">{{ record.remark }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 账号安全 -->
+      <section class="security-card card">
+        <div class="section-head">
+          <h2 class="section-title">账号安全</h2>
+        </div>
+        <div class="security-list">
+          <div class="security-row">
+            <span class="security-row__label">用户名</span>
+            <span class="security-row__value">{{ username }}</span>
+          </div>
+          <div class="security-row">
+            <span class="security-row__label">昵称</span>
+            <span class="security-row__value">
+              {{ nickname }}
+              <button class="link-btn" @click="openEditNickname">修改</button>
             </span>
           </div>
-          <div class="record-time">
-            <span>{{ record.createTime }}</span>
-            <span v-if="record.remark" class="record-remark">{{ record.remark }}</span>
+          <div class="security-row">
+            <span class="security-row__label">邮箱</span>
+            <span class="security-row__value">
+              {{ email || '未绑定' }}
+              <button class="link-btn" @click="openChangeEmail">换绑</button>
+            </span>
+          </div>
+          <div class="security-row">
+            <span class="security-row__label">登录密码</span>
+            <span class="security-row__value">
+              ••••••••
+              <button class="link-btn" @click="openChangePassword">修改</button>
+            </span>
           </div>
         </div>
-      </div>
-    </div>
+        <div class="security-actions">
+          <button class="btn btn--ghost" @click="handleLogout">
+            <span class="btn-text-icon">🚪</span>退出登录
+          </button>
+          <button class="btn btn--ghost btn--danger-ghost" @click="confirmDelete">
+            <span class="btn-text-icon">⚠️</span>注销账号
+          </button>
+        </div>
+        <p class="actions-desc">注销后账号将被停用，可通过恢复功能重新激活</p>
+      </section>
+    </main>
 
-    <!-- 修改密码弹窗 -->
+    <!-- 底部版权 -->
+    <footer class="profile-footer">
+      <span>© 2026 ZuiMShop. All rights reserved.</span>
+    </footer>
+
+    <!-- 注销账号弹窗 -->
     <Teleport to="body">
       <div v-if="showConfirm" class="modal-overlay" @click.self="showConfirm = false">
         <div class="modal-card">
@@ -163,7 +240,6 @@
               <span v-else>发送验证码</span>
             </button>
           </div>
-          <!-- 发送验证码/注销结果提示（显示在弹窗内） -->
           <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showConfirm = false">取消</button>
@@ -186,7 +262,6 @@
           <div class="modal-field">
             <input v-model="editNickname" type="text" placeholder="请输入新昵称（1-20个字符）" maxlength="20" />
           </div>
-          <!-- 保存昵称结果提示 -->
           <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showEditNickname = false">取消</button>
@@ -244,7 +319,6 @@
             </div>
           </div>
 
-          <!-- 发送验证码/换绑结果提示（显示在弹窗内） -->
           <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
 
           <div class="modal-actions">
@@ -290,7 +364,6 @@
             </div>
           </div>
 
-          <!-- 修改密码结果提示（显示在弹窗内） -->
           <p v-if="message" :class="['modal-msg', success ? 'modal-msg--success' : 'modal-msg--error']">{{ message }}</p>
 
           <div class="modal-actions">
@@ -405,11 +478,6 @@
         </div>
       </div>
     </Teleport>
-
-    <!-- 底部版权 -->
-    <div class="profile-footer">
-      <span>© 2026 ZuiMShop. All rights reserved.</span>
-    </div>
   </div>
 </template>
 
@@ -418,10 +486,9 @@ import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
 import { getUserInfo, submitRecharge, getRechargeRecords, getUserAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress } from '../api/index.js'
+import { getCachedAvatar, DEFAULT_AVATAR } from '../utils/avatarCache.js'
 
 const router = useRouter()
-
-const DEFAULT_AVATAR = '/uploads/avatars/defaultAvatar.png'
 
 const nickname = ref(localStorage.getItem('nickname') || '')
 const username = ref(localStorage.getItem('username') || '')
@@ -477,6 +544,11 @@ function closePopups() {
 function goProfile() {
   router.push('/profile')
 }
+
+function goHome() { router.push('/home') }
+function goOrders() { router.push('/orders') }
+function goAdmin() { router.push('/admin/dashboard') }
+function goSeller() { router.push('/seller/dashboard') }
 
 // 编辑昵称
 const showEditNickname = ref(false)
@@ -1155,9 +1227,8 @@ async function handleDelete() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #f1f3f5 100%);
-  font-family: 'DM Sans', -apple-system, sans-serif;
+  background: var(--bg);
+  font-family: var(--font-sans);
   position: relative;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -1173,768 +1244,594 @@ async function handleDelete() {
 .bg-circle {
   position: absolute;
   border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.35;
+  filter: blur(90px);
+  opacity: 0.18;
 }
 .bg-circle--1 {
-  width: 600px; height: 600px;
-  top: -200px; right: -200px;
-  background: radial-gradient(circle, #4a9eff, #2b6cb0);
+  width: 560px; height: 560px;
+  top: -180px; right: -160px;
+  background: radial-gradient(circle, var(--primary), transparent 70%);
 }
 .bg-circle--2 {
-  width: 500px; height: 500px;
-  bottom: -150px; left: -150px;
-  background: radial-gradient(circle, #7c3aed, #5b21b6);
+  width: 480px; height: 480px;
+  bottom: -160px; left: -160px;
+  background: radial-gradient(circle, var(--accent), transparent 70%);
 }
 .bg-circle--3 {
-  width: 300px; height: 300px;
-  top: 40%; left: 10%;
-  background: radial-gradient(circle, #4a9eff, transparent);
+  width: 320px; height: 320px;
+  top: 42%; left: 12%;
+  background: radial-gradient(circle, var(--primary), transparent 70%);
 }
 
 /* ===== 导航 ===== */
 .nav {
   position: fixed;
   top: 0; left: 0; right: 0;
-  height: 72px;
+  height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 56px;
-  background: rgba(255,255,255,0.60);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border-bottom: 1px solid rgba(255,255,255,0.30);
+  padding: 0 32px;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  border-bottom: 1px solid var(--border);
   z-index: 100;
 }
 .nav-logo {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.4rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
+  background: linear-gradient(120deg, var(--primary-2), var(--primary) 55%, var(--accent));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
 }
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
-  border: none;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: white;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.nav-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(43,108,176,0.25);
-}
-.nav-btn--outline {
-  background: transparent;
-  color: #495057;
-  border: 1px solid #dee2e6;
-}
-.nav-btn--outline:hover {
-  background: rgba(201,42,42,0.06);
-  border-color: #c92a2a;
-  color: #c92a2a;
-  box-shadow: none;
-}
-.nav-btn-icon {
-  font-size: 0.9rem;
-}
-.nav-btn-text {
-  line-height: 1;
-}
-.nav-nickname { font-size: 0.85rem; font-weight: 500; color: #2b6cb0; padding: 0 4px; }
+.nav-nickname { font-size: 0.85rem; font-weight: 600; color: var(--text-2); padding: 0 4px; }
 
 /* ===== 用户头像与下拉菜单 ===== */
 .avatar-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
 .nav-balance {
-  padding: 5px 12px; border-radius: 50px;
-  background: rgba(43,108,176,0.08); border: 1px solid rgba(43,108,176,0.15);
-  color: #2b6cb0; font-size: 0.75rem; font-weight: 600;
+  padding: 5px 12px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); border: 1px solid rgba(47,84,235,0.18);
+  color: var(--primary); font-size: 0.75rem; font-weight: 600;
   white-space: nowrap;
 }
 .avatar-btn { display: flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 2px; transition: transform 0.3s; }
 .avatar-btn:hover { transform: scale(1.05); }
-.avatar-circle { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(43,108,176,0.25); overflow: hidden; }
+.avatar-circle {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-2), var(--primary), var(--accent));
+  color: #fff; font-size: 1rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-sm); overflow: hidden;
+}
 .avatar-circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.avatar-caret { font-size: 0.7rem; color: #868e96; transition: transform 0.3s; }
+.avatar-caret { font-size: 0.7rem; color: var(--text-4); transition: transform 0.3s; }
 .avatar-caret.open { transform: rotate(180deg); }
-.profile-menu { position: absolute; top: calc(100% + 14px); right: 0; min-width: 180px; padding: 8px; background: rgba(255,255,255,0.96); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); border: 1px solid rgba(255,255,255,0.60); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.10); }
-.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #f1f3f5; margin-bottom: 6px; }
-.profile-menu-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+.profile-menu {
+  position: absolute; top: calc(100% + 12px); right: 0; min-width: 184px; padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.profile-menu-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-2), var(--primary), var(--accent));
+  color: #fff; font-size: 1.05rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;
+}
 .profile-menu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .profile-menu-id { min-width: 0; }
-.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: #212529; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-menu-role { font-size: 0.72rem; color: #adb5bd; margin: 2px 0 0; }
-.profile-menu-item { display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; border-radius: 8px; background: transparent; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; color: #495057; transition: all 0.2s; }
-.profile-menu-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.profile-menu-item--logout:hover { background: rgba(220,53,69,0.06); color: #dc3545; }
-.profile-menu-divider { height: 1px; background: #f1f3f5; margin: 6px 0; }
+.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: var(--text); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu-role { font-size: 0.72rem; color: var(--text-3); margin: 2px 0 0; }
+.profile-menu-item {
+  display: block; width: 100%; text-align: left; padding: 10px 14px; border: none;
+  border-radius: var(--radius-sm); background: transparent; cursor: pointer;
+  font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-2); transition: all 0.2s;
+}
+.profile-menu-item:hover { background: var(--primary-soft); color: var(--primary); }
+.profile-menu-item--logout:hover { background: var(--danger-soft); color: var(--danger); }
+.profile-menu-divider { height: 1px; background: var(--border); margin: 6px 0; }
 .profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
 
-/* ===== 个人中心卡片 ===== */
-.profile-wrapper {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ===== 主内容 ===== */
+.profile-main {
   width: 100%;
-  padding: 100px 24px 60px;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 96px 20px 40px;
   position: relative;
   z-index: 1;
 }
-.profile-card {
-  width: 420px;
-  max-width: 100%;
-  padding: 48px 40px;
-  background: rgba(255,255,255,0.75);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,0.50);
-  box-shadow:
-    0 4px 24px rgba(0,0,0,0.04),
-    0 20px 60px rgba(0,0,0,0.06),
-    inset 0 1px 0 rgba(255,255,255,0.60);
-  animation: cardIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-}
 
-@keyframes cardIn {
-  from { opacity: 0; transform: translateY(24px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* ===== 卡片头部 ===== */
-.profile-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-.profile-avatar {
-  width: 72px;
-  height: 72px;
-  margin: 0 auto 16px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
+/* ===== 会员横幅 ===== */
+.member-banner {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  animation: pulse 2s ease-in-out infinite;
+  gap: 22px;
+  padding: 28px 32px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(120deg, var(--primary-2) 0%, var(--primary) 55%, #7c5cff 100%);
+  box-shadow: var(--shadow-primary);
+  color: #fff;
+  overflow: hidden;
+  animation: cardIn 0.5s ease both;
 }
-.avatar-text {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: white;
+.member-banner__deco {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
 }
-/* ===== 头像上传 ===== */
-.profile-avatar {
+.member-banner__deco--1 { width: 220px; height: 220px; top: -80px; right: -40px; }
+.member-banner__deco--2 { width: 120px; height: 120px; bottom: -50px; left: 28%; }
+.member-avatar {
   position: relative;
+  width: 76px; height: 76px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.22);
+  border: 3px solid rgba(255,255,255,0.75);
+  display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   overflow: visible;
-}
-.profile-avatar--editable:hover {
-  transform: scale(1.05);
   transition: transform 0.3s ease;
 }
-.avatar-img {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  object-fit: cover;
-  display: block;
+.member-avatar--editable:hover { transform: scale(1.06); }
+.member-avatar__img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.member-avatar__text {
+  font-family: var(--font-display);
+  font-size: 2rem; font-weight: 700; color: #fff;
 }
-.avatar-edit-hint {
-  position: absolute;
-  right: -6px;
-  bottom: -6px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
-  color: white;
+.member-avatar__edit {
+  position: absolute; right: -4px; bottom: -4px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
   font-size: 0.7rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(43,108,176,0.35);
-  border: 2px solid white;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
 }
-.avatar-loading {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 26px;
-  height: 26px;
+.member-avatar__loading {
+  position: absolute; inset: 0; margin: auto;
+  width: 26px; height: 26px;
   border: 3px solid rgba(255,255,255,0.6);
-  border-top-color: white;
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
-.hidden-file-input {
-  display: none;
-}
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.05); opacity: 1; }
-}
-.profile-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #212529;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+.hidden-file-input { display: none; }
+.member-info { flex: 1; min-width: 0; }
+.member-nickname {
+  font-family: var(--font-display);
+  font-size: 1.5rem; font-weight: 700; color: #fff;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 6px;
 }
 .vip-chip {
-  padding: 3px 12px; border-radius: 50px;
-  background: linear-gradient(135deg, #7c3aed, #4a9eff);
-  color: #fff; font-size: 0.72rem; font-weight: 700;
-  vertical-align: middle;
+  padding: 3px 12px; border-radius: var(--radius-pill);
+  background: linear-gradient(120deg, #ffd76a, #ff9f43);
+  color: #7a3b00; font-size: 0.72rem; font-weight: 700;
+  font-family: var(--font-sans);
 }
-.profile-desc {
-  font-size: 0.9rem;
-  color: #868e96;
+.role-tag {
+  padding: 3px 12px; border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.2); color: #fff;
+  font-size: 0.72rem; font-weight: 600; font-family: var(--font-sans);
 }
+.member-username { font-size: 0.85rem; color: rgba(255,255,255,0.85); margin: 0 0 2px; }
+.member-email { font-size: 0.78rem; color: rgba(255,255,255,0.7); margin: 0; }
+.member-balance {
+  flex-shrink: 0;
+  text-align: right;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+}
+.member-balance__label { font-size: 0.72rem; color: rgba(255,255,255,0.8); letter-spacing: 0.02em; }
+.member-balance__amount { font-size: 1.7rem; font-weight: 700; font-family: var(--font-sans); line-height: 1.1; }
+.member-balance__btn {
+  margin-top: 6px;
+  padding: 7px 18px;
+  border: 1px solid rgba(255,255,255,0.65);
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.16);
+  color: #fff;
+  font-family: var(--font-sans); font-size: 0.78rem; font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.member-balance__btn:hover { background: #fff; color: var(--primary); transform: translateY(-1px); }
 
-/* ===== 用户信息 ===== */
-.profile-info {
-  margin-bottom: 32px;
-  background: rgba(255,255,255,0.40);
-  border-radius: 16px;
-  padding: 8px 0;
-  border: 1px solid rgba(255,255,255,0.30);
+/* ===== 通用卡片区块 ===== */
+.section-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem; font-weight: 700; color: var(--text);
+  margin: 0;
 }
-.info-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
+.section-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 18px;
 }
-.info-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #868e96;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+.section-sub { font-size: 0.78rem; color: var(--text-3); }
+.stats-card, .menu-card, .recharge-card, .security-card { padding: 24px 26px; animation: cardIn 0.5s ease both; }
+.stats-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 18px;
 }
-.info-value {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #212529;
-  font-family: 'DM Sans', sans-serif;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.section-link {
+  border: none; background: none; padding: 0;
+  font-family: var(--font-sans); font-size: 0.8rem; font-weight: 600; color: var(--link);
+  cursor: pointer; transition: color 0.2s;
 }
-.info-edit-btn {
-  border: none;
-  background: transparent;
-  font-size: 0.85rem;
-  cursor: pointer;
-  opacity: 0.45;
-  transition: all 0.3s;
-  padding: 2px;
-  line-height: 1;
-}
-.info-edit-btn:hover {
-  opacity: 1;
-  transform: scale(1.15);
-}
-.info-divider {
-  height: 1px;
-  background: rgba(0,0,0,0.04);
-  margin: 0 20px;
-}
+.section-link:hover { color: var(--primary-2); }
 
-/* ===== 账号操作区 ===== */
-.profile-actions {
-  text-align: center;
-  padding-top: 8px;
+/* ===== 订单中心 ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
-.actions-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #212529;
-  margin-bottom: 16px;
-}
-.action-btns {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.edit-profile-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  border: 1px solid rgba(43,108,176,0.20);
-  border-radius: 12px;
-  background: rgba(43,108,176,0.04);
-  color: #2b6cb0;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.82rem;
-  font-weight: 600;
+.stat-item {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 18px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: all 0.25s ease;
 }
-.edit-profile-btn:hover {
-  background: rgba(43,108,176,0.10);
-  border-color: rgba(43,108,176,0.35);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(43,108,176,0.12);
+.stat-item:hover {
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
 }
-.edit-profile-btn-icon {
-  font-size: 0.9rem;
+.stat-item__icon { font-size: 1.5rem; line-height: 1; }
+.stat-item__label { font-size: 0.8rem; font-weight: 600; color: var(--text-2); }
+
+/* ===== 常用功能宫格 ===== */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
-.delete-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 28px;
-  border: 1px solid rgba(201,42,42,0.20);
-  border-radius: 12px;
-  background: rgba(201,42,42,0.04);
-  color: #c92a2a;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
+.menu-item {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 18px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  font-family: var(--font-sans);
+  transition: all 0.25s ease;
 }
-.delete-btn:hover {
-  background: rgba(201,42,42,0.10);
-  border-color: rgba(201,42,42,0.35);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(201,42,42,0.12);
+.menu-item:hover {
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
 }
-.delete-btn-icon {
-  font-size: 1rem;
+.menu-item__icon { font-size: 1.5rem; line-height: 1; }
+.menu-item__text { font-size: 0.8rem; font-weight: 600; color: var(--text-2); }
+
+/* ===== 余额充值 ===== */
+.recharge-panel { display: flex; gap: 12px; margin-bottom: 14px; }
+.recharge-input {
+  flex: 1;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: all 0.25s;
 }
-.actions-desc {
-  margin-top: 12px;
-  font-size: 0.75rem;
-  color: #adb5bd;
-  line-height: 1.5;
+.recharge-input:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(47,84,235,0.12);
 }
+.recharge-input__prefix { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+.recharge-input input {
+  flex: 1; min-width: 0;
+  border: none; background: transparent; outline: none;
+  padding: 13px 0; font-size: 1rem; font-family: var(--font-sans); color: var(--text);
+}
+.recharge-input input::placeholder { color: var(--text-4); font-weight: 400; }
+.recharge-btn {
+  flex-shrink: 0;
+  min-width: 132px;
+  border-radius: var(--radius);
+  background: linear-gradient(120deg, var(--primary) 0%, var(--primary-2) 100%);
+}
+.recharge-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ===== 消息提示 ===== */
 .msg {
-  margin-top: 16px;
+  margin: 6px 0 14px;
   text-align: center;
-  font-size: 0.85rem;
-  padding: 10px 16px;
-  border-radius: 10px;
+  font-size: 0.82rem;
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
   animation: fadeIn 0.3s ease;
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.msg--success {
-  color: #2b8a3e;
-  background: rgba(43,138,62,0.06);
-  border: 1px solid rgba(43,138,62,0.12);
-}
-.msg--error {
-  color: #c92a2a;
-  background: rgba(201,42,42,0.06);
-  border: 1px solid rgba(201,42,42,0.12);
-}
-
-/* ===== 弹窗内消息提示 ===== */
-.modal-msg {
-  margin: 0 0 16px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  text-align: center;
-  animation: fadeIn 0.3s ease;
-}
-.modal-msg--success {
-  color: #2b8a3e;
-  background: rgba(43,138,62,0.08);
-  border: 1px solid rgba(43,138,62,0.12);
-}
-.modal-msg--error {
-  color: #c92a2a;
-  background: rgba(201,42,42,0.08);
-  border: 1px solid rgba(201,42,42,0.12);
-}
-
-/* ===== 确认弹窗 ===== */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.35);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-  animation: overlayIn 0.2s ease;
-}
-@keyframes overlayIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.modal-card {
-  width: 360px;
-  max-width: 90%;
-  padding: 36px 32px;
-  background: rgba(255,255,255,0.90);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.50);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.12);
-  text-align: center;
-  animation: modalIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.modal-card--wide {
-  width: 440px;
-}
-/* ===== 弹窗表单 ===== */
-.modal-form {
-  text-align: left;
-  margin-bottom: 20px;
-}
-.modal-field-row {
-  margin-bottom: 14px;
-}
-.modal-field-row label {
-  display: block;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #495057;
-  margin-bottom: 6px;
-  letter-spacing: 0.02em;
-}
-.modal-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  border: 1px solid #dee2e6;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.60);
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.modal-field:focus-within {
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74,158,255,0.12);
-  background: white;
-}
-.modal-field input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  padding: 12px 0;
-  font-size: 0.88rem;
-  font-family: 'DM Sans', sans-serif;
-  color: #212529;
-  outline: none;
-  min-width: 0;
-}
-.modal-field input::placeholder {
-  color: #adb5bd;
-  font-weight: 400;
-}
-.modal-field input:disabled {
-  background: rgba(0,0,0,0.02);
-  color: #868e96;
-}
-.modal-send-btn {
-  flex-shrink: 0;
-  height: 34px;
-  padding: 0 12px;
-  border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
-  color: white;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.75rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 84px;
-}
-.modal-send-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(43,108,176,0.30);
-}
-.modal-send-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.toggle-pwd {
-  flex-shrink: 0;
-  font-size: 0.9rem;
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.3s;
-  padding: 4px;
-}
-.toggle-pwd:hover {
-  opacity: 1;
-}
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(16px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-.modal-icon {
-  font-size: 2.4rem;
-  margin-bottom: 12px;
-}
-.modal-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: #212529;
-  margin-bottom: 8px;
-}
-.modal-desc {
-  font-size: 0.85rem;
-  color: #868e96;
-  margin-bottom: 24px;
-  line-height: 1.5;
-}
-.modal-actions {
-  display: flex;
-  gap: 12px;
-}
-.modal-btn {
-  flex: 1;
-  padding: 12px;
-  border: none;
-  border-radius: 10px;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
+.msg--success { color: var(--success); background: var(--success-soft); border: 1px solid rgba(47,158,68,0.18); }
+.msg--error { color: var(--danger); background: var(--danger-soft); border: 1px solid rgba(224,49,49,0.18); }
 
 /* ===== 充值记录 ===== */
 .recharge-records {
-  margin-top: 32px;
-  padding: 24px;
-  background: rgba(255,255,255,0.5);
-  border: 1px solid #f1f3f5;
-  border-radius: 16px;
+  margin-top: 6px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--border);
 }
-.records-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.1rem; font-weight: 700; color: #212529;
-  margin: 0 0 16px 0;
-}
-.records-list {
-  display: flex; flex-direction: column; gap: 8px;
-}
+.records-title { font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 0 0 12px; }
+.records-list { display: flex; flex-direction: column; gap: 8px; }
 .record-item {
   padding: 12px 16px;
-  background: white;
-  border: 1px solid #f1f3f5;
-  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   transition: border-color 0.2s;
 }
-.record-item:hover { border-color: #dee2e6; }
-.record-info {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 4px;
+.record-item:hover { border-color: var(--border-strong); }
+.record-info { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.record-amount { font-size: 1.05rem; font-weight: 700; color: var(--price); }
+.record-status { padding: 2px 10px; border-radius: var(--radius-pill); font-size: 0.72rem; font-weight: 600; }
+.record-status--0 { background: var(--warning-soft); color: var(--warning); }
+.record-status--1 { background: var(--success-soft); color: var(--success); }
+.record-status--2 { background: var(--danger-soft); color: var(--danger); }
+.record-time { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: var(--text-3); }
+.record-remark { color: var(--danger); }
+
+/* ===== 账号安全 ===== */
+.security-list { display: flex; flex-direction: column; margin-bottom: 18px; }
+.security-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border);
 }
-.record-amount {
-  font-size: 1rem; font-weight: 700; color: #2b6cb0;
+.security-row:last-child { border-bottom: none; }
+.security-row__label { font-size: 0.8rem; font-weight: 600; color: var(--text-3); letter-spacing: 0.02em; }
+.security-row__value {
+  font-size: 0.9rem; font-weight: 500; color: var(--text);
+  display: flex; align-items: center; gap: 10px;
 }
-.record-status {
-  padding: 2px 10px; border-radius: 10px;
-  font-size: 0.72rem; font-weight: 600;
+.link-btn {
+  border: none; background: none; padding: 2px 6px;
+  font-family: var(--font-sans); font-size: 0.76rem; font-weight: 600; color: var(--link);
+  cursor: pointer; border-radius: var(--radius-sm);
+  transition: all 0.2s;
 }
-.record-status--0 { background: rgba(255,193,7,0.1); color: #e67700; }
-.record-status--1 { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.record-status--2 { background: rgba(201,42,42,0.06); color: #c92a2a; }
-.record-time {
-  display: flex; align-items: center; gap: 12px;
-  font-size: 0.75rem; color: #adb5bd;
+.link-btn:hover { background: var(--primary-soft); }
+.security-actions {
+  display: flex; gap: 12px;
+  padding-top: 4px;
 }
-.record-remark {
-  color: #c92a2a;
+.btn-text-icon { font-size: 0.9rem; line-height: 1; }
+.btn--danger-ghost {
+  background: var(--surface);
+  color: var(--danger);
+  border-color: rgba(224,49,49,0.35);
 }
-.modal-btn--cancel {
-  background: #f1f3f5;
-  color: #495057;
+.btn--danger-ghost:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+  transform: translateY(-1px);
+  box-shadow: none;
 }
-.modal-btn--cancel:hover {
-  background: #e9ecef;
+.actions-desc { margin-top: 14px; font-size: 0.75rem; color: var(--text-4); text-align: center; }
+
+/* ===== 底部 ===== */
+.profile-footer { position: relative; z-index: 1; padding: 8px 0 28px; text-align: center; }
+.profile-footer span { font-size: 0.72rem; color: var(--text-4); letter-spacing: 0.02em; }
+
+/* ===== 弹窗通用 ===== */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(23,35,61,0.42);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  padding: 20px;
+  animation: overlayIn 0.2s ease;
 }
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-card {
+  width: 400px; max-width: 100%;
+  padding: 34px 32px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+  max-height: 90vh; overflow-y: auto;
+  animation: modalIn 0.3s ease;
+}
+.modal-card--wide { width: 480px; }
+@keyframes modalIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.modal-icon { font-size: 2.3rem; margin-bottom: 12px; }
+.modal-title { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.modal-desc { font-size: 0.85rem; color: var(--text-3); margin-bottom: 24px; line-height: 1.5; }
+
+/* ===== 弹窗表单 ===== */
+.modal-form { text-align: left; margin-bottom: 20px; }
+.modal-field-row { margin-bottom: 14px; }
+.modal-field-row label {
+  display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-2);
+  margin-bottom: 6px; letter-spacing: 0.02em;
+}
+.modal-field {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  transition: all 0.25s;
+}
+.modal-field:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47,84,235,0.12); }
+.modal-field input {
+  flex: 1; min-width: 0;
+  border: none; background: transparent; outline: none;
+  padding: 12px 0; font-size: 0.88rem; font-family: var(--font-sans); color: var(--text);
+}
+.modal-field input::placeholder { color: var(--text-4); font-weight: 400; }
+.modal-field input:disabled { color: var(--text-4); background: transparent; }
+.modal-send-btn {
+  flex-shrink: 0; height: 34px; padding: 0 12px;
+  border: none; border-radius: var(--radius-sm);
+  background: linear-gradient(120deg, var(--primary) 0%, var(--primary-2) 100%);
+  color: #fff;
+  font-family: var(--font-sans); font-size: 0.75rem; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; min-width: 84px;
+  transition: all 0.25s;
+}
+.modal-send-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+.modal-send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.toggle-pwd { flex-shrink: 0; font-size: 0.9rem; cursor: pointer; opacity: 0.6; transition: opacity 0.3s; padding: 4px; }
+.toggle-pwd:hover { opacity: 1; }
+
+.modal-msg { margin: 0 0 16px; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.8rem; text-align: center; animation: fadeIn 0.3s ease; }
+.modal-msg--success { color: var(--success); background: var(--success-soft); border: 1px solid rgba(47,158,68,0.18); }
+.modal-msg--error { color: var(--danger); background: var(--danger-soft); border: 1px solid rgba(224,49,49,0.18); }
+
+.modal-actions { display: flex; gap: 12px; }
+.modal-btn {
+  flex: 1; padding: 12px;
+  border: none; border-radius: var(--radius-sm);
+  font-family: var(--font-sans); font-size: 0.85rem; font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.modal-btn--cancel { background: var(--surface-3); color: var(--text-2); }
+.modal-btn--cancel:hover { background: var(--border); }
 .modal-btn--confirm {
-  background: linear-gradient(135deg, #c92a2a, #e03131);
-  color: white;
+  background: linear-gradient(120deg, var(--danger) 0%, #f03e3e 100%);
+  color: #fff;
 }
+.modal-btn--confirm:disabled { opacity: 0.6; cursor: not-allowed; }
+.modal-btn--confirm:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(224,49,49,0.3); }
 .modal-btn--blue {
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
-  color: white;
+  background: linear-gradient(120deg, var(--primary) 0%, var(--primary-2) 100%);
+  color: #fff;
 }
-.modal-btn--blue:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(43,108,176,0.25);
-}
-.modal-btn--confirm:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(201,42,42,0.25);
-}
-.modal-btn--confirm:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.modal-btn--blue:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+
 .btn-loading {
-  display: inline-block;
-  width: 18px; height: 18px;
-  border: 2px solid rgba(255,255,255,0.30);
-  border-top-color: white;
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   vertical-align: middle;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ===== 底部 ===== */
-.profile-footer {
-  position: relative;
-  z-index: 1;
-  padding: 24px 56px;
-  text-align: center;
-}
-.profile-footer span {
-  font-size: 0.7rem;
-  color: #adb5bd;
-  letter-spacing: 0.02em;
-}
+@keyframes cardIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ===== 地址管理弹窗 ===== */
 .address-manager-modal {
-  width: 580px; max-width: 94vw; max-height: 75vh; overflow-y: auto;
-  background: white; border-radius: 20px; padding: 0;
+  width: 600px; max-width: 100%; max-height: 82vh; overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  padding: 0;
+  animation: modalIn 0.3s ease;
 }
 .address-manager-modal .modal-header {
   display: flex; align-items: center; gap: 12px;
-  padding: 20px 24px; border-bottom: 1px solid #f1f3f5;
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
 }
-.address-manager-modal .modal-icon { font-size: 1.5rem; }
-.address-manager-modal .modal-title {
-  flex: 1;
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.3rem; font-weight: 700; color: #212529; margin: 0;
-}
+.address-manager-modal .modal-icon { font-size: 1.4rem; margin: 0; }
+.address-manager-modal .modal-title { flex: 1; font-size: 1.15rem; margin: 0; text-align: left; }
 .address-manager-modal .modal-close {
-  background: none; border: none; font-size: 1.2rem; color: #adb5bd;
+  background: none; border: none; font-size: 1.2rem; color: var(--text-3);
   cursor: pointer; padding: 4px; transition: color 0.2s;
 }
-.address-manager-modal .modal-close:hover { color: #212529; }
+.address-manager-modal .modal-close:hover { color: var(--text); }
 .address-list { padding: 16px 24px 8px; }
 .address-card {
-  padding: 14px 16px; border: 1px solid #dee2e6; border-radius: 12px;
-  margin-bottom: 10px; background: white; transition: all 0.2s;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 10px; background: var(--surface); transition: all 0.2s;
 }
-.address-card:hover { border-color: #4a9eff; }
-.address-card--default { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
-.address-card-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 6px;
-}
-.address-card-info { display: flex; align-items: center; gap: 10px; }
-.address-card-name { font-size: 0.9rem; font-weight: 600; color: #212529; }
-.address-card-phone { font-size: 0.8rem; color: #868e96; }
+.address-card:hover { border-color: var(--primary); }
+.address-card--default { border-color: var(--primary); background: var(--primary-softer); }
+.address-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 12px; }
+.address-card-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.address-card-name { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.address-card-phone { font-size: 0.8rem; color: var(--text-3); }
 .address-card-tag {
-  padding: 2px 8px; border-radius: 10px; background: rgba(43,108,176,0.1);
-  color: #2b6cb0; font-size: 0.68rem; font-weight: 600;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); color: var(--primary);
+  font-size: 0.68rem; font-weight: 600;
 }
-.address-card-detail { font-size: 0.8rem; color: #495057; margin: 0; }
-.address-card-actions { display: flex; gap: 4px; }
+.address-card-detail { font-size: 0.82rem; color: var(--text-2); margin: 0; }
+.address-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .addr-btn {
-  padding: 4px 10px; border: 1px solid #dee2e6; border-radius: 6px;
-  background: white; font-size: 0.7rem; cursor: pointer; transition: all 0.2s;
+  padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); font-size: 0.7rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s;
 }
 .addr-btn:hover { transform: translateY(-1px); }
-.addr-btn--edit { color: #2b6cb0; border-color: rgba(43,108,176,0.2); }
-.addr-btn--edit:hover { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
-.addr-btn--default { color: #7c3aed; border-color: rgba(124,58,237,0.2); }
-.addr-btn--default:hover { border-color: #7c3aed; background: rgba(124,58,237,0.04); }
+.addr-btn--edit { color: var(--primary); border-color: rgba(47,84,235,0.25); }
+.addr-btn--edit:hover { border-color: var(--primary); background: var(--primary-soft); }
+.addr-btn--default { color: #7c5cff; border-color: rgba(124,92,255,0.25); }
+.addr-btn--default:hover { border-color: #7c5cff; background: rgba(124,92,255,0.08); }
 .addr-btn--default:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-.addr-btn--delete { color: #c92a2a; border-color: rgba(201,42,42,0.2); }
-.addr-btn--delete:hover { border-color: #c92a2a; background: rgba(201,42,42,0.04); }
-.address-form-section { padding: 16px 24px 24px; border-top: 1px solid #f1f3f5; }
-.address-form-section .section-title {
-  font-size: 0.9rem; font-weight: 600; color: #343a40;
-  margin: 0 0 12px 0;
-}
+.addr-btn--delete { color: var(--danger); border-color: rgba(224,49,49,0.25); }
+.addr-btn--delete:hover { border-color: var(--danger); background: var(--danger-soft); }
+.address-form-section { padding: 16px 24px 24px; border-top: 1px solid var(--border); }
+.address-form-section .section-title { font-size: 0.92rem; font-weight: 700; color: var(--text-2); margin: 0 0 12px; }
 .address-form-fields { display: flex; flex-direction: column; gap: 10px; }
 .address-form-fields .form-field { display: flex; flex-direction: column; gap: 4px; }
-.address-form-fields .form-field--full { grid-column: 1 / -1; }
-.address-form-fields label { font-size: 0.78rem; color: #868e96; font-weight: 600; }
+.address-form-fields label { font-size: 0.78rem; color: var(--text-3); font-weight: 600; }
 .address-form-fields input {
-  padding: 10px 12px; border: 1px solid #dee2e6; border-radius: 8px;
-  font-size: 0.85rem; font-family: 'DM Sans', sans-serif; color: #212529;
+  padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: 0.85rem; font-family: var(--font-sans); color: var(--text);
   outline: none; transition: border-color 0.2s;
 }
-.address-form-fields input:focus { border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.08); }
+.address-form-fields input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47,84,235,0.08); }
 .default-check {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
-  font-size: 0.8rem; color: #868e96; margin-top: 8px;
+  font-size: 0.8rem; color: var(--text-2); margin-top: 8px;
 }
-.default-check input[type="checkbox"] { accent-color: #2b6cb0; }
+.default-check input[type="checkbox"] { accent-color: var(--primary); }
 .form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
 .form-btn {
-  padding: 10px 24px; border: none; border-radius: 10px;
-  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
-  cursor: pointer; transition: all 0.3s;
+  padding: 10px 24px; border: none; border-radius: var(--radius-sm);
+  font-family: var(--font-sans); font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: all 0.25s;
 }
 .form-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.form-btn--cancel { border: 1px solid #dee2e6; background: transparent; color: #495057; }
-.form-btn--cancel:hover { border-color: #4a9eff; color: #4a9eff; }
-.form-btn--confirm { background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: white; }
-.form-btn--confirm:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(43,108,176,0.25); }
-.address-manager-modal .empty-state {
-  text-align: center; padding: 32px; color: #adb5bd; font-size: 0.9rem;
-}
-.btn-loading {
-  display: inline-block; width: 16px; height: 16px;
-  border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
-  border-radius: 50%; animation: spin 0.6s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+.form-btn--cancel { border: 1px solid var(--border-strong); background: transparent; color: var(--text-2); }
+.form-btn--cancel:hover { border-color: var(--primary); color: var(--primary); }
+.form-btn--confirm { background: linear-gradient(120deg, var(--primary) 0%, var(--primary-2) 100%); color: #fff; }
+.form-btn--confirm:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+.address-manager-modal .empty-state { text-align: center; padding: 32px; color: var(--text-3); font-size: 0.9rem; }
 
-@media (max-width: 480px) {
-  .address-manager-modal { max-height: 80vh; }
-  .address-card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .address-card-actions { width: 100%; justify-content: flex-start; }
+@media (max-width: 720px) {
+  .profile-main { padding: 84px 14px 32px; }
+  .member-banner { flex-wrap: wrap; padding: 22px 20px; }
+  .member-balance { text-align: left; align-items: flex-start; width: 100%; }
+  .stats-grid, .menu-grid { grid-template-columns: repeat(2, 1fr); }
+  .recharge-panel { flex-direction: column; }
+  .recharge-btn { width: 100%; }
+  .security-actions { flex-direction: column; }
+  .security-actions .btn { width: 100%; }
+  .address-card-header { flex-direction: column; align-items: flex-start; }
+  .address-card-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
   .form-actions { flex-direction: column; }
   .form-btn { width: 100%; text-align: center; }
-  .nav { padding: 0 24px; }
-  .nav-btn-text { display: none; }
-  .nav-btn { padding: 8px 12px; }
-  .profile-card { padding: 36px 24px; }
+  .nav { padding: 0 16px; }
+  .nav-nickname { display: none; }
 }
 </style>

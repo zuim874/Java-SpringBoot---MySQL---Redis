@@ -1,13 +1,6 @@
 <template>
   <div class="admin-page">
-    <!-- 背景装饰 -->
-    <div class="bg-shapes">
-      <div class="bg-circle bg-circle--1"></div>
-      <div class="bg-circle bg-circle--2"></div>
-      <div class="bg-circle bg-circle--3"></div>
-    </div>
-
-    <!-- 导航条 -->
+    <!-- 顶部导航 -->
     <nav class="nav">
       <div class="nav-logo">ZuiMShop</div>
       <div class="nav-actions">
@@ -16,7 +9,7 @@
           <span class="nav-nickname">{{ nickname }}</span>
           <button class="avatar-btn" @click="profileMenuOpen = !profileMenuOpen" aria-label="用户菜单">
             <span class="avatar-circle">
-              <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+              <img :src="getCachedAvatar(avatarUrl)" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
             </span>
             <span class="avatar-caret" :class="{ open: profileMenuOpen }">▾</span>
           </button>
@@ -24,7 +17,7 @@
             <div class="profile-menu" v-if="profileMenuOpen">
               <div class="profile-menu-header">
                 <span class="profile-menu-avatar">
-                  <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+                  <img :src="getCachedAvatar(avatarUrl)" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
                 </span>
                 <div class="profile-menu-id">
                   <p class="profile-menu-name">{{ nickname }}</p>
@@ -32,6 +25,11 @@
                 </div>
               </div>
               <button class="profile-menu-item" @click="profileMenuOpen = false; goHome()">返回商城</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goOrders()">我的订单</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goCoupons()">我的优惠券</button>
+              <button class="profile-menu-item" v-if="isAdminUser" @click="profileMenuOpen = false; goAdmin()">管理后台</button>
+              <button class="profile-menu-item" v-if="isSellerUser" @click="profileMenuOpen = false; goSeller()">商家管理</button>
               <div class="profile-menu-divider"></div>
               <button class="profile-menu-item profile-menu-item--logout" @click="handleLogout">退出登录</button>
             </div>
@@ -41,169 +39,171 @@
     </nav>
 
     <!-- 主内容 -->
-    <div class="admin-wrapper">
-      <div class="admin-card">
-        <div class="admin-header">
-          <div class="admin-icon">⚙</div>
-          <h2 class="admin-title">管理后台</h2>
-          <p class="admin-desc">系统综合管理面板</p>
+    <main class="admin-body">
+      <!-- 页头 -->
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">管理后台</h1>
+          <p class="page-sub">系统综合管理面板 · 用户 / 商品 / 订单 / 卖家 / 优惠券 / 充值审核</p>
+        </div>
+      </header>
+
+      <!-- 标签页导航 -->
+      <nav class="tabs">
+        <button v-for="tab in tabs" :key="tab.key"
+                class="tab-btn" :class="{ active: activeTab === tab.key }"
+                @click="activeTab = tab.key">
+          <span class="tab-icon">{{ tab.icon }}</span>
+          <span class="tab-label">{{ tab.label }}</span>
+        </button>
+      </nav>
+
+      <!-- ============ 用户管理 ============ -->
+      <section v-if="activeTab === 'users'" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">用户管理</h3>
+        </div>
+        <div class="loading-state" v-if="usersLoading">
+          <div class="loading-spinner"></div>
+          <p>加载用户数据...</p>
+        </div>
+        <div class="table-wrap" v-else-if="users.length > 0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>昵称</th>
+                <th>邮箱</th>
+                <th>角色</th>
+                <th>状态</th>
+                <th>注册时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="user in users" :key="user.id">
+                <td class="cell-dim">{{ user.id }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.nickname }}</td>
+                <td class="cell-dim">{{ user.email || '-' }}</td>
+                <td>
+                  <span class="role-badge" :class="getRoleClass(user.userRole)">
+                    {{ formatRole(user.userRole) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="status-badge" :class="user.status === 1 ? 'status--ok' : 'status--off'">
+                    {{ user.status === 1 ? '正常' : '已禁用' }}
+                  </span>
+                </td>
+                <td class="cell-dim">{{ formatDate(user.createTime) }}</td>
+                <td class="action-cell">
+                  <button class="action-btn" @click="toggleUserStatus(user)"
+                          :disabled="actionLoading" :title="user.status === 1 ? '禁用' : '启用'">
+                    {{ user.status === 1 ? '禁用' : '启用' }}
+                  </button>
+                  <button class="action-btn action-btn--vip" @click="toggleUserVip(user)"
+                          :disabled="actionLoading" :title="isVipUser(user) ? '取消会员' : '升级会员'">
+                    {{ isVipUser(user) ? '取消会员' : '设为会员' }}
+                  </button>
+                  <button class="action-btn action-btn--delete" @click="handleDeleteUser(user)"
+                          :disabled="actionLoading" title="删除">删除</button>
+                  <button class="action-btn action-btn--recover" @click="handleRecoverUser(user)"
+                          :disabled="actionLoading" title="恢复">恢复</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty-state" v-else>
+          <p>暂无用户数据</p>
+        </div>
+        <div class="pagination" v-if="userTotalPages > 1">
+          <button class="page-btn" :disabled="userPage <= 1" @click="userPage--; fetchUsers()">‹</button>
+          <span class="page-info">{{ userPage }} / {{ userTotalPages }}</span>
+          <button class="page-btn" :disabled="userPage >= userTotalPages" @click="userPage++; fetchUsers()">›</button>
         </div>
 
-        <!-- ===== 标签页导航 ===== -->
-        <div class="tabs">
-          <button v-for="tab in tabs" :key="tab.key"
-                  class="tab-btn"
-                  :class="{ active: activeTab === tab.key }"
-                  @click="activeTab = tab.key">
-            <span class="tab-icon">{{ tab.icon }}</span>
-            <span class="tab-label">{{ tab.label }}</span>
-          </button>
-        </div>
-
-        <!-- ===== 用户管理标签 ===== -->
-        <div v-if="activeTab === 'users'" class="section">
-          <h3 class="section-title">用户管理</h3>
-          <!-- 加载中 -->
-          <div class="table-loading" v-if="usersLoading">
-            <div class="loading-spinner"></div>
-            <p>加载用户数据...</p>
-          </div>
-          <!-- 用户表格 -->
-          <div class="table-wrap" v-else-if="users.length > 0">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>用户名</th>
-                  <th>昵称</th>
-                  <th>邮箱</th>
-                  <th>角色</th>
-                  <th>状态</th>
-                  <th>注册时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="user in users" :key="user.id">
-                  <td>{{ user.id }}</td>
-                  <td>{{ user.username }}</td>
-                  <td>{{ user.nickname }}</td>
-                  <td>{{ user.email || '-' }}</td>
-                  <td>
-                    <span class="role-badge" :class="getRoleClass(user.userRole)">
-                      {{ formatRole(user.userRole) }}
-                    </span>
-                  </td>
-                  <td>
-                    <span :class="['status-badge', user.status === 1 ? 'status--active' : 'status--disabled']">
-                      {{ user.status === 1 ? '正常' : '已禁用' }}
-                    </span>
-                  </td>
-                  <td>{{ formatDate(user.createTime) }}</td>
-                  <td class="action-cell">
-                    <button class="action-btn action-btn--toggle" @click="toggleUserStatus(user)"
-                            :disabled="actionLoading" :title="user.status === 1 ? '禁用' : '启用'">
-                      {{ user.status === 1 ? '禁用' : '启用' }}
-                    </button>
-                    <button class="action-btn action-btn--vip" @click="toggleUserVip(user)"
-                            :disabled="actionLoading" :title="isVipUser(user) ? '取消会员' : '升级会员'">
-                      {{ isVipUser(user) ? '取消会员' : '设为会员' }}
-                    </button>
-                    <button class="action-btn action-btn--delete" @click="handleDeleteUser(user)"
-                            :disabled="actionLoading" title="删除">删除</button>
-                    <button class="action-btn action-btn--recover" @click="handleRecoverUser(user)"
-                            :disabled="actionLoading" title="恢复">恢复</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="empty-state" v-else>
-            <p>暂无用户数据</p>
-          </div>
-          <!-- 用户分页 -->
-          <div class="pagination" v-if="userTotalPages > 1">
-            <button class="page-btn" :disabled="userPage <= 1" @click="userPage--; fetchUsers()">‹</button>
-            <span class="page-info">{{ userPage }} / {{ userTotalPages }}</span>
-            <button class="page-btn" :disabled="userPage >= userTotalPages" @click="userPage++; fetchUsers()">›</button>
-          </div>
-
-          <!-- 用户余额充值 -->
-          <div class="charge-section">
-            <h4 class="charge-title">用户余额充值</h4>
-            <div class="charge-row">
-              <div class="charge-field">
-                <label>用户 ID</label>
-                <input v-model="chargeUserId" type="number" min="1" placeholder="请输入用户ID" class="charge-input" />
-              </div>
-              <div class="charge-field">
-                <label>充值金额</label>
-                <input v-model="chargeAmount" type="number" step="0.01" min="0.01" placeholder="请输入金额" class="charge-input" />
-              </div>
-              <button class="charge-btn" :disabled="actionLoading" @click="handleCharge">确认充值</button>
+        <!-- 用户余额充值 -->
+        <div class="charge-section">
+          <h4 class="charge-title">用户余额充值</h4>
+          <div class="charge-row">
+            <div class="charge-field">
+              <label>用户 ID</label>
+              <input v-model="chargeUserId" type="number" min="1" placeholder="请输入用户ID" class="charge-input" />
             </div>
+            <div class="charge-field">
+              <label>充值金额</label>
+              <input v-model="chargeAmount" type="number" step="0.01" min="0.01" placeholder="请输入金额" class="charge-input" />
+            </div>
+            <button class="charge-btn" :disabled="actionLoading" @click="handleCharge">确认充值</button>
           </div>
         </div>
+      </section>
 
-        <!-- ===== 商品管理标签 ===== -->
-        <div v-if="activeTab === 'products'" class="section">
-          <h3 class="section-title">商品管理</h3>
-          <div class="table-loading" v-if="productsLoading">
-            <div class="loading-spinner"></div>
-            <p>加载商品数据...</p>
-          </div>
-          <div class="table-wrap" v-else-if="products.length > 0">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>商品名</th>
-                  <th>价格</th>
-                  <th>库存</th>
-                  <th>销量</th>
-                  <th>分类</th>
-                  <th>状态</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="prod in products" :key="prod.id">
-                  <td>{{ prod.id }}</td>
-                  <td>{{ prod.productName }}</td>
-                  <td>¥{{ (prod.price || 0).toFixed(2) }}</td>
-                  <td>{{ prod.stock || 0 }}</td>
-                  <td>{{ prod.sold || 0 }}</td>
-                  <td>{{ prod.category || '-' }}</td>
-                  <td>
-                    <span :class="['status-badge', prod.status === 1 ? 'status--active' : 'status--disabled']">
-                      {{ prod.status === 1 ? '上架' : '下架' }}
-                    </span>
-                  </td>
-                  <td class="action-cell">
-                    <button class="action-btn" @click="toggleProductStatus(prod)"
-                            :disabled="actionLoading">
-                      {{ prod.status === 1 ? '下架' : '上架' }}
-                    </button>
-                    <button class="action-btn action-btn--delete" @click="handleDeleteProduct(prod)"
-                            :disabled="actionLoading">删除</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="empty-state" v-else>
-            <p>暂无商品数据</p>
-          </div>
-          <div class="pagination" v-if="productTotalPages > 1">
-            <button class="page-btn" :disabled="productPage <= 1" @click="productPage--; fetchProducts()">‹</button>
-            <span class="page-info">{{ productPage }} / {{ productTotalPages }}</span>
-            <button class="page-btn" :disabled="productPage >= productTotalPages" @click="productPage++; fetchProducts()">›</button>
-          </div>
+      <!-- ============ 商品管理 ============ -->
+      <section v-if="activeTab === 'products'" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">商品管理</h3>
         </div>
+        <div class="loading-state" v-if="productsLoading">
+          <div class="loading-spinner"></div>
+          <p>加载商品数据...</p>
+        </div>
+        <div class="table-wrap" v-else-if="products.length > 0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>商品名</th>
+                <th>价格</th>
+                <th>库存</th>
+                <th>销量</th>
+                <th>分类</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="prod in products" :key="prod.id">
+                <td class="cell-dim">{{ prod.id }}</td>
+                <td class="name-cell">{{ prod.productName }}</td>
+                <td class="price">¥{{ (prod.price || 0).toFixed(2) }}</td>
+                <td>{{ prod.stock || 0 }}</td>
+                <td>{{ prod.sold || 0 }}</td>
+                <td><span class="cat-chip">{{ prod.category || '-' }}</span></td>
+                <td>
+                  <span class="status-badge" :class="prod.status === 1 ? 'status--ok' : 'status--off'">
+                    {{ prod.status === 1 ? '上架' : '下架' }}
+                  </span>
+                </td>
+                <td class="action-cell">
+                  <button class="action-btn" @click="toggleProductStatus(prod)"
+                          :disabled="actionLoading">
+                    {{ prod.status === 1 ? '下架' : '上架' }}
+                  </button>
+                  <button class="action-btn action-btn--delete" @click="handleDeleteProduct(prod)"
+                          :disabled="actionLoading">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty-state" v-else>
+          <p>暂无商品数据</p>
+        </div>
+        <div class="pagination" v-if="productTotalPages > 1">
+          <button class="page-btn" :disabled="productPage <= 1" @click="productPage--; fetchProducts()">‹</button>
+          <span class="page-info">{{ productPage }} / {{ productTotalPages }}</span>
+          <button class="page-btn" :disabled="productPage >= productTotalPages" @click="productPage++; fetchProducts()">›</button>
+        </div>
+      </section>
 
-        <!-- ===== 订单管理标签 ===== -->
-        <div v-if="activeTab === 'orders'" class="section">
-          <h3 class="section-title">订单管理</h3>
+      <!-- ============ 订单管理 ============ -->
+      <section v-if="activeTab === 'orders'" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">订单管理</h3>
           <div class="order-status-filter">
             <button v-for="s in orderStatusOptions" :key="s.value"
                     class="filter-tab" :class="{ active: orderStatusFilter === s.value }"
@@ -211,228 +211,245 @@
               {{ s.label }}
             </button>
           </div>
-          <div class="table-loading" v-if="ordersLoading">
-            <div class="loading-spinner"></div>
-            <p>加载订单数据...</p>
-          </div>
-          <div class="table-wrap" v-else-if="orders.length > 0">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>订单号</th>
-                  <th>用户</th>
-                  <th>金额</th>
-                  <th>状态</th>
-                  <th>时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="order in orders" :key="order.id">
-                  <td>{{ order.orderNo || order.id }}</td>
-                  <td>{{ order.userId }}</td>
-                  <td>¥{{ (order.totalAmount || 0).toFixed(2) }}</td>
-                  <td>
-                    <span class="order-status" :class="getOrderStatusClass(order.status)">
-                      {{ getOrderStatusText(order.status) }}
-                    </span>
-                  </td>
-                  <td>{{ formatDate(order.createTime) }}</td>
-                  <td class="action-cell">
-                    <button class="action-btn" @click="handleShipOrder(order)"
-                            :disabled="actionLoading || order.status !== 1">发货</button>
-                    <button class="action-btn action-btn--complete" @click="handleCompleteOrder(order)"
-                            :disabled="actionLoading || order.status !== 2">完成</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="empty-state" v-else>
-            <p>暂无订单数据</p>
-          </div>
-          <div class="pagination" v-if="orderTotalPages > 1">
-            <button class="page-btn" :disabled="orderPage <= 1" @click="orderPage--; fetchOrders()">‹</button>
-            <span class="page-info">{{ orderPage }} / {{ orderTotalPages }}</span>
-            <button class="page-btn" :disabled="orderPage >= orderTotalPages" @click="orderPage++; fetchOrders()">›</button>
-          </div>
         </div>
-
-        <!-- ===== 卖家管理标签 ===== -->
-        <div v-if="activeTab === 'sellers'" class="section">
-          <h3 class="section-title">卖家管理</h3>
-          <div class="table-loading" v-if="sellersLoading">
-            <div class="loading-spinner"></div>
-            <p>加载卖家数据...</p>
-          </div>
-          <div class="table-wrap" v-else-if="sellers.length > 0">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>名称</th>
-                  <th>地址</th>
-                  <th>联系方式</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="seller in sellers" :key="seller.id">
-                  <td>{{ seller.id }}</td>
-                  <td>{{ seller.sellerName }}</td>
-                  <td>{{ seller.address || '-' }}</td>
-                  <td>{{ seller.sellerContact || '-' }}</td>
-                  <td class="action-cell">
-                    <button class="action-btn action-btn--vip" @click="toggleSellerVip(seller)"
-                            :disabled="actionLoading">设为会员卖家</button>
-                    <button class="action-btn" @click="editSeller(seller)">编辑</button>
-                    <button class="action-btn action-btn--delete" @click="handleDeleteSeller(seller)">删除</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="empty-state" v-else>
-            <p>暂无卖家数据</p>
-          </div>
-          <div class="pagination" v-if="sellerTotalPages > 1">
-            <button class="page-btn" :disabled="sellerPage <= 1" @click="sellerPage--; fetchSellers()">‹</button>
-            <span class="page-info">{{ sellerPage }} / {{ sellerTotalPages }}</span>
-            <button class="page-btn" :disabled="sellerPage >= sellerTotalPages" @click="sellerPage++; fetchSellers()">›</button>
-          </div>
-          <button class="add-btn" @click="showSellerForm = true">新增卖家</button>
+        <div class="loading-state" v-if="ordersLoading">
+          <div class="loading-spinner"></div>
+          <p>加载订单数据...</p>
         </div>
-
-        <!-- ===== 优惠券管理标签 ===== -->
-        <div v-if="activeTab === 'coupons'" class="section">
-          <h3 class="section-title">优惠券管理</h3>
-          <div class="coupon-create">
-            <h4 class="coupon-create-title">创建优惠券模板</h4>
-            <div class="coupon-create-row">
-              <input v-model="couponForm.name" type="text" placeholder="优惠券名称" class="coupon-input" />
-              <select v-model="couponForm.type" class="coupon-input coupon-input--select">
-                <option :value="1">满减</option>
-                <option :value="2">折扣</option>
-              </select>
-              <input v-model="couponForm.discountValue" type="number" step="0.01" placeholder="优惠值" class="coupon-input" />
-              <input v-model="couponForm.minAmount" type="number" step="0.01" placeholder="使用门槛(元)" class="coupon-input" />
-              <input v-model="couponForm.totalCount" type="number" placeholder="发行量" class="coupon-input" />
-              <button class="charge-btn" :disabled="actionLoading" @click="handleCreateCoupon">创建</button>
-            </div>
-            <p class="coupon-hint">提示：满减填减免金额（如 30），折扣填折数（如 8.5 表示 8.5 折）</p>
-          </div>
-
-          <div class="table-loading" v-if="couponsLoading">
-            <div class="loading-spinner"></div>
-            <p>加载优惠券...</p>
-          </div>
-          <div class="table-wrap" v-else-if="coupons.length > 0">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th><th>名称</th><th>类型</th><th>优惠值</th>
-                  <th>门槛</th><th>剩余/总量</th><th>状态</th><th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="c in coupons" :key="c.id">
-                  <td>{{ c.id }}</td>
-                  <td>{{ c.name }}</td>
-                  <td>{{ c.type === 1 ? '满减' : '折扣' }}</td>
-                  <td>{{ c.type === 2 ? Number(c.discountValue).toFixed(1) + '折' : '¥' + Number(c.discountValue).toFixed(2) }}</td>
-                  <td>满¥{{ Number(c.minAmount || 0).toFixed(0) }}</td>
-                  <td>{{ c.remainCount }} / {{ c.totalCount }}</td>
-                  <td>
-                    <span :class="['status-badge', c.status === 1 ? 'status--active' : 'status--disabled']">
-                      {{ c.status === 1 ? '启用' : '停用' }}
-                    </span>
-                  </td>
-                  <td class="action-cell">
-                    <button class="action-btn action-btn--vip" @click="handleGrantCoupon(c)">发给用户</button>
-                    <button class="action-btn action-btn--complete" @click="handleGrantAllVip(c)">发全部会员</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="empty-state" v-else-if="!couponsLoading">
-            <p>暂无优惠券模板，请先创建</p>
-          </div>
-          <div class="pagination" v-if="couponTotalPages > 1">
-            <button class="page-btn" :disabled="couponPage <= 1" @click="couponPage--; fetchCoupons()">‹</button>
-            <span class="page-info">{{ couponPage }} / {{ couponTotalPages }}</span>
-            <button class="page-btn" :disabled="couponPage >= couponTotalPages" @click="couponPage++; fetchCoupons()">›</button>
-          </div>
+        <div class="table-wrap" v-else-if="orders.length > 0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>订单号</th>
+                <th>用户</th>
+                <th>金额</th>
+                <th>状态</th>
+                <th>时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in orders" :key="order.id">
+                <td class="cell-mono">{{ order.orderNo || order.id }}</td>
+                <td class="cell-dim">{{ order.userId }}</td>
+                <td class="price">¥{{ (order.totalAmount || 0).toFixed(2) }}</td>
+                <td>
+                  <span class="status-badge" :class="getOrderStatusClass(order.status)">
+                    {{ getOrderStatusText(order.status) }}
+                  </span>
+                </td>
+                <td class="cell-dim">{{ formatDate(order.createTime) }}</td>
+                <td class="action-cell">
+                  <button class="action-btn action-btn--complete" @click="handleShipOrder(order)"
+                          :disabled="actionLoading || order.status !== 1">发货</button>
+                  <button class="action-btn" @click="handleCompleteOrder(order)"
+                          :disabled="actionLoading || order.status !== 2">完成</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-
-        <!-- ===== 充值审核标签 ===== -->
-        <div v-if="activeTab === 'recharge'" class="section">
-          <h3 class="section-title">充值申请审核</h3>
-          <div class="table-loading" v-if="rechargeLoading">
-            <div class="loading-spinner"></div>
-            <p>加载充值申请...</p>
-          </div>
-          <div class="table-wrap" v-else-if="rechargeRequests.length > 0">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>用户名</th>
-                  <th>金额</th>
-                  <th>状态</th>
-                  <th>申请时间</th>
-                  <th>备注</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="req in rechargeRequests" :key="req.id">
-                  <td>{{ req.id }}</td>
-                  <td>{{ req.username }}</td>
-                  <td style="color:#2b6cb0;font-weight:700;">¥{{ req.amount.toFixed(2) }}</td>
-                  <td>
-                    <span :class="['status-badge',
-                      req.status === 0 ? 'status--pending' :
-                      req.status === 1 ? 'status--active' : 'status--disabled']">
-                      {{ req.status === 0 ? '待审核' : req.status === 1 ? '已通过' : '已拒绝' }}
-                    </span>
-                  </td>
-                  <td>{{ formatDate(req.createTime) }}</td>
-                  <td>{{ req.remark || '-' }}</td>
-                  <td class="action-cell">
-                    <template v-if="req.status === 0">
-                      <button class="action-btn action-btn--complete" @click="handleApproveRecharge(req.id)">通过</button>
-                      <button class="action-btn action-btn--delete" @click="handleRejectRecharge(req.id)">拒绝</button>
-                    </template>
-                    <span v-else style="color:#adb5bd;font-size:0.75rem;">已处理</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="empty-state" v-else-if="!rechargeLoading">
-            <p>暂无充值申请</p>
-          </div>
-          <div class="pagination" v-if="rechargeTotalPages > 1">
-            <button class="page-btn" :disabled="rechargePage <= 1" @click="rechargePage--; fetchRechargeRequests()">‹</button>
-            <span class="page-info">{{ rechargePage }} / {{ rechargeTotalPages }}</span>
-            <button class="page-btn" :disabled="rechargePage >= rechargeTotalPages" @click="rechargePage++; fetchRechargeRequests()">›</button>
-          </div>
+        <div class="empty-state" v-else>
+          <p>暂无订单数据</p>
         </div>
+        <div class="pagination" v-if="orderTotalPages > 1">
+          <button class="page-btn" :disabled="orderPage <= 1" @click="orderPage--; fetchOrders()">‹</button>
+          <span class="page-info">{{ orderPage }} / {{ orderTotalPages }}</span>
+          <button class="page-btn" :disabled="orderPage >= orderTotalPages" @click="orderPage++; fetchOrders()">›</button>
+        </div>
+      </section>
 
-        <!-- 消息提示 -->
-        <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">
-          {{ message }}
-        </p>
-      </div>
-    </div>
+      <!-- ============ 卖家管理 ============ -->
+      <section v-if="activeTab === 'sellers'" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">卖家管理</h3>
+          <button class="btn btn--primary" @click="showSellerForm = true">
+            <span class="btn-icon">＋</span>新增卖家
+          </button>
+        </div>
+        <div class="loading-state" v-if="sellersLoading">
+          <div class="loading-spinner"></div>
+          <p>加载卖家数据...</p>
+        </div>
+        <div class="table-wrap" v-else-if="sellers.length > 0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>地址</th>
+                <th>联系方式</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="seller in sellers" :key="seller.id">
+                <td class="cell-dim">{{ seller.id }}</td>
+                <td class="name-cell">{{ seller.sellerName }}</td>
+                <td>{{ seller.address || '-' }}</td>
+                <td>{{ seller.sellerContact || '-' }}</td>
+                <td class="action-cell">
+                  <button class="action-btn action-btn--vip" @click="toggleSellerVip(seller)"
+                          :disabled="actionLoading">设为会员卖家</button>
+                  <button class="action-btn" @click="editSeller(seller)">编辑</button>
+                  <button class="action-btn action-btn--delete" @click="handleDeleteSeller(seller)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty-state" v-else>
+          <p>暂无卖家数据</p>
+        </div>
+        <div class="pagination" v-if="sellerTotalPages > 1">
+          <button class="page-btn" :disabled="sellerPage <= 1" @click="sellerPage--; fetchSellers()">‹</button>
+          <span class="page-info">{{ sellerPage }} / {{ sellerTotalPages }}</span>
+          <button class="page-btn" :disabled="sellerPage >= sellerTotalPages" @click="sellerPage++; fetchSellers()">›</button>
+        </div>
+      </section>
+
+      <!-- ============ 优惠券管理 ============ -->
+      <section v-if="activeTab === 'coupons'" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">优惠券管理</h3>
+        </div>
+        <div class="coupon-create">
+          <h4 class="coupon-create-title">创建优惠券模板</h4>
+          <div class="coupon-create-row">
+            <input v-model="couponForm.name" type="text" placeholder="优惠券名称" class="coupon-input" />
+            <select v-model="couponForm.type" class="coupon-input coupon-input--select">
+              <option :value="1">满减</option>
+              <option :value="2">折扣</option>
+            </select>
+            <select v-model="couponForm.targetType" class="coupon-input coupon-input--select coupon-input--target">
+              <option :value="1">全部用户</option>
+              <option :value="2">仅VIP</option>
+            </select>
+            <input v-model="couponForm.discountValue" type="number" step="0.01" placeholder="优惠值" class="coupon-input" />
+            <input v-model="couponForm.minAmount" type="number" step="0.01" placeholder="使用门槛(元)" class="coupon-input" />
+            <input v-model="couponForm.totalCount" type="number" placeholder="发行量" class="coupon-input" />
+            <button class="charge-btn" :disabled="actionLoading" @click="handleCreateCoupon">创建</button>
+          </div>
+          <p class="coupon-hint">提示：满减填减免金额（如 30），折扣填折数（如 8.5 表示 8.5 折）；仅VIP券受众 = VIP用户 + VIP卖家</p>
+        </div>
+        <div class="loading-state" v-if="couponsLoading">
+          <div class="loading-spinner"></div>
+          <p>加载优惠券...</p>
+        </div>
+        <div class="table-wrap" v-else-if="coupons.length > 0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>名称</th><th>类型</th><th>优惠值</th>
+                <th>门槛</th><th>适用人群</th><th>剩余/总量</th><th>状态</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in coupons" :key="c.id">
+                <td class="cell-dim">{{ c.id }}</td>
+                <td class="name-cell">{{ c.name }}</td>
+                <td>{{ c.type === 1 ? '满减' : '折扣' }}</td>
+                <td>{{ c.type === 2 ? Number(c.discountValue).toFixed(1) + '折' : '¥' + Number(c.discountValue).toFixed(2) }}</td>
+                <td>满¥{{ Number(c.minAmount || 0).toFixed(0) }}</td>
+                <td>
+                  <span class="target-badge" :class="c.targetType === 2 ? 'target-badge--vip' : 'target-badge--all'">
+                    {{ c.targetType === 2 ? '仅VIP' : '全部' }}
+                  </span>
+                </td>
+                <td>{{ c.remainCount }} / {{ c.totalCount }}</td>
+                <td>
+                  <span class="status-badge" :class="c.status === 1 ? 'status--ok' : 'status--off'">
+                    {{ c.status === 1 ? '启用' : '停用' }}
+                  </span>
+                </td>
+                <td class="action-cell">
+                  <button class="action-btn action-btn--vip" @click="handleGrantCoupon(c)">发给用户</button>
+                  <button class="action-btn action-btn--all" @click="handleGrantAllUsers(c)">发全部用户</button>
+                  <button class="action-btn action-btn--complete" @click="handleGrantAllVip(c)">发全部会员</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty-state" v-else-if="!couponsLoading">
+          <p>暂无优惠券模板，请先创建</p>
+        </div>
+        <div class="pagination" v-if="couponTotalPages > 1">
+          <button class="page-btn" :disabled="couponPage <= 1" @click="couponPage--; fetchCoupons()">‹</button>
+          <span class="page-info">{{ couponPage }} / {{ couponTotalPages }}</span>
+          <button class="page-btn" :disabled="couponPage >= couponTotalPages" @click="couponPage++; fetchCoupons()">›</button>
+        </div>
+      </section>
+
+      <!-- ============ 充值审核 ============ -->
+      <section v-if="activeTab === 'recharge'" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">充值申请审核</h3>
+        </div>
+        <div class="loading-state" v-if="rechargeLoading">
+          <div class="loading-spinner"></div>
+          <p>加载充值申请...</p>
+        </div>
+        <div class="table-wrap" v-else-if="rechargeRequests.length > 0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>金额</th>
+                <th>状态</th>
+                <th>申请时间</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="req in rechargeRequests" :key="req.id">
+                <td class="cell-dim">{{ req.id }}</td>
+                <td>{{ req.username }}</td>
+                <td class="price">¥{{ req.amount.toFixed(2) }}</td>
+                <td>
+                  <span class="status-badge"
+                        :class="req.status === 0 ? 'status--pending' :
+                                req.status === 1 ? 'status--ok' : 'status--off'">
+                    {{ req.status === 0 ? '待审核' : req.status === 1 ? '已通过' : '已拒绝' }}
+                  </span>
+                </td>
+                <td class="cell-dim">{{ formatDate(req.createTime) }}</td>
+                <td class="cell-dim">{{ req.remark || '-' }}</td>
+                <td class="action-cell">
+                  <template v-if="req.status === 0">
+                    <button class="action-btn action-btn--complete" @click="handleApproveRecharge(req.id)">通过</button>
+                    <button class="action-btn action-btn--delete" @click="handleRejectRecharge(req.id)">拒绝</button>
+                  </template>
+                  <span v-else class="cell-dim">已处理</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty-state" v-else-if="!rechargeLoading">
+          <p>暂无充值申请</p>
+        </div>
+        <div class="pagination" v-if="rechargeTotalPages > 1">
+          <button class="page-btn" :disabled="rechargePage <= 1" @click="rechargePage--; fetchRechargeRequests()">‹</button>
+          <span class="page-info">{{ rechargePage }} / {{ rechargeTotalPages }}</span>
+          <button class="page-btn" :disabled="rechargePage >= rechargeTotalPages" @click="rechargePage++; fetchRechargeRequests()">›</button>
+        </div>
+      </section>
+
+      <!-- 消息提示 -->
+      <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">{{ message }}</p>
+    </main>
 
     <!-- ===== 新增/编辑卖家弹窗 ===== -->
     <Teleport to="body">
       <div v-if="showSellerForm" class="modal-overlay" @click.self="showSellerForm = false">
         <div class="modal-card">
-          <div class="modal-icon">🏪</div>
-          <h3 class="modal-title">{{ editingSeller ? '编辑卖家' : '新增卖家' }}</h3>
+          <div class="modal-head">
+            <span class="modal-icon">🏪</span>
+            <h3 class="modal-title">{{ editingSeller ? '编辑卖家' : '新增卖家' }}</h3>
+          </div>
           <div class="modal-form">
             <div class="modal-field-row">
               <label>卖家名称</label>
@@ -455,7 +472,7 @@
           </div>
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showSellerForm = false">取消</button>
-            <button class="modal-btn modal-btn--blue" @click="submitSellerForm" :disabled="actionLoading">
+            <button class="modal-btn modal-btn--primary" @click="submitSellerForm" :disabled="actionLoading">
               {{ editingSeller ? '保存' : '新增' }}
             </button>
           </div>
@@ -464,15 +481,17 @@
     </Teleport>
 
     <!-- 底部版权 -->
-    <div class="admin-footer">
+    <footer class="page-footer">
       <span>© 2026 ZuiMShop. All rights reserved.</span>
-    </div>
+    </footer>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { getCachedAvatar } from '../utils/avatarCache.js'
+import { getCachedRoles } from '../utils/auth.js'
 import {
   getAdminUsers, toggleUserStatus as apiToggleUserStatus, deleteUser, recoverUser,
   getAdminProducts,
@@ -481,8 +500,9 @@ import {
   onshelfProduct, offshelfProduct,
   chargeUserBalance,
   getAdminRechargeRequests, approveRechargeRequest, rejectRechargeRequest,
-  adminListCoupons, adminCreateCoupon, adminGrantCoupon, adminGrantCouponAllVip,
-  setUserVip, setSellerVip
+  adminListCoupons, adminCreateCoupon, adminGrantCoupon, adminGrantCouponAllVip, adminGrantCouponAllUsers,
+  setUserVip, setSellerVip,
+  getUserInfo
 } from '../api/index.js'
 
 const router = useRouter()
@@ -498,6 +518,10 @@ const roleLabel = computed(() => {
   const roles = ['管理员']
   return roles[0]
 })
+
+const cachedRoles = getCachedRoles()
+const isAdminUser = computed(() => cachedRoles.includes('ROLE_ADMIN'))
+const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
 
 async function fetchUserProfile() {
   try {
@@ -857,7 +881,7 @@ const coupons = ref([])
 const couponsLoading = ref(false)
 const couponPage = ref(1)
 const couponTotalPages = ref(1)
-const couponForm = ref({ name: '', type: 1, discountValue: '', minAmount: '', totalCount: '' })
+const couponForm = ref({ name: '', type: 1, targetType: 1, discountValue: '', minAmount: '', totalCount: '' })
 
 async function fetchCoupons() {
   couponsLoading.value = true
@@ -887,13 +911,14 @@ async function handleCreateCoupon() {
     const res = await adminCreateCoupon({
       name: couponForm.value.name.trim(),
       type: Number(couponForm.value.type),
+      targetType: Number(couponForm.value.targetType),
       discountValue: Number(couponForm.value.discountValue),
       minAmount: Number(couponForm.value.minAmount) || 0,
       totalCount: Number(couponForm.value.totalCount)
     })
     if (res && res.code === 200) {
       showMessage('优惠券创建成功', true)
-      couponForm.value = { name: '', type: 1, discountValue: '', minAmount: '', totalCount: '' }
+      couponForm.value = { name: '', type: 1, targetType: 1, discountValue: '', minAmount: '', totalCount: '' }
       fetchCoupons()
     } else {
       showMessage((res && res.mes) || '创建失败', false)
@@ -926,11 +951,30 @@ async function handleGrantCoupon(c) {
 }
 
 async function handleGrantAllVip(c) {
-  if (!confirm(`确定要向全部会员买家发放「${c.name}」吗？`)) return
+  if (!confirm(`确定要向全部VIP会员（VIP用户 + VIP卖家）发放「${c.name}」吗？`)) return
   const days = prompt('请输入有效天数（默认 30）：', '30')
   actionLoading.value = true
   try {
     const res = await adminGrantCouponAllVip(c.id, Number(days) || 30)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '批量发放完成', true)
+      fetchCoupons()
+    } else {
+      showMessage((res && res.mes) || '发放失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function handleGrantAllUsers(c) {
+  if (!confirm(`确定要向全部注册用户发放「${c.name}」吗？（将发给所有启用用户）`)) return
+  const days = prompt('请输入有效天数（默认 30）：', '30')
+  actionLoading.value = true
+  try {
+    const res = await adminGrantCouponAllUsers(c.id, Number(days) || 30)
     if (res && res.code === 200) {
       showMessage(res.mes || '批量发放完成', true)
       fetchCoupons()
@@ -1035,6 +1079,11 @@ function showMessage(msg, success) {
 }
 
 function goHome() { router.push('/home') }
+function goOrders() { router.push('/orders') }
+function goProfile() { router.push('/profile') }
+function goCoupons() { router.push('/coupons') }
+function goAdmin() { router.push('/admin/dashboard') }
+function goSeller() { router.push('/seller/dashboard') }
 function handleLogout() {
   localStorage.removeItem('token')
   localStorage.removeItem('nickname')
@@ -1067,455 +1116,352 @@ watch(activeTab, (tab) => {
 </script>
 
 <style scoped>
-/* ===== 全局 ===== */
+/* ===== 页面骨架 ===== */
 .admin-page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #f1f3f5 100%);
-  font-family: 'DM Sans', -apple-system, sans-serif;
-  position: relative;
-  overflow: hidden;
+  background: var(--bg);
+  font-family: var(--font-sans);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
-.bg-shapes {
-  position: absolute; inset: 0; pointer-events: none; overflow: hidden;
-}
-.bg-circle {
-  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35;
-}
-.bg-circle--1 {
-  width: 600px; height: 600px; top: -200px; right: -200px;
-  background: radial-gradient(circle, #4a9eff, #2b6cb0);
-}
-.bg-circle--2 {
-  width: 500px; height: 500px; bottom: -150px; left: -150px;
-  background: radial-gradient(circle, #7c3aed, #5b21b6);
-}
-.bg-circle--3 {
-  width: 300px; height: 300px; top: 40%; left: 10%;
-  background: radial-gradient(circle, #4a9eff, transparent);
-}
 
-/* ===== 导航 ===== */
+/* ===== 顶部导航 ===== */
 .nav {
-  position: fixed; top: 0; left: 0; right: 0; height: 72px; z-index: 100;
+  position: fixed; top: 0; left: 0; right: 0; height: 68px; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 56px;
-  background: rgba(255,255,255,0.60);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border-bottom: 1px solid rgba(255,255,255,0.30);
+  padding: 0 clamp(20px, 4vw, 48px);
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border-bottom: 1px solid var(--border);
 }
 .nav-logo {
-  font-family: 'Playfair Display', Georgia, serif; font-size: 1.4rem; font-weight: 700;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
-.nav-actions { display: flex; gap: 12px; }
-.nav-btn {
-  padding: 8px 20px; border: 1px solid rgba(43,108,176,0.20); border-radius: 10px;
-  background: rgba(255,255,255,0.60); font-family: 'DM Sans', sans-serif;
-  font-size: 0.8rem; font-weight: 600; color: #2b6cb0; cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.nav-btn:hover { background: #2b6cb0; color: white; border-color: #2b6cb0; transform: translateY(-1px); }
-.nav-btn--logout { color: #c92a2a; border-color: rgba(201,42,42,0.20); }
-.nav-btn--logout:hover { background: #c92a2a; color: white; border-color: #c92a2a; }
+.nav-actions { display: flex; align-items: center; gap: 12px; }
 
-/* ===== 主卡片 ===== */
-.admin-wrapper {
-  flex: 1; display: flex; align-items: flex-start; justify-content: center;
-  width: 100%; padding: 100px 24px 60px; position: relative; z-index: 1;
+/* ===== 头像与下拉 ===== */
+.avatar-wrapper { position: relative; display: flex; align-items: center; gap: 8px; }
+.nav-balance {
+  padding: 5px 12px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); border: 1px solid rgba(47,84,235,0.15);
+  color: var(--primary); font-size: 0.75rem; font-weight: 600; white-space: nowrap;
 }
-.admin-card {
-  width: 1100px; max-width: 100%;
-  padding: 48px 40px;
-  background: rgba(255,255,255,0.75);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,0.50);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.04), 0 20px 60px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.60);
-  animation: cardIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+.nav-nickname { font-size: 0.85rem; font-weight: 600; color: var(--text-2); padding: 0 4px; }
+.avatar-btn { display: flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 2px; transition: transform 0.2s ease; }
+.avatar-btn:hover { transform: scale(1.05); }
+.avatar-circle {
+  width: 38px; height: 38px; border-radius: 50%; overflow: hidden;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 1rem;
+  box-shadow: var(--shadow-sm); border: 2px solid var(--surface);
 }
-@keyframes cardIn {
-  from { opacity: 0; transform: translateY(24px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+.avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-caret { font-size: 0.7rem; color: var(--text-3); transition: transform 0.2s ease; }
+.avatar-caret.open { transform: rotate(180deg); }
+.profile-menu {
+  position: absolute; top: calc(100% + 14px); right: 0; min-width: 190px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
 }
-.admin-header { text-align: center; margin-bottom: 32px; }
-.admin-icon { font-size: 2rem; margin-bottom: 12px; animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse {
-  0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.6; }
-  50% { transform: scale(1.1) rotate(15deg); opacity: 1; }
+.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.profile-menu-avatar {
+  width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700;
 }
-.admin-title {
-  font-family: 'Playfair Display', Georgia, serif; font-size: 1.8rem; font-weight: 700;
-  color: #212529; margin-bottom: 8px;
+.profile-menu-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-menu-id { min-width: 0; }
+.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: var(--text); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu-role { font-size: 0.72rem; color: var(--text-3); margin: 2px 0 0; }
+.profile-menu-item {
+  display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; border-radius: var(--radius-sm);
+  background: transparent; cursor: pointer; font-size: 0.85rem; color: var(--text-2); transition: all 0.2s ease;
 }
-.admin-desc { font-size: 0.9rem; color: #868e96; }
+.profile-menu-item:hover { background: var(--primary-softer); color: var(--primary); }
+.profile-menu-item--logout:hover { background: var(--danger-soft); color: var(--danger); }
+.profile-menu-divider { height: 1px; background: var(--border); margin: 6px 0; }
+.profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* ===== 主体布局 ===== */
+.admin-body {
+  flex: 1; width: 100%; max-width: var(--container); margin: 0 auto;
+  padding: 96px 24px 56px;
+}
+.page-head { margin-bottom: 24px; }
+.page-title {
+  font-family: var(--font-display); font-size: 1.7rem; font-weight: 700;
+  color: var(--text); letter-spacing: -0.01em; line-height: 1.2;
+}
+.page-sub { margin-top: 6px; font-size: 0.9rem; color: var(--text-3); }
 
 /* ===== 标签页 ===== */
-.tabs {
-  display: flex; gap: 8px; margin-bottom: 32px; flex-wrap: wrap;
-  border-bottom: 1px solid #dee2e6; padding-bottom: 12px;
-}
+.tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
 .tab-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 10px 20px; border: 1px solid #dee2e6; border-radius: 10px;
-  background: transparent; color: #495057; font-size: 0.85rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+  position: relative; display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); font-size: 0.88rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease;
 }
-.tab-btn:hover { border-color: #4a9eff; color: #4a9eff; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
 .tab-btn.active {
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  border-color: transparent; color: white;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  border-color: transparent; color: #fff; box-shadow: var(--shadow-primary);
 }
 .tab-icon { font-size: 1rem; }
 
-/* ===== 分区 ===== */
-.section { margin-bottom: 28px; }
-.section-title {
-  font-family: 'Playfair Display', Georgia, serif; font-size: 1.1rem; font-weight: 700;
-  color: #343a40; margin-bottom: 16px; padding-bottom: 8px;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
+/* ===== 内容面板 ===== */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  padding: 24px; margin-bottom: 20px;
+  animation: panelIn 0.35s ease both;
+}
+@keyframes panelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.panel-title {
+  font-family: var(--font-display); font-size: 1.1rem; font-weight: 700;
+  color: var(--text); margin: 0;
 }
 
+/* ===== 按钮 ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 20px; border: none; border-radius: var(--radius);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: var(--font-sans);
+  transition: all 0.2s ease;
+}
+.btn--primary { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; }
+.btn--primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-icon { font-size: 0.9rem; }
+
 /* ===== 表格 ===== */
-.table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid rgba(0,0,0,0.05); }
-.data-table {
-  width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 700px;
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 820px; }
+.data-table thead th {
+  text-align: left; padding: 12px 16px; background: var(--surface-3);
+  color: var(--text-2); font-weight: 600; font-size: 0.74rem;
+  letter-spacing: 0.04em; white-space: nowrap; border-bottom: 1px solid var(--border);
 }
-.data-table th {
-  text-align: left; padding: 12px 16px;
-  background: rgba(43,108,176,0.04); color: #495057;
-  font-weight: 600; font-size: 0.75rem; text-transform: uppercase;
-  letter-spacing: 0.04em; border-bottom: 1px solid rgba(0,0,0,0.06);
-  white-space: nowrap;
+.data-table tbody td {
+  padding: 13px 16px; color: var(--text); border-bottom: 1px solid var(--border);
+  vertical-align: middle;
 }
-.data-table td {
-  padding: 12px 16px; color: #212529; border-bottom: 1px solid rgba(0,0,0,0.04);
+.data-table tbody tr:nth-child(even) td { background: var(--surface-2); }
+.data-table tbody tr:hover td { background: var(--primary-softer); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.name-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.cell-dim { color: var(--text-3); font-size: 0.8rem; }
+.cell-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; color: var(--text-2); }
+.cat-chip {
+  display: inline-block; padding: 2px 10px; border-radius: var(--radius-pill);
+  background: var(--surface-3); color: var(--text-2); font-size: 0.72rem; font-weight: 600;
 }
-.data-table tr:last-child td { border-bottom: none; }
-.data-table tr:hover td { background: rgba(43,108,176,0.02); }
+.price { color: var(--price); font-weight: 700; white-space: nowrap; }
 .action-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ===== 状态标签 ===== */
 .status-badge {
-  display: inline-block; padding: 3px 10px; border-radius: 20px;
-  font-size: 0.75rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+  border-radius: var(--radius-pill); font-size: 0.72rem; font-weight: 600; white-space: nowrap;
 }
-.status--active { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.status--disabled { background: rgba(201,42,42,0.08); color: #c92a2a; }
-.status--pending { background: rgba(255,193,7,0.1); color: #e67700; }
+.status--ok { background: var(--success-soft); color: var(--success); }
+.status--off { background: var(--danger-soft); color: var(--danger); }
+.status--pending { background: var(--warning-soft); color: var(--warning); }
+.status--paid { background: var(--primary-soft); color: var(--primary); }
+.status--shipped { background: var(--accent-soft); color: var(--accent); }
+.status--completed { background: var(--success-soft); color: var(--success); }
+.status--cancelled { background: var(--surface-3); color: var(--text-3); }
+.status--refunded { background: var(--danger-soft); color: var(--danger); }
+.status--unknown { background: var(--surface-3); color: var(--text-3); }
 
 /* ===== 角色标签 ===== */
 .role-badge {
-  display: inline-block; padding: 3px 10px; border-radius: 20px;
-  font-size: 0.75rem; font-weight: 600;
+  display: inline-flex; align-items: center; padding: 3px 10px;
+  border-radius: var(--radius-pill); font-size: 0.72rem; font-weight: 600; white-space: nowrap;
 }
-.role--admin { background: rgba(124,58,237,0.08); color: #7c3aed; }
-.role--seller { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.role--user { background: rgba(134,142,150,0.08); color: #495057; }
-
-/* ===== 订单状态 ===== */
-.order-status {
-  display: inline-block; padding: 3px 10px; border-radius: 20px;
-  font-size: 0.75rem; font-weight: 600;
-}
-.order-status.status--pending { background: rgba(240,140,0,0.08); color: #f08c00; }
-.order-status.status--paid { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.order-status.status--shipped { background: rgba(124,58,237,0.08); color: #7c3aed; }
-.order-status.status--completed { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.order-status.status--cancelled { background: rgba(134,142,150,0.08); color: #868e96; }
-.order-status.status--refunded { background: rgba(201,42,42,0.08); color: #c92a2a; }
+.role--admin { background: var(--primary-soft); color: var(--primary); }
+.role--seller { background: var(--accent-soft); color: var(--accent); }
+.role--user { background: var(--surface-3); color: var(--text-3); }
 
 /* ===== 操作按钮 ===== */
 .action-btn {
-  padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 8px;
-  background: transparent; color: #495057; font-size: 0.75rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  font-family: 'DM Sans', sans-serif; white-space: nowrap;
+  padding: 5px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--text-2); font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease; white-space: nowrap;
 }
-.action-btn:hover:not(:disabled) { transform: translateY(-1px); }
-.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.action-btn--toggle { color: #2b6cb0; border-color: rgba(43,108,176,0.2); }
-.action-btn--toggle:hover:not(:disabled) { border-color: #2b6cb0; background: rgba(43,108,176,0.04); }
-.action-btn--delete { color: #c92a2a; border-color: rgba(201,42,42,0.2); }
-.action-btn--delete:hover:not(:disabled) { border-color: #c92a2a; background: rgba(201,42,42,0.04); }
-.action-btn--recover { color: #2b8a3e; border-color: rgba(43,138,62,0.2); }
-.action-btn--recover:hover:not(:disabled) { border-color: #2b8a3e; background: rgba(43,138,62,0.04); }
-.action-btn--complete { color: #2b8a3e; border-color: rgba(43,138,62,0.2); }
-.action-btn--complete:hover:not(:disabled) { border-color: #2b8a3e; background: rgba(43,138,62,0.04); }
-.action-btn--vip { color: #7c3aed; border-color: rgba(124,58,237,0.2); }
-.action-btn--vip:hover:not(:disabled) { border-color: #7c3aed; background: rgba(124,58,237,0.04); }
+.action-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-softer); }
+.action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.action-btn--vip:hover:not(:disabled) { border-color: #7c3aed; color: #7c3aed; background: rgba(124,58,237,0.06); }
+.action-btn--delete:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+.action-btn--recover:hover:not(:disabled) { border-color: var(--success); color: var(--success); background: var(--success-soft); }
+.action-btn--complete:hover:not(:disabled) { border-color: var(--success); color: var(--success); background: var(--success-soft); }
+.action-btn--all:hover:not(:disabled) { border-color: var(--warning); color: var(--warning); background: rgba(250,173,20,0.08); }
 
-/* ===== 筛选标签 ===== */
-.order-status-filter {
-  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
-}
+/* ===== 筛选 ===== */
+.order-status-filter { display: flex; gap: 8px; flex-wrap: wrap; }
 .filter-tab {
-  padding: 6px 16px; border: 1px solid #dee2e6; border-radius: 50px;
-  background: transparent; color: #868e96; font-size: 0.78rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+  padding: 6px 14px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-3); font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease;
 }
-.filter-tab:hover { border-color: #4a9eff; color: #4a9eff; }
-.filter-tab.active {
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  border-color: transparent; color: white;
-}
-
-/* ===== 新增按钮 ===== */
-.add-btn {
-  margin-top: 16px; padding: 10px 24px; border: none; border-radius: 10px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: white;
-  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
-  cursor: pointer; transition: all 0.3s;
-}
-.add-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(43,108,176,0.25); }
+.filter-tab:hover { border-color: var(--primary); color: var(--primary); }
+.filter-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
 /* ===== 分页 ===== */
-.pagination {
-  display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 20px;
-}
+.pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 20px; }
 .page-btn {
-  padding: 8px 16px; border: 1px solid #dee2e6; border-radius: 8px;
-  background: transparent; color: #495057; font-size: 0.85rem; cursor: pointer;
-  transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-2); font-size: 0.9rem; cursor: pointer;
+  transition: all 0.2s ease;
 }
-.page-btn:hover:not(:disabled) { border-color: #4a9eff; color: #4a9eff; }
+.page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.page-info { font-size: 0.85rem; color: #868e96; }
+.page-info { font-size: 0.85rem; color: var(--text-3); }
 
-/* ===== 加载状态 ===== */
-.table-loading {
-  text-align: center; padding: 40px 0; color: #868e96;
-}
+/* ===== 加载 & 空状态 ===== */
+.loading-state, .empty-state { text-align: center; padding: 48px 16px; color: var(--text-3); font-size: 0.88rem; }
 .loading-spinner {
-  width: 32px; height: 32px; margin: 0 auto 12px;
-  border: 3px solid #f1f3f5; border-top-color: #2b6cb0;
+  width: 34px; height: 34px; margin: 0 auto 12px;
+  border: 3px solid var(--border); border-top-color: var(--primary);
   border-radius: 50%; animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ===== 空状态 ===== */
-.empty-state { text-align: center; padding: 40px 0; color: #868e96; }
-
-/* ===== 消息提示 ===== */
-.msg {
-  margin-top: 16px; text-align: center; font-size: 0.85rem;
-  padding: 10px 16px; border-radius: 10px; animation: fadeIn 0.3s ease;
-}
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.msg--success { color: #2b8a3e; background: rgba(43,138,62,0.06); border: 1px solid rgba(43,138,62,0.12); }
-.msg--error { color: #c92a2a; background: rgba(201,42,42,0.06); border: 1px solid rgba(201,42,42,0.12); }
-
-/* ===== 弹窗 ===== */
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center; z-index: 200;
-  animation: overlayIn 0.2s ease;
-}
-@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
-.modal-card {
-  width: 400px; max-width: 90%; padding: 36px 32px;
-  background: rgba(255,255,255,0.90); backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 20px; border: 1px solid rgba(255,255,255,0.50);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.12); text-align: center;
-  animation: modalIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(16px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-.modal-icon { font-size: 2.4rem; margin-bottom: 12px; }
-.modal-title {
-  font-family: 'Playfair Display', Georgia, serif; font-size: 1.3rem;
-  font-weight: 700; color: #212529; margin-bottom: 20px;
-}
-.modal-form { text-align: left; margin-bottom: 20px; }
-.modal-field-row { margin-bottom: 14px; }
-.modal-field-row label {
-  display: block; font-size: 0.78rem; font-weight: 600; color: #495057;
-  margin-bottom: 6px;
-}
-.modal-field {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 14px; border: 1px solid #dee2e6; border-radius: 10px;
-  background: rgba(255,255,255,0.60); transition: all 0.3s;
-}
-.modal-field:focus-within { border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.12); }
-.modal-field input {
-  flex: 1; border: none; background: transparent; padding: 12px 0;
-  font-size: 0.88rem; font-family: 'DM Sans', sans-serif; color: #212529; outline: none;
-}
-.modal-actions { display: flex; gap: 12px; }
-.modal-btn {
-  flex: 1; padding: 12px; border: none; border-radius: 10px;
-  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
-  cursor: pointer; transition: all 0.3s;
-}
-.modal-btn--cancel { background: #f1f3f5; color: #495057; }
-.modal-btn--cancel:hover { background: #e9ecef; }
-.modal-btn--blue { background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: white; }
-.modal-btn--blue:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(43,108,176,0.25); }
-.modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-/* ===== 底部 ===== */
-.admin-footer {
-  position: relative; z-index: 1; padding: 24px 56px; text-align: center;
-}
-.admin-footer span { font-size: 0.7rem; color: #adb5bd; }
-
 /* ===== 充值区域 ===== */
 .charge-section {
-  margin-top: 24px;
-  padding: 20px 24px;
-  background: rgba(43,108,176,0.03);
-  border: 1px solid rgba(43,108,176,0.10);
-  border-radius: 12px;
+  margin-top: 24px; padding: 20px 24px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
-.charge-title {
-  margin: 0 0 14px 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #2b6cb0;
-  letter-spacing: 0.02em;
-}
-.charge-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-.charge-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.charge-field label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #868e96;
-  letter-spacing: 0.02em;
-}
+.charge-title { margin: 0 0 14px; font-size: 0.9rem; font-weight: 600; color: var(--text-2); letter-spacing: 0.02em; }
+.charge-row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.charge-field { display: flex; flex-direction: column; gap: 6px; }
+.charge-field label { font-size: 0.78rem; font-weight: 600; color: var(--text-3); letter-spacing: 0.02em; }
 .charge-input {
-  padding: 10px 14px;
-  background: white;
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-  color: #212529;
-  font-size: 0.9rem;
-  width: 140px;
-  outline: none;
-  transition: all 0.2s;
-  font-family: 'DM Sans', sans-serif;
+  padding: 10px 14px; background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 0.9rem; width: 150px;
+  outline: none; transition: all 0.2s ease; font-family: var(--font-sans);
 }
-.charge-input:focus {
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74,158,255,0.10);
-}
-.charge-input::placeholder {
-  color: #adb5bd;
-}
+.charge-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.charge-input::placeholder { color: var(--text-4); }
 .charge-btn {
-  padding: 10px 28px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  white-space: nowrap;
-  font-family: 'DM Sans', sans-serif;
+  padding: 10px 28px; background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff; border: none; border-radius: var(--radius-sm); font-size: 0.85rem;
+  font-weight: 600; cursor: pointer; transition: all 0.2s ease; white-space: nowrap;
 }
-.charge-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(43,108,176,0.30);
-}
-.charge-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.charge-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+.charge-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ===== 优惠券管理 ===== */
 .coupon-create {
-  margin-bottom: 20px;
-  padding: 20px 24px;
-  background: rgba(124,58,237,0.04);
-  border: 1px solid rgba(124,58,237,0.12);
-  border-radius: 12px;
+  margin-bottom: 20px; padding: 20px 24px;
+  background: var(--primary-softer); border: 1px solid rgba(47,84,235,0.14);
+  border-radius: var(--radius);
 }
-.coupon-create-title {
-  margin: 0 0 14px 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #7c3aed;
-  letter-spacing: 0.02em;
-}
-.coupon-create-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
+.coupon-create-title { margin: 0 0 14px; font-size: 0.9rem; font-weight: 600; color: var(--primary); letter-spacing: 0.02em; }
+.coupon-create-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .coupon-input {
-  padding: 10px 14px;
-  background: white;
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-  color: #212529;
-  font-size: 0.85rem;
-  min-width: 110px;
-  flex: 1;
-  outline: none;
-  transition: all 0.2s;
-  font-family: 'DM Sans', sans-serif;
+  padding: 10px 14px; background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 0.85rem; min-width: 110px;
+  flex: 1; outline: none; transition: all 0.2s ease; font-family: var(--font-sans);
 }
 .coupon-input--select { flex: 0 0 90px; }
-.coupon-input:focus {
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 3px rgba(124,58,237,0.10);
-}
-.coupon-input::placeholder { color: #adb5bd; }
-.coupon-hint {
-  margin: 10px 0 0;
-  font-size: 0.75rem;
-  color: #adb5bd;
-}
+.coupon-input--target { flex: 0 0 110px; }
+.coupon-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.coupon-input::placeholder { color: var(--text-4); }
 
-/* ===== 用户头像与下拉菜单 ===== */
-.avatar-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
-.nav-balance { padding: 5px 12px; border-radius: 50px; background: rgba(43,108,176,0.08); border: 1px solid rgba(43,108,176,0.15); color: #2b6cb0; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
-.avatar-btn { display: flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 2px; transition: transform 0.3s; }
-.avatar-btn:hover { transform: scale(1.05); }
-.avatar-circle { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(43,108,176,0.25); overflow: hidden; }
-.avatar-circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.avatar-caret { font-size: 0.7rem; color: #868e96; transition: transform 0.3s; }
-.avatar-caret.open { transform: rotate(180deg); }
-.profile-menu { position: absolute; top: calc(100% + 14px); right: 0; min-width: 180px; padding: 8px; background: rgba(255,255,255,0.96); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); border: 1px solid rgba(255,255,255,0.60); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.10); }
-.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #f1f3f5; margin-bottom: 6px; }
-.profile-menu-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-.profile-menu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.profile-menu-id { min-width: 0; }
-.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: #212529; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-menu-role { font-size: 0.72rem; color: #adb5bd; margin: 2px 0 0; }
-.profile-menu-item { display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; border-radius: 8px; background: transparent; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; color: #495057; transition: all 0.2s; }
-.profile-menu-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.profile-menu-item--logout:hover { background: rgba(220,53,69,0.06); color: #dc3545; }
-.profile-menu-divider { height: 1px; background: #f1f3f5; margin: 6px 0; }
-.profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
-.profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
+/* 适用人群角标 */
+.target-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+}
+.target-badge--all { background: rgba(96,108,132,0.12); color: var(--text-3); }
+.target-badge--vip { background: rgba(245,158,11,0.15); color: #b45309; }
+.coupon-hint { margin: 10px 0 0; font-size: 0.75rem; color: var(--text-4); }
+
+/* ===== 弹窗 ===== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(23, 35, 61, 0.45);
+  backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px; animation: overlayIn 0.2s ease;
+}
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-card {
+  width: 460px; max-width: 100%; padding: 26px;
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); animation: modalIn 0.3s ease;
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+.modal-head {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.modal-icon {
+  width: 42px; height: 42px; border-radius: var(--radius); background: var(--primary-soft);
+  display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;
+}
+.modal-title {
+  font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--text); margin: 0;
+}
+.modal-form { margin-bottom: 20px; }
+.modal-field-row { margin-bottom: 14px; }
+.modal-field-row label {
+  display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-2); margin-bottom: 6px;
+}
+.modal-field {
+  display: flex; align-items: center; padding: 0 14px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface-2); transition: all 0.2s ease;
+}
+.modal-field:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); background: var(--surface); }
+.modal-field input {
+  flex: 1; border: none; background: transparent; padding: 11px 0;
+  font-size: 0.88rem; color: var(--text); outline: none;
+}
+.modal-actions { display: flex; gap: 12px; }
+.modal-btn {
+  flex: 1; padding: 12px; border: none; border-radius: var(--radius-sm);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+}
+.modal-btn--cancel { background: var(--surface-3); color: var(--text-2); }
+.modal-btn--cancel:hover { background: var(--bg-deep); }
+.modal-btn--primary { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; }
+.modal-btn--primary:hover:not(:disabled) { box-shadow: var(--shadow-primary); transform: translateY(-1px); }
+.modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ===== 消息提示 ===== */
+.msg {
+  margin-top: 18px; text-align: center; font-size: 0.85rem; padding: 12px;
+  border-radius: var(--radius-sm); animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.msg--success { color: var(--success); background: var(--success-soft); border: 1px solid rgba(47, 158, 68, 0.18); }
+.msg--error { color: var(--danger); background: var(--danger-soft); border: 1px solid rgba(224, 49, 49, 0.18); }
+
+/* ===== 底部 ===== */
+.page-footer { padding: 8px 0 28px; text-align: center; }
+.page-footer span { font-size: 0.72rem; color: var(--text-4); }
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
-  .nav { padding: 0 24px; }
-  .admin-card { padding: 32px 20px; }
+  .admin-body { padding: 84px 16px 40px; }
+  .nav-nickname { display: none; }
   .tabs { gap: 6px; }
-  .tab-btn { padding: 8px 14px; font-size: 0.8rem; }
   .tab-label { display: none; }
   .action-cell { flex-direction: column; gap: 4px; }
   .action-cell .action-btn { width: 100%; text-align: center; }

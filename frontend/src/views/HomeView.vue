@@ -1,8 +1,25 @@
 <template>
   <div class="store-page">
+    <!-- ===== 顶部公告条 ===== -->
+    <div class="announce-bar">
+      <div class="announce-inner">
+        <span class="announce-item">🚚 全场满 ¥99 免运费</span>
+        <span class="announce-dot">·</span>
+        <span class="announce-item">🎁 新用户注册立享新人礼券</span>
+        <span class="announce-dot">·</span>
+        <span class="announce-item">🎉 会员专享价 · 买得越多省得越多</span>
+      </div>
+    </div>
+
     <!-- ===== 毛玻璃导航 ===== -->
     <nav class="nav" :class="{ scrolled: scrolled }">
       <div class="nav-logo" @click="scrollToTop">ZuiMShop</div>
+      <!-- 导航搜索框 -->
+      <div class="nav-search">
+        <input v-model="searchInput" type="text" placeholder="搜索商品名称或描述..." maxlength="50"
+               @keyup.enter="handleSearch" class="nav-search-input" />
+        <button class="nav-search-btn" @click="handleSearch" aria-label="搜索">🔍</button>
+      </div>
       <ul class="nav-links" :class="{ open: menuOpen }">
         <li><a href="#hero" @click.prevent="closeMenu; scrollTo('#hero')">首页</a></li>
         <li><a href="#products" @click.prevent="closeMenu; scrollTo('#products')">商品</a></li>
@@ -70,9 +87,9 @@
       </div>
       <div class="hero-overlay"></div>
       <div class="hero-content">
-        <div class="hero-badge">✦ 春季新品首发</div>
+        <div class="hero-badge">✦ 新人专享 · 全场低至 5 折</div>
         <h1 class="hero-title">科技好物<br>触手可及</h1>
-        <p class="hero-sub">精选全球优质科技产品，从数码配件到智能家居，一站式购齐。</p>
+        <p class="hero-sub">精选全球优质好物，从数码配件到智能家居，正品保障、极速发货，一站式购齐。</p>
         <div class="hero-actions">
           <button class="btn-primary" @click="scrollTo('#products')">立即选购</button>
           <button class="btn-outline" @click="scrollTo('#products')">浏览商品</button>
@@ -86,6 +103,19 @@
       <button class="carousel-pause-btn" @click="toggleCarousel" aria-label="暂停/播放">
         {{ carouselPaused ? '▶' : '⏸' }}
       </button>
+    </section>
+
+    <!-- ===== 横向分类导航条 ===== -->
+    <section class="category-bar">
+      <div class="container">
+        <div class="category-bar-inner">
+          <button v-for="cat in allCategoryNames" :key="cat"
+                  class="category-chip" :class="{ active: activeCategory === cat }"
+                  @click="filterByCategory(cat)">
+            {{ cat }}
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- ===== 商品列表（分页） ===== -->
@@ -165,6 +195,79 @@
           <button class="page-btn" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">
             下一页 ›
           </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 领券中心 ===== -->
+    <section class="section coupon-center" id="coupons">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">领券中心</span>
+          <h2 class="section-title">新人<span class="highlight">大礼包</span></h2>
+          <p class="section-desc">先领券，再购物，立省不止一点点</p>
+        </div>
+        <div class="loading-state" v-if="couponLoading">
+          <div class="loading-spinner"></div>
+          <p>正在加载优惠券...</p>
+        </div>
+        <div class="coupon-grid" v-else-if="visibleClaimableCoupons.length > 0">
+          <div v-for="c in visibleClaimableCoupons" :key="c.id" class="coupon-card">
+            <span v-if="c.targetType === 2" class="coupon-vip-tag">仅VIP</span>
+            <div class="coupon-value">
+              <span class="coupon-value-sym">{{ c.type === 2 ? '' : '¥' }}</span>
+              <span class="coupon-value-num">{{ couponValue(c) }}</span>
+              <span class="coupon-value-unit">{{ c.type === 2 ? '折' : '立减券' }}</span>
+            </div>
+            <div class="coupon-body">
+              <h4 class="coupon-name">{{ c.name }}</h4>
+              <p class="coupon-threshold">满 ¥{{ Number(c.minAmount || 0).toFixed(0) }} 可用</p>
+              <button class="coupon-claim-btn" :disabled="claimingId === c.id" @click="handleClaim(c)">
+                {{ claimingId === c.id ? '领取中...' : '立即领取' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="empty-state" v-else>
+          <div class="empty-icon">🎫</div>
+          <p>暂无更多可领取的优惠券</p>
+          <p class="empty-hint">关注商城动态，好券不错过</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 服务保障栏 ===== -->
+    <section class="guarantee-bar">
+      <div class="container">
+        <div class="guarantee-grid">
+          <div class="guarantee-item">
+            <div class="guarantee-icon">🛡️</div>
+            <div class="guarantee-text">
+              <h4>正品保障</h4>
+              <p>全场正品 · 假一赔十</p>
+            </div>
+          </div>
+          <div class="guarantee-item">
+            <div class="guarantee-icon">🚚</div>
+            <div class="guarantee-text">
+              <h4>极速发货</h4>
+              <p>现货速发 · 风雨无阻</p>
+            </div>
+          </div>
+          <div class="guarantee-item">
+            <div class="guarantee-icon">↩️</div>
+            <div class="guarantee-text">
+              <h4>七天无理由</h4>
+              <p>七天无理由退换货</p>
+            </div>
+          </div>
+          <div class="guarantee-item">
+            <div class="guarantee-icon">🎧</div>
+            <div class="guarantee-text">
+              <h4>售后无忧</h4>
+              <p>一对一贴心客服</p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -303,9 +406,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { getProductPage, getCategories, createOrder, getAvailableCoupons } from '../api/index.js'
+import { getProductPage, getCategories, createOrder, getAvailableCoupons, getClaimableCoupons, claimCoupon } from '../api/index.js'
 import { getUserAddresses, addAddress, getUserInfo } from '../api/index.js'
-import { toastError } from '../utils/toast.js'
+import { toastError, toastSuccess } from '../utils/toast.js'
 import ChatDrawer from '../components/ChatDrawer.vue'
 import { getCachedRoles } from '../utils/auth.js'
 
@@ -338,10 +441,78 @@ const checkouting = ref(false)
 const availableCoupons = ref([])
 const selectedCoupon = ref(null)
 
+// ===== 首页模块状态：领券中心 =====
+const claimableCoupons = ref([])
+const couponLoading = ref(true)
+const claimingId = ref(null)
+
+/**
+ * 拉取可自助领取的优惠券模板（领券中心）
+ * 调用 GET /api/coupon/user/templates
+ */
+async function fetchClaimableCoupons() {
+  try {
+    const res = await getClaimableCoupons()
+    if (res && res.code === 200 && res.data) {
+      claimableCoupons.value = Array.isArray(res.data) ? res.data : []
+    }
+  } catch (e) {
+    console.error('获取可领优惠券失败:', e)
+  } finally {
+    couponLoading.value = false
+  }
+}
+
+/**
+ * 优惠券面值展示
+ * type=2 为折扣券（如 8.5 折），其余为立减券（如 30 元）
+ */
+function couponValue(c) {
+  const v = Number(c.discountValue || 0)
+  return c.type === 2 ? v.toFixed(1) : v.toFixed(0)
+}
+
+/**
+ * 用户自助领取优惠券
+ * 1.未登录先跳登录页
+ * 2.领取成功刷新可领列表并提示
+ */
+async function handleClaim(c) {
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  claimingId.value = c.id
+  try {
+    const res = await claimCoupon(c.id)
+    if (res && res.code === 200) {
+      toastSuccess(`已领取「${c.name}」，快去下单吧！`)
+      fetchClaimableCoupons()
+    } else {
+      toastError((res && res.mes) || '领取失败')
+    }
+  } catch (e) {
+    toastError('领取失败：' + ((e && e.message) || '网络异常'))
+  } finally {
+    claimingId.value = null
+  }
+}
+
 // ===== 角色判断（用于导航中显示按钮） =====
 const cachedRoles = getCachedRoles()
 const isAdminUser = computed(() => cachedRoles.includes('ROLE_ADMIN'))
 const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
+
+// 当前用户是否为 VIP 会员（VIP用户 或 VIP卖家），用于领券中心过滤 VIP 券
+const isVipMember = computed(() =>
+  cachedRoles.includes('ROLE_VIP_USER') || cachedRoles.includes('ROLE_VIP_SELLER')
+)
+
+// 领券中心可见列表：VIP券（targetType=2）仅 VIP 用户 / VIP 卖家可见，普通券所有人可见
+const visibleClaimableCoupons = computed(() =>
+  claimableCoupons.value.filter(c => c.targetType !== 2 || isVipMember.value)
+)
 
 // ===== 用户头像菜单 =====
 const profileMenuOpen = ref(false)
@@ -810,10 +981,11 @@ const prodRefs = reactive({})
 let observer = null
 
 onMounted(() => {
-  // 加载商品、分类和用户资料（头像/余额/昵称）
+  // 加载商品、分类、可领优惠券和用户资料（头像/余额/昵称）
   fetchProducts()
   fetchCategories()
   fetchUserProfile()
+  fetchClaimableCoupons()
 
   window.addEventListener('scroll', onScroll)
   // 点击页面空白处关闭导航浮层（分类下拉菜单 / 用户头像菜单）
@@ -881,14 +1053,37 @@ function scrollTo(selector) {
 }
 img { max-width: 100%; height: auto; display: block; }
 a { text-decoration: none; color: inherit; }
-.section { padding: 100px 0; }
+.section { padding: 44px 0; }
 .container { max-width: 1240px; margin: 0 auto; padding: 0 40px; }
+
+/* ===== Announce Bar ===== */
+.announce-bar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 36px; z-index: 1001;
+  display: flex; align-items: center;
+  background: linear-gradient(90deg, #1d39c4 0%, #2f54eb 45%, #0e7490 100%);
+  color: rgba(255,255,255,0.92);
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
+}
+.announce-inner {
+  max-width: var(--container, 1240px);
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 56px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 18px;
+  white-space: nowrap; overflow: hidden;
+}
+.announce-item { font-weight: 500; }
+.announce-dot { opacity: 0.5; }
 
 /* ===== Glass Navigation ===== */
 .nav {
-  position: fixed; top: 0; left: 0; right: 0;
+  position: fixed; top: 36px; left: 0; right: 0;
   height: 80px; z-index: 1000;
   display: flex; align-items: center; justify-content: space-between;
+  gap: 32px;
   padding: 0 56px;
   background: rgba(255,255,255,0.60);
   backdrop-filter: blur(20px) saturate(1.8);
@@ -896,6 +1091,38 @@ a { text-decoration: none; color: inherit; }
   border-bottom: 1px solid rgba(255,255,255,0.30);
   transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+/* 导航搜索框 */
+.nav-search {
+  flex: 1; max-width: 480px;
+  display: flex; align-items: center; gap: 0;
+  background: rgba(255,255,255,0.72);
+  border: 1px solid var(--border, #e4e9f0);
+  border-radius: var(--radius-pill, 999px);
+  padding-left: 16px;
+  transition: all 0.3s;
+  overflow: hidden;
+}
+.nav-search:focus-within {
+  border-color: var(--primary, #2f54eb);
+  box-shadow: 0 0 0 3px rgba(47,84,235,0.10);
+  background: #fff;
+}
+.nav-search-input {
+  flex: 1; border: none; background: transparent;
+  padding: 10px 0; font-size: 0.88rem; outline: none;
+  color: var(--text, #17233d);
+  min-width: 0;
+}
+.nav-search-input::placeholder { color: var(--text-3, #8a94a6); }
+.nav-search-btn {
+  flex-shrink: 0;
+  border: none; background: linear-gradient(135deg, var(--primary, #2f54eb), var(--accent, #13c2c2));
+  color: #fff; font-size: 1.1rem;
+  width: 44px; align-self: stretch;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: opacity 0.2s;
+}
+.nav-search-btn:hover { opacity: 0.9; }
 .nav.scrolled { background: rgba(255,255,255,0.85); box-shadow: 0 1px 40px rgba(0,0,0,0.06); }
 .nav-logo {
   font-family: 'Playfair Display', Georgia, serif;
@@ -1063,6 +1290,34 @@ a { text-decoration: none; color: inherit; }
 .nav-toggle { display: none; flex-direction: column; gap: 5px; cursor: pointer; background: none; border: none; padding: 4px; }
 .nav-toggle span { display: block; width: 24px; height: 2px; background: #212529; border-radius: 2px; transition: all 0.3s; }
 
+/* ===== 横向分类导航条 ===== */
+.category-bar {
+  background: #ffffff;
+  border-bottom: 1px solid #f1f3f5;
+  padding: 14px 0 8px;
+}
+.category-bar-inner {
+  display: flex; align-items: center; gap: 10px;
+  overflow-x: auto; padding-bottom: 8px;
+  scrollbar-width: none;               /* Firefox 隐藏滚动条 */
+  -webkit-overflow-scrolling: touch;
+}
+.category-bar-inner::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
+.category-chip {
+  flex-shrink: 0;
+  padding: 8px 18px; border-radius: 50px;
+  border: 1px solid #e9ecef; background: #f8f9fa;
+  color: #495057; font-family: 'DM Sans', sans-serif;
+  font-size: 0.85rem; font-weight: 500; cursor: pointer;
+  white-space: nowrap; transition: all 0.25s;
+}
+.category-chip:hover { border-color: #4a9eff; color: #2b6cb0; }
+.category-chip.active {
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
+  border-color: transparent; color: #fff; font-weight: 600;
+  box-shadow: 0 4px 14px rgba(43,108,176,0.25);
+}
+
 /* ===== Hero ===== */
 .hero {
   position: relative; height: 100vh; min-height: 700px; overflow: hidden;
@@ -1141,26 +1396,26 @@ a { text-decoration: none; color: inherit; }
 
 /* ===== Section Header ===== */
 .section-header {
-  text-align: center; max-width: 680px; margin: 0 auto 56px;
+  text-align: center; max-width: 680px; margin: 0 auto 24px;
   opacity: 0; transform: translateY(40px);
   transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .section-header.visible { opacity: 1; transform: translateY(0); }
 .section-tag {
-  display: inline-block; padding: 6px 16px; background: #f1f3f5; border-radius: 50px;
-  font-size: 0.7rem; font-weight: 600; color: #868e96;
-  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px;
+  display: inline-block; padding: 4px 14px; background: #f1f3f5; border-radius: 50px;
+  font-size: 0.68rem; font-weight: 600; color: #868e96;
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px;
 }
 .section-title {
   font-family: 'Playfair Display', Georgia, serif;
-  font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 700; color: #212529;
+  font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 700; color: #212529;
   line-height: 1.2; letter-spacing: -0.02em;
 }
 .section-title .highlight {
   background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.section-desc { font-size: 1.05rem; color: #868e96; margin-top: 16px; line-height: 1.7; }
+.section-desc { font-size: 0.95rem; color: #868e96; margin-top: 8px; line-height: 1.6; }
 
 /* ===== Products ===== */
 .products { background: #ffffff; }
@@ -1267,7 +1522,7 @@ a { text-decoration: none; color: inherit; }
 /* ===== Pagination ===== */
 .pagination {
   display: flex; justify-content: center; align-items: center;
-  gap: 8px; margin-top: 48px; flex-wrap: wrap;
+  gap: 8px; margin-top: 32px; flex-wrap: wrap;
 }
 .page-btn {
   padding: 10px 18px; border: 1px solid #dee2e6; border-radius: 10px;
@@ -1285,6 +1540,76 @@ a { text-decoration: none; color: inherit; }
 .page-btn:disabled {
   opacity: 0.4; cursor: not-allowed;
 }
+
+/* ===== 领券中心 ===== */
+.coupon-center { background: linear-gradient(180deg, #ffffff 0%, #f6f8fc 100%); }
+.coupon-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;
+}
+.coupon-card {
+  display: flex; align-items: stretch; background: #fff;
+  border: 1px solid #e9ecef; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+  transition: all 0.3s;
+  position: relative;
+}
+/* VIP券专属角标 */
+.coupon-vip-tag {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  padding: 3px 10px; border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff; font-size: 0.68rem; font-weight: 600;
+  box-shadow: 0 4px 10px rgba(217,119,6,0.3);
+}
+.coupon-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,0.08); }
+.coupon-value {
+  flex: 0 0 132px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, #2b6cb0, #4a9eff); color: #fff; padding: 16px 12px;
+  position: relative;
+}
+/* 券面打孔装饰（纯视觉） */
+.coupon-value::after {
+  content: ''; position: absolute; right: -11px; top: 50%;
+  width: 22px; height: 22px; transform: translateY(-50%);
+  border-radius: 50%; background: #f6f8fc;
+}
+.coupon-value-sym { font-size: 0.9rem; font-weight: 600; }
+.coupon-value-num {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 2rem; font-weight: 700; line-height: 1.1;
+}
+.coupon-value-unit { font-size: 0.72rem; opacity: 0.9; margin-top: 2px; }
+.coupon-body { flex: 1; padding: 18px 20px; display: flex; flex-direction: column; align-items: flex-start; }
+.coupon-name { font-size: 0.95rem; font-weight: 600; color: #212529; margin-bottom: 4px; }
+.coupon-threshold { font-size: 0.78rem; color: #868e96; margin-bottom: 14px; }
+.coupon-claim-btn {
+  margin-top: auto; padding: 8px 20px; border: none; border-radius: 50px;
+  background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: #fff;
+  font-family: 'DM Sans', sans-serif; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  transition: all 0.3s;
+}
+.coupon-claim-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(43,108,176,0.3); }
+.coupon-claim-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ===== 服务保障栏（页尾） ===== */
+.guarantee-bar { background: #ffffff; border-top: 1px solid #f1f3f5; padding: 24px 0; }
+.guarantee-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
+}
+.guarantee-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 20px; border-radius: 14px;
+  background: #f8f9fa; border: 1px solid #f1f3f5;
+  transition: all 0.3s;
+}
+.guarantee-item:hover { background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.05); transform: translateY(-2px); }
+.guarantee-icon {
+  width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+  background: linear-gradient(135deg, rgba(43,108,176,0.12), rgba(124,58,237,0.12));
+}
+.guarantee-text h4 { font-size: 0.95rem; font-weight: 600; color: #212529; margin-bottom: 2px; }
+.guarantee-text p { font-size: 0.8rem; color: #868e96; }
 
 /* ===== Loading & Empty & Error ===== */
 .loading-state, .empty-state {
@@ -1397,6 +1722,7 @@ a { text-decoration: none; color: inherit; }
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
   .products-grid { grid-template-columns: repeat(2, 1fr); }
+  .guarantee-grid { grid-template-columns: repeat(2, 1fr); }
 }
 /* ===== 地址选择弹窗 ===== */
 .modal-overlay {
@@ -1540,9 +1866,26 @@ a { text-decoration: none; color: inherit; }
   .profile-menu { right: 0; }
   .hero-content { padding: 0 24px; bottom: 20%; }
   .hero-actions { flex-direction: column; gap: 12px; }
-  .section { padding: 80px 0; }
+  .section { padding: 32px 0; }
   .container { padding: 0 24px; }
-  .products-grid { grid-template-columns: 1fr; }
+  /* 移动端商品 2 列，避免一屏只见一种商品 */
+  .products-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .product-info { padding: 12px; }
+  .product-name { font-size: 0.9rem; }
+  .product-price { font-size: 1rem; }
+  .product-actions { flex-wrap: wrap; gap: 6px; }
+  .chat-btn { padding: 6px 10px; }
+  .add-cart-btn { padding: 6px 12px; font-size: 0.7rem; }
+  /* 分类条横向滑动 */
+  .category-bar { padding: 8px 0 4px; }
+  .category-bar-inner { gap: 8px; }
+  /* 领券中心单列 */
+  .coupon-grid { grid-template-columns: 1fr; gap: 14px; }
+  .coupon-value { flex-basis: 120px; }
+  /* 服务保障两列 */
+  .guarantee-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .guarantee-item { padding: 12px 14px; gap: 10px; }
+  .guarantee-icon { width: 40px; height: 40px; font-size: 1.15rem; }
   .carousel-dots { left: 24px; }
   .pagination { gap: 4px; }
   .page-btn { padding: 8px 14px; font-size: 0.8rem; min-width: 38px; }

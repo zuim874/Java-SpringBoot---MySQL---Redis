@@ -1,4 +1,4 @@
-package com.xuwenye.demo;
+package com.xuwenye.demo.other;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xuwenye.demo.Entity.User;
@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootTest
+@ActiveProfiles("test")
 public class CacheAvalancheTest {
 
     @Autowired

@@ -1,13 +1,6 @@
 <template>
   <div class="admin-page">
-    <!-- 背景装饰 -->
-    <div class="bg-shapes">
-      <div class="bg-circle bg-circle--1"></div>
-      <div class="bg-circle bg-circle--2"></div>
-      <div class="bg-circle bg-circle--3"></div>
-    </div>
-
-    <!-- 导航条 -->
+    <!-- 顶部导航 -->
     <nav class="nav">
       <div class="nav-logo">ZuiMShop</div>
       <div class="nav-actions">
@@ -16,7 +9,7 @@
           <span class="nav-nickname">{{ nickname }}</span>
           <button class="avatar-btn" @click="profileMenuOpen = !profileMenuOpen" aria-label="用户菜单">
             <span class="avatar-circle">
-              <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+              <img :src="getCachedAvatar(avatarUrl)" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
             </span>
             <span class="avatar-caret" :class="{ open: profileMenuOpen }">▾</span>
           </button>
@@ -24,7 +17,7 @@
             <div class="profile-menu" v-if="profileMenuOpen">
               <div class="profile-menu-header">
                 <span class="profile-menu-avatar">
-                  <img :src="avatarUrl" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
+                  <img :src="getCachedAvatar(avatarUrl)" alt="头像" @error="avatarUrl = DEFAULT_AVATAR">
                 </span>
                 <div class="profile-menu-id">
                   <p class="profile-menu-name">{{ nickname }}</p>
@@ -32,6 +25,11 @@
                 </div>
               </div>
               <button class="profile-menu-item" @click="profileMenuOpen = false; goHome()">返回商城</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goOrders()">我的订单</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goCoupons()">我的优惠券</button>
+              <button class="profile-menu-item" v-if="isAdminUser" @click="profileMenuOpen = false; goAdmin()">管理后台</button>
+              <button class="profile-menu-item" v-if="isSellerUser" @click="profileMenuOpen = false; goSeller()">商家管理</button>
               <div class="profile-menu-divider"></div>
               <button class="profile-menu-item profile-menu-item--logout" @click="handleLogout">退出登录</button>
             </div>
@@ -41,127 +39,135 @@
     </nav>
 
     <!-- 主内容 -->
-    <div class="admin-wrapper">
-      <div class="admin-card">
-        <div class="admin-header">
-          <div class="admin-icon">⚙</div>
-          <h2 class="admin-title">用户管理</h2>
-          <p class="admin-desc">管理员用户管理与恢复操作</p>
+    <main class="admin-body">
+      <!-- 页头 -->
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">用户管理</h1>
+          <p class="page-sub">管理员用户管理与恢复操作 · 需权限码确认后执行</p>
         </div>
+      </header>
 
-        <!-- 管理员权限码 -->
-        <div class="section">
-          <div class="form-group">
+      <!-- 管理员权限确认 -->
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-icon">🔑</span>
+          <h3 class="panel-title">管理员权限确认</h3>
+        </div>
+        <div class="field-row">
+          <div class="field">
             <label>管理员权限码</label>
-            <div class="input-wrap">
-              <span class="input-icon">🔑</span>
-              <input
-                v-model="adminCode"
-                type="password"
-                placeholder="请输入管理员确认码"
-              />
-            </div>
+            <input
+              v-model="adminCode"
+              type="password"
+              placeholder="请输入管理员确认码"
+              class="field-input"
+            />
+          </div>
+          <p class="field-hint">执行删除 / 恢复 / 充值操作前需输入管理员权限码进行校验</p>
+        </div>
+      </section>
+
+      <!-- 当前用户信息 -->
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-icon">👤</span>
+          <h3 class="panel-title">当前用户信息</h3>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>昵称</th>
+                <th>邮箱</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-dim">{{ currentUser.id || '-' }}</td>
+                <td>{{ currentUser.username || '-' }}</td>
+                <td>{{ currentUser.nickname || '-' }}</td>
+                <td class="cell-dim">{{ currentUser.email || '-' }}</td>
+                <td>
+                  <span class="status-badge" :class="currentUser.status === 1 ? 'status--ok' : 'status--off'">
+                    {{ currentUser.status === 1 ? '正常' : '已删除' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 删除 / 恢复用户 -->
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-icon">🗑️</span>
+          <h3 class="panel-title">删除 / 恢复用户</h3>
+        </div>
+        <div class="op-row">
+          <div class="field op-field">
+            <label>目标用户 ID</label>
+            <input
+              v-model="targetUserId"
+              type="number"
+              placeholder="请输入用户ID"
+              class="field-input"
+            />
+          </div>
+          <div class="op-btns">
+            <button class="op-btn op-btn--delete" :disabled="loading" @click="handleDeleteUser">删除用户</button>
+            <button class="op-btn op-btn--recover" :disabled="loading" @click="handleRecoverUser">恢复用户</button>
           </div>
         </div>
+      </section>
 
-        <!-- 用户列表 -->
-        <div class="section">
-          <h3 class="section-title">当前用户信息</h3>
-          <div class="table-wrap">
-            <table class="user-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>用户名</th>
-                  <th>昵称</th>
-                  <th>邮箱</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ currentUser.id || '-' }}</td>
-                  <td>{{ currentUser.username || '-' }}</td>
-                  <td>{{ currentUser.nickname || '-' }}</td>
-                  <td>{{ currentUser.email || '-' }}</td>
-                  <td>
-                    <span :class="['status-badge', currentUser.status === 1 ? 'status--active' : 'status--disabled']">
-                      {{ currentUser.status === 1 ? '正常' : '已删除' }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+      <!-- 用户余额充值 -->
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-icon">💰</span>
+          <h3 class="panel-title">用户余额充值</h3>
+        </div>
+        <div class="op-row">
+          <div class="field op-field">
+            <label>目标用户 ID</label>
+            <input
+              v-model="targetUserId"
+              type="number"
+              placeholder="请输入用户ID"
+              class="field-input"
+            />
+          </div>
+          <div class="field op-field">
+            <label>充值金额</label>
+            <input
+              v-model="chargeAmount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="请输入充值金额"
+              class="field-input"
+            />
+          </div>
+          <div class="op-btns">
+            <button class="op-btn op-btn--charge" :disabled="loading" @click="handleCharge">确认充值</button>
           </div>
         </div>
+      </section>
 
-        <!-- 操作区域 -->
-        <div class="section">
-          <h3 class="section-title">删除 / 恢复用户</h3>
-          <div class="operation-row">
-            <div class="form-group operation-input">
-              <label>目标用户 ID</label>
-              <div class="input-wrap">
-                <span class="input-icon">#</span>
-                <input
-                  v-model="targetUserId"
-                  type="number"
-                  placeholder="请输入用户ID"
-                />
-              </div>
-            </div>
-            <div class="operation-btns">
-              <button class="op-btn op-btn--delete" :disabled="loading" @click="handleDeleteUser">删除用户</button>
-              <button class="op-btn op-btn--recover" :disabled="loading" @click="handleRecoverUser">恢复用户</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 用户余额充值 -->
-        <div class="section">
-          <h3 class="section-title">用户余额充值</h3>
-          <div class="operation-row">
-            <div class="form-group operation-input">
-              <label>目标用户 ID</label>
-              <div class="input-wrap">
-                <span class="input-icon">#</span>
-                <input
-                  v-model="targetUserId"
-                  type="number"
-                  placeholder="请输入用户ID"
-                />
-              </div>
-            </div>
-            <div class="form-group operation-input">
-              <label>充值金额</label>
-              <div class="input-wrap">
-                <span class="input-icon">💰</span>
-                <input
-                  v-model="chargeAmount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="请输入充值金额"
-                />
-              </div>
-            </div>
-            <div class="operation-btns">
-              <button class="op-btn op-btn--charge" :disabled="loading" @click="handleCharge">确认充值</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 消息提示 -->
-        <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">
-          {{ message }}
-        </p>
-      </div>
-    </div>
+      <!-- 消息提示 -->
+      <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">
+        {{ message }}
+      </p>
+    </main>
 
     <!-- 底部版权 -->
-    <div class="admin-footer">
-      <span>© 2026ZuiMShop. All rights reserved.</span>
-    </div>
+    <footer class="page-footer">
+      <span>© 2026 ZuiMShop. All rights reserved.</span>
+    </footer>
   </div>
 </template>
 
@@ -171,6 +177,8 @@ import { useRouter } from 'vue-router'
 import { request } from '../utils/request'
 import { chargeUserBalance, getUserInfo } from '../api/index.js'
 import { parseJWT } from '../utils/token'
+import { getCachedAvatar } from '../utils/avatarCache.js'
+import { getCachedRoles } from '../utils/auth.js'
 
 const router = useRouter()
 
@@ -185,6 +193,10 @@ const roleLabel = computed(() => {
   const roles = ['管理员']
   return roles[0]
 })
+
+const cachedRoles = getCachedRoles()
+const isAdminUser = computed(() => cachedRoles.includes('ROLE_ADMIN'))
+const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
 
 async function fetchUserProfile() {
   try {
@@ -241,6 +253,12 @@ function loadCurrentUser() {
 function goHome() {
   router.push('/home')
 }
+
+function goOrders() { router.push('/orders') }
+function goProfile() { router.push('/profile') }
+function goCoupons() { router.push('/coupons') }
+function goAdmin() { router.push('/admin/dashboard') }
+function goSeller() { router.push('/seller/dashboard') }
 
 function handleLogout() {
   localStorage.removeItem('token')
@@ -351,401 +369,191 @@ function validateInput() {
 </script>
 
 <style scoped>
-/* ===== 全局 ===== */
+/* ===== 页面骨架 ===== */
 .admin-page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #f1f3f5 100%);
-  font-family: 'DM Sans', -apple-system, sans-serif;
-  position: relative;
-  overflow: hidden;
+  background: var(--bg);
+  font-family: var(--font-sans);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
 
-/* ===== 背景装饰 ===== */
-.bg-shapes {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.bg-circle {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.35;
-}
-.bg-circle--1 {
-  width: 600px; height: 600px;
-  top: -200px; right: -200px;
-  background: radial-gradient(circle, #4a9eff, #2b6cb0);
-}
-.bg-circle--2 {
-  width: 500px; height: 500px;
-  bottom: -150px; left: -150px;
-  background: radial-gradient(circle, #7c3aed, #5b21b6);
-}
-.bg-circle--3 {
-  width: 300px; height: 300px;
-  top: 40%; left: 10%;
-  background: radial-gradient(circle, #4a9eff, transparent);
-}
-
-/* ===== 导航 ===== */
+/* ===== 顶部导航 ===== */
 .nav {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 56px;
-  background: rgba(255,255,255,0.60);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border-bottom: 1px solid rgba(255,255,255,0.30);
-  z-index: 100;
+  position: fixed; top: 0; left: 0; right: 0; height: 68px; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 clamp(20px, 4vw, 48px);
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border-bottom: 1px solid var(--border);
 }
 .nav-logo {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.03em;
+  font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
-.nav-actions {
-  display: flex;
-  gap: 12px;
-}
-.nav-btn {
-  padding: 8px 20px;
-  border: 1px solid rgba(43,108,176,0.20);
-  border-radius: 10px;
-  background: rgba(255,255,255,0.60);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #2b6cb0;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.nav-btn:hover {
-  background: #2b6cb0;
-  color: white;
-  border-color: #2b6cb0;
-  transform: translateY(-1px);
-}
-.nav-btn--logout {
-  color: #c92a2a;
-  border-color: rgba(201,42,42,0.20);
-}
-.nav-btn--logout:hover {
-  background: #c92a2a;
-  color: white;
-  border-color: #c92a2a;
-}
+.nav-actions { display: flex; align-items: center; gap: 12px; }
 
-/* ===== 主卡片 ===== */
-.admin-wrapper {
-  flex: 1;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  width: 100%;
-  padding: 100px 24px 60px;
-  position: relative;
-  z-index: 1;
+/* ===== 头像与下拉 ===== */
+.avatar-wrapper { position: relative; display: flex; align-items: center; gap: 8px; }
+.nav-balance {
+  padding: 5px 12px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); border: 1px solid rgba(47,84,235,0.15);
+  color: var(--primary); font-size: 0.75rem; font-weight: 600; white-space: nowrap;
 }
-.admin-card {
-  width: 700px;
-  max-width: 100%;
-  padding: 48px 40px;
-  background: rgba(255,255,255,0.75);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,0.50);
-  box-shadow:
-    0 4px 24px rgba(0,0,0,0.04),
-    0 20px 60px rgba(0,0,0,0.06),
-    inset 0 1px 0 rgba(255,255,255,0.60);
-  animation: cardIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-}
-
-@keyframes cardIn {
-  from { opacity: 0; transform: translateY(24px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* ===== 卡片头部 ===== */
-.admin-header {
-  text-align: center;
-  margin-bottom: 36px;
-}
-.admin-icon {
-  font-size: 2rem;
-  margin-bottom: 12px;
-  animation: pulse 2s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.6; }
-  50% { transform: scale(1.1) rotate(15deg); opacity: 1; }
-}
-.admin-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #212529;
-  margin-bottom: 8px;
-}
-.admin-desc {
-  font-size: 0.9rem;
-  color: #868e96;
-}
-
-/* ===== 分区 ===== */
-.section {
-  margin-bottom: 28px;
-}
-.section-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #343a40;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
-}
-
-/* ===== 表单 ===== */
-.form-group {
-  margin-bottom: 16px;
-}
-.form-group label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #495057;
-  margin-bottom: 8px;
-  letter-spacing: 0.02em;
-}
-.input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 16px;
-  border: 1px solid #dee2e6;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.60);
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.input-wrap:focus-within {
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74,158,255,0.12);
-  background: white;
-}
-.input-icon {
-  font-size: 1rem;
-  opacity: 0.5;
-}
-.input-wrap input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  padding: 14px 0;
-  font-size: 0.9rem;
-  font-family: 'DM Sans', sans-serif;
-  color: #212529;
-  outline: none;
-}
-.input-wrap input::placeholder {
-  color: #adb5bd;
-  font-weight: 400;
-}
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-/* ===== 表格 ===== */
-.table-wrap {
-  overflow-x: auto;
-  border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.05);
-}
-.user-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-.user-table th {
-  text-align: left;
-  padding: 12px 16px;
-  background: rgba(43,108,176,0.04);
-  color: #495057;
-  font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
-}
-.user-table td {
-  padding: 14px 16px;
-  color: #212529;
-  border-bottom: 1px solid rgba(0,0,0,0.04);
-}
-.user-table tr:last-child td {
-  border-bottom: none;
-}
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.status--active {
-  background: rgba(43,138,62,0.08);
-  color: #2b8a3e;
-}
-.status--disabled {
-  background: rgba(201,42,42,0.08);
-  color: #c92a2a;
-}
-
-/* ===== 操作区域 ===== */
-.operation-row {
-  display: flex;
-  gap: 16px;
-  align-items: flex-end;
-  flex-wrap: wrap;
-}
-.operation-input {
-  flex: 1;
-  min-width: 200px;
-  margin-bottom: 0;
-}
-.operation-btns {
-  display: flex;
-  gap: 12px;
-  padding-bottom: 4px;
-}
-.op-btn {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 12px;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  white-space: nowrap;
-}
-.op-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.op-btn--delete {
-  background: linear-gradient(135deg, #c92a2a, #e03131);
-  color: white;
-}
-.op-btn--delete:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(201,42,42,0.30);
-}
-.op-btn--recover {
-  background: linear-gradient(135deg, #2b8a3e, #40c057);
-  color: white;
-}
-.op-btn--recover:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(43,138,62,0.30);
-}
-.op-btn--charge {
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
-  color: white;
-}
-.op-btn--charge:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(43,108,176,0.30);
-}
-
-/* ===== 消息提示 ===== */
-.msg {
-  margin-top: 16px;
-  text-align: center;
-  font-size: 0.85rem;
-  padding: 10px 16px;
-  border-radius: 10px;
-  animation: fadeIn 0.3s ease;
-}
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.msg--success {
-  color: #2b8a3e;
-  background: rgba(43,138,62,0.06);
-  border: 1px solid rgba(43,138,62,0.12);
-}
-.msg--error {
-  color: #c92a2a;
-  background: rgba(201,42,42,0.06);
-  border: 1px solid rgba(201,42,42,0.12);
-}
-
-/* ===== 底部 ===== */
-.admin-footer {
-  position: relative;
-  z-index: 1;
-  padding: 24px 56px;
-  text-align: center;
-}
-.admin-footer span {
-  font-size: 0.7rem;
-  color: #adb5bd;
-  letter-spacing: 0.02em;
-}
-
-/* ===== 用户头像与下拉菜单 ===== */
-.avatar-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
-.nav-balance { padding: 5px 12px; border-radius: 50px; background: rgba(43,108,176,0.08); border: 1px solid rgba(43,108,176,0.15); color: #2b6cb0; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
-.avatar-btn { display: flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 2px; transition: transform 0.3s; }
+.nav-nickname { font-size: 0.85rem; font-weight: 600; color: var(--text-2); padding: 0 4px; }
+.avatar-btn { display: flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 2px; transition: transform 0.2s ease; }
 .avatar-btn:hover { transform: scale(1.05); }
-.avatar-circle { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(43,108,176,0.25); overflow: hidden; }
-.avatar-circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.avatar-caret { font-size: 0.7rem; color: #868e96; transition: transform 0.3s; }
+.avatar-circle {
+  width: 38px; height: 38px; border-radius: 50%; overflow: hidden;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 1rem;
+  box-shadow: var(--shadow-sm); border: 2px solid var(--surface);
+}
+.avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-caret { font-size: 0.7rem; color: var(--text-3); transition: transform 0.2s ease; }
 .avatar-caret.open { transform: rotate(180deg); }
-.profile-menu { position: absolute; top: calc(100% + 14px); right: 0; min-width: 180px; padding: 8px; background: rgba(255,255,255,0.96); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); border: 1px solid rgba(255,255,255,0.60); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.10); }
-.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #f1f3f5; margin-bottom: 6px; }
-.profile-menu-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-.profile-menu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.profile-menu {
+  position: absolute; top: calc(100% + 14px); right: 0; min-width: 190px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.profile-menu-avatar {
+  width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700;
+}
+.profile-menu-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .profile-menu-id { min-width: 0; }
-.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: #212529; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-menu-role { font-size: 0.72rem; color: #adb5bd; margin: 2px 0 0; }
-.profile-menu-item { display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; border-radius: 8px; background: transparent; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; color: #495057; transition: all 0.2s; }
-.profile-menu-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.profile-menu-item--logout:hover { background: rgba(220,53,69,0.06); color: #dc3545; }
-.profile-menu-divider { height: 1px; background: #f1f3f5; margin: 6px 0; }
+.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: var(--text); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu-role { font-size: 0.72rem; color: var(--text-3); margin: 2px 0 0; }
+.profile-menu-item {
+  display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; border-radius: var(--radius-sm);
+  background: transparent; cursor: pointer; font-size: 0.85rem; color: var(--text-2); transition: all 0.2s ease;
+}
+.profile-menu-item:hover { background: var(--primary-softer); color: var(--primary); }
+.profile-menu-item--logout:hover { background: var(--danger-soft); color: var(--danger); }
+.profile-menu-divider { height: 1px; background: var(--border); margin: 6px 0; }
 .profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
 
+/* ===== 主体布局 ===== */
+.admin-body {
+  flex: 1; width: 100%; max-width: 900px; margin: 0 auto;
+  padding: 96px 24px 56px;
+}
+.page-head { margin-bottom: 24px; }
+.page-title {
+  font-family: var(--font-display); font-size: 1.7rem; font-weight: 700;
+  color: var(--text); letter-spacing: -0.01em; line-height: 1.2;
+}
+.page-sub { margin-top: 6px; font-size: 0.9rem; color: var(--text-3); }
+
+/* ===== 内容面板 ===== */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  padding: 24px; margin-bottom: 20px;
+  animation: panelIn 0.35s ease both;
+}
+@keyframes panelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.panel-head {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+}
+.panel-icon {
+  width: 38px; height: 38px; border-radius: var(--radius); flex-shrink: 0;
+  background: var(--primary-soft);
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+}
+.panel-title {
+  font-family: var(--font-display); font-size: 1.1rem; font-weight: 700;
+  color: var(--text); margin: 0;
+}
+
+/* ===== 表单字段 ===== */
+.field-row { display: flex; flex-direction: column; gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.field label { font-size: 0.78rem; font-weight: 600; color: var(--text-3); letter-spacing: 0.02em; }
+.field-input {
+  width: 100%; padding: 11px 14px;
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 0.9rem;
+  outline: none; transition: all 0.2s ease; font-family: var(--font-sans);
+}
+.field-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); background: var(--surface); }
+.field-input::placeholder { color: var(--text-4); }
+.field-input::-webkit-inner-spin-button,
+.field-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.field-input { -moz-appearance: textfield; }
+.field-hint { font-size: 0.78rem; color: var(--text-4); }
+
+/* ===== 操作行 ===== */
+.op-row {
+  display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+}
+.op-field { min-width: 180px; }
+.op-btns { display: flex; gap: 10px; padding-bottom: 2px; flex-wrap: wrap; }
+.op-btn {
+  padding: 11px 24px; border: none; border-radius: var(--radius-sm);
+  font-size: 0.85rem; font-weight: 600; color: #fff; cursor: pointer;
+  transition: all 0.2s ease; white-space: nowrap;
+}
+.op-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.op-btn--delete { background: linear-gradient(135deg, var(--danger), #f03e3e); }
+.op-btn--delete:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 20px var(--danger-soft); }
+.op-btn--recover { background: linear-gradient(135deg, var(--success), #37b24d); }
+.op-btn--recover:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 20px var(--success-soft); }
+.op-btn--charge { background: linear-gradient(135deg, var(--primary), var(--primary-2)); }
+.op-btn--charge:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+
+/* ===== 表格 ===== */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 560px; }
+.data-table thead th {
+  text-align: left; padding: 12px 16px; background: var(--surface-3);
+  color: var(--text-2); font-weight: 600; font-size: 0.74rem;
+  letter-spacing: 0.04em; white-space: nowrap; border-bottom: 1px solid var(--border);
+}
+.data-table tbody td {
+  padding: 13px 16px; color: var(--text); border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.cell-dim { color: var(--text-3); font-size: 0.8rem; }
+
+/* ===== 状态标签 ===== */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+  border-radius: var(--radius-pill); font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+}
+.status--ok { background: var(--success-soft); color: var(--success); }
+.status--off { background: var(--danger-soft); color: var(--danger); }
+
+/* ===== 消息提示 ===== */
+.msg {
+  margin-top: 4px; text-align: center; font-size: 0.85rem; padding: 12px;
+  border-radius: var(--radius-sm); animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.msg--success { color: var(--success); background: var(--success-soft); border: 1px solid rgba(47, 158, 68, 0.18); }
+.msg--error { color: var(--danger); background: var(--danger-soft); border: 1px solid rgba(224, 49, 49, 0.18); }
+
+/* ===== 底部 ===== */
+.page-footer { padding: 8px 0 28px; text-align: center; }
+.page-footer span { font-size: 0.72rem; color: var(--text-4); }
+
 /* ===== 响应式 ===== */
-@media (max-width: 640px) {
-  .nav { padding: 0 24px; }
-  .nav-actions { gap: 8px; }
-  .nav-btn { padding: 6px 14px; font-size: 0.75rem; }
-  .admin-card { padding: 36px 24px; }
-  .operation-row { flex-direction: column; }
-  .operation-input { min-width: 100%; }
-  .operation-btns { width: 100%; }
+@media (max-width: 768px) {
+  .admin-body { padding: 84px 16px 40px; }
+  .nav-nickname { display: none; }
+  .op-row { flex-direction: column; align-items: stretch; }
+  .op-field { min-width: 100%; }
+  .op-btns { width: 100%; }
   .op-btn { flex: 1; text-align: center; }
 }
 </style>

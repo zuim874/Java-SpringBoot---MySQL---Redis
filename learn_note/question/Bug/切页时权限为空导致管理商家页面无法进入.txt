@@ -1,0 +1,56 @@
+2026.8.15
+
+========== 问题：
+各页面切换时，权限（角色）偶尔会变为空值，导致部分受保护页面无法进入。
+现象：登录管理员 / 商家账号后，在管理面板、商家面板之间快速切换页面时，
+      路由守卫把用户踢回首页（/home），控制台打印：
+          权限不足：需要角色 [ROLE_ADMIN]（或 [ROLE_SELLER, ROLE_ADMIN]），当前角色 []
+      即守卫拿到的角色列表为空，误判为"无权限"。
+
+========== 排查过程：
+1. 路由守卫逻辑（frontend/src/router/index.js beforeEach）：
+   - 进入带 requiredRoles 的页面（/admin/dashboard、/seller/products、/seller/dashboard）
+   - 调用 fetchUserRoles() 获取角色 -> 与 requiredRoles 比对
+   - 不匹配则 next({ name: 'Home' }) 踢回首页
+
+2. fetchUserRoles()（frontend/src/utils/auth.js）原本的获取链路：
+   fetchUserRoles() -> fetchUserInfo() -> getUserInfo() -> GET /api/user/me
+   - /api/user/me 后端标注 @RateLimit(window = 60, maxRequests = 3)（UserController.getCurrentUser）
+   - 快速切页时，每次导航都请求一次 /user/me，极易触发 60 秒内 3 次的限流
+   - 接口被限流 / 网络瞬时失败 / 返回异常时，fetchUserInfo() 返回 null
+   - 原实现随即返回 []（空数组），不做任何降级
+   => 角色为空 -> 守卫判定无权限 -> 踢回首页
+
+3. 前端其实已有本地角色缓存机制（auth.js 的 cacheRoles / getCachedRoles，
+   LoginView 登录成功后写入 localStorage['roles']），但 fetchUserRoles() 全程没用到它。
+
+========== 根因：
+fetchUserRoles() 把"后端角色接口失败"与"用户无权限"等同处理：
+后端一旦限流 / 请求失败就返回 []，路由守卫据此把有权限的用户踢出受保护页面。
+缺少"后端获取失败时回退到本地缓存"的降级逻辑。
+
+========== 解决方案：
+改造 fetchUserRoles()，增加两级降级（frontend/src/utils/auth.js）：
+1. 后端成功返回角色 -> 刷新本地缓存（cacheRoles）后返回
+2. 后端失败 / 字段为空 -> 依次降级：
+   a. 尝试从 JWT 中解析角色（payload.roles / payload.role）
+   b. 仍拿不到 -> 回退到本地缓存 getCachedRoles()
+   只有后端失败且本地缓存也为空时，才返回 []（此时才真正视为无权限）
+
+说明：前端守卫只是体验层，真正的权限校验由后端 @UserCheck 切面强制实施，
+回退到缓存不会带来安全问题——最坏情况是进入页面后由后端接口返回 403 兜底。
+
+========== 结果：
+- 快速切换管理 / 商家页面不再被误踢回首页
+- 后端 /user/me 被限流时，路由守卫能正确读取本地缓存的角色
+- 纯前端 JS 改动，无需重新编译后端
+
+========== 教训：
+1. 带限流的后端接口不能作为每次路由导航的前置依赖；
+   频繁切页会打满配额，应加缓存或本地降级。
+2. "权限获取失败"与"无权限"是两个概念，不能混为一谈——
+   失败时应降级（用缓存 / JWT），空列表只应在确认无权限时返回。
+3. 权限校验要分两层：前端守卫管"体验"（快速放行 + 缓存降级），
+   后端切面管"安全"（强制校验），前端不要做过度拦截。
+4. 排查思路：先在控制台确认守卫打印的当前角色为 []，再顺着
+   fetchUserRoles -> /user/me 限流 这条链路定位，而不是怀疑账号本身没权限。

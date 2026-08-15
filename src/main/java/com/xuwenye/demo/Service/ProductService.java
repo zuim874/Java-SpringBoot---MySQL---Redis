@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -150,13 +151,40 @@ public class ProductService {
         if (cached != null) {
             return cached;
         }
-        // 第 2 步：Redis 没有，查 MySQL
+        // 第 2 步：Redis 没有，查 MySQL（商品分类以逗号分隔存储，需拆分去重）
         List<String> categories = productMapper.findAllCategories();
+        List<String> result = splitAndDistinctCategories(categories);
         // 第 3 步：写入 Redis
-        if (categories != null && !categories.isEmpty()) {
-            redisUtil.set(ALL_CATEGORIES_CACHE_KEY, categories);
+        if (result != null && !result.isEmpty()) {
+            redisUtil.set(ALL_CATEGORIES_CACHE_KEY, result);
         }
-        return categories;
+        return result;
+    }
+
+    /**
+     * 将数据库中的分类串拆分、去重、排序
+     * 商品 category 字段可能为 "手机,数码" 等多分类（英文逗号分隔）
+     * <p>
+     * @author ZuiM
+     * @param categories 数据库查询出的原始分类列表
+     * @return List<String> 去重后的单个分类列表
+     */
+    private List<String> splitAndDistinctCategories(List<String> categories) {
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        if (categories != null) {
+            for (String c : categories) {
+                if (c == null) {
+                    continue;
+                }
+                for (String part : c.split(",")) {
+                    String t = part.trim();
+                    if (!t.isEmpty()) {
+                        set.add(t);
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(set);
     }
 
     /**

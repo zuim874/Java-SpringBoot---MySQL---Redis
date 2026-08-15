@@ -45,6 +45,10 @@ public class Coupon {
     /** 状态：0停用 1启用 */
     private Integer status;
 
+    /** 适用人群：1全部用户（普通券） 2仅VIP（VIP券，受众=VIP用户+VIP卖家） */
+    @TableField("target_type")
+    private Integer targetType;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 

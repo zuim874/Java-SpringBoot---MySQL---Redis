@@ -25,6 +25,7 @@ CREATE TABLE sys_coupon (
     total_count INT NOT NULL DEFAULT 0 COMMENT '发行总量',
     remain_count INT NOT NULL DEFAULT 0 COMMENT '剩余可发放数量',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0停用 1启用',
+    target_type TINYINT NOT NULL DEFAULT 1 COMMENT '适用人群：1全部用户（普通券） 2仅VIP（VIP券，受众=VIP用户+VIP卖家）',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_status (status) COMMENT '状态索引'
@@ -43,6 +44,7 @@ CREATE TABLE sys_user_coupon (
     type TINYINT NOT NULL COMMENT '优惠类型（快照）：1满减 2折扣',
     discount_value DECIMAL(10,2) NOT NULL COMMENT '优惠值（快照）',
     min_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '使用门槛（快照）',
+    target_type TINYINT NOT NULL DEFAULT 1 COMMENT '适用人群快照：1普通 2VIP专属',
     status TINYINT NOT NULL DEFAULT 0 COMMENT '状态：0未使用 1已使用 2已过期',
     expire_time DATETIME NOT NULL COMMENT '过期时间',
     receive_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '领取时间',
@@ -95,8 +97,8 @@ ALTER TABLE sys_product
 -- 6. 初始化优惠券模板示例数据
 -- 普通买家券：力度较小；会员买家券：力度更大
 -- =============================================
-INSERT IGNORE INTO sys_coupon (id, name, type, discount_value, min_amount, total_count, remain_count, status) VALUES
-(1, '新客满减券',            1, 5.00,  50,   10000, 10000, 1),
-(2, '普通用户折扣券',        2, 9.50,  100,  10000, 10000, 1),
-(3, '会员尊享满减券',        1, 30.00, 200,  5000,  5000,  1),
-(4, '会员尊享折扣券',        2, 8.50,  300,  5000,  5000,  1);
+INSERT IGNORE INTO sys_coupon (id, name, type, discount_value, min_amount, total_count, remain_count, status, target_type) VALUES
+(1, '新客满减券',            1, 5.00,  50,   10000, 10000, 1, 1),
+(2, '普通用户折扣券',        2, 9.50,  100,  10000, 10000, 1, 1),
+(3, '会员尊享满减券',        1, 30.00, 200,  5000,  5000,  1, 2),
+(4, '会员尊享折扣券',        2, 8.50,  300,  5000,  5000,  1, 2);

@@ -32,6 +32,8 @@ export async function fetchUserInfo() {
 
 /**
  * 从后端获取当前用户的角色列表
+ * 获取成功后刷新本地缓存；获取失败（网络异常 / 后端限流 / 字段为空）时降级使用缓存，
+ * 避免切页时权限判空导致受保护页面无法进入
  * @returns {Promise<string[]>} 角色数组，如 ['ROLE_USER', 'ROLE_SELLER']
  */
 export async function fetchUserRoles() {
@@ -39,27 +41,31 @@ export async function fetchUserRoles() {
   // 兼容两种返回：后端可能返回 roles 数组，也可能返回单字段 userRole（如 /user/me 返回 User 实体）
   const roleField = userInfo && (userInfo.roles || userInfo.userRole)
   if (roleField) {
-    if (Array.isArray(roleField)) {
-      return roleField
-    }
-    return [roleField]
+    const roles = Array.isArray(roleField) ? roleField : [roleField]
+    // 成功获取到角色，刷新本地缓存，避免每次切页都请求后端
+    cacheRoles(roles)
+    return roles
   }
-  // 降级：尝试从 JWT 中解析角色
+  // 后端获取失败或字段为空：降级尝试从 JWT 中解析角色
   const token = localStorage.getItem('token')
   if (token) {
     try {
       const payload = parseJWT(token)
       if (payload && payload.roles) {
-        return Array.isArray(payload.roles) ? payload.roles : [payload.roles]
+        const roles = Array.isArray(payload.roles) ? payload.roles : [payload.roles]
+        cacheRoles(roles)
+        return roles
       }
       if (payload && payload.role) {
+        cacheRoles([payload.role])
         return [payload.role]
       }
     } catch (e) {
       // 忽略解析错误
     }
   }
-  return []
+  // 最后降级：使用本地缓存（避免后端瞬时异常/限流导致权限判空、页面无法进入）
+  return getCachedRoles()
 }
 
 /**

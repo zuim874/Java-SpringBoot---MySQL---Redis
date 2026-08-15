@@ -4,14 +4,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuwenye.demo.Entity.Product;
 import com.xuwenye.demo.Entity.ProductImage;
 import com.xuwenye.demo.Entity.Seller;
+import com.xuwenye.demo.Entity.User;
 import com.xuwenye.demo.Service.FileStorageService;
 import com.xuwenye.demo.Service.ProductService;
 import com.xuwenye.demo.Service.SellerService;
-import com.xuwenye.demo.Service.UserService;
 import com.xuwenye.demo.annotation.OperationLog;
 import com.xuwenye.demo.annotation.RateLimit;
+import com.xuwenye.demo.annotation.UserCheck;
 import com.xuwenye.demo.common.Result;
-import com.xuwenye.demo.util.auth.JwtUtil;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -36,19 +36,13 @@ public class ProductController {
     private final ProductService productService;
     private final SellerService sellerService;
     private final FileStorageService fileStorageService;
-    private final UserService userService;
-    private final JwtUtil jwtUtil;
 
     public ProductController(ProductService productService,
                               SellerService sellerService,
-                              FileStorageService fileStorageService,
-                              UserService userService,
-                              JwtUtil jwtUtil) {
+                              FileStorageService fileStorageService) {
         this.productService = productService;
         this.sellerService = sellerService;
         this.fileStorageService = fileStorageService;
-        this.userService = userService;
-        this.jwtUtil = jwtUtil;
     }
 
     // ======================== 公开接口（无需登录） ========================
@@ -206,27 +200,22 @@ public class ProductController {
 
     /**
      * 新增商品
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.保存商品（含分布式锁保护的缓存更新）
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param product 商品实体
      * @return Result 200 新增成功
      */
     @OperationLog("新增商品")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PostMapping("/admin/add")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> addProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestBody Product product
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         boolean success = productService.saveProduct(product);
         if (success) {
             return Result.ok("商品新增成功");
@@ -236,29 +225,24 @@ public class ProductController {
 
     /**
      * 更新商品信息
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.更新商品信息
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @param product 商品实体（更新字段）
      * @return Result 200 更新成功
      */
     @OperationLog("更新商品")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PutMapping("/admin/update/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> updateProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id,
             @RequestBody Product product
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         product.setId(id);
         boolean success = productService.updateProduct(product);
         if (success) {
@@ -269,27 +253,22 @@ public class ProductController {
 
     /**
      * 逻辑删除商品
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.逻辑删除商品
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @return Result 200 删除成功
      */
     @OperationLog("删除商品")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @DeleteMapping("/admin/delete/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> deleteProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         boolean success = productService.deleteProduct(id);
         if (success) {
             return Result.ok("商品删除成功");
@@ -299,27 +278,22 @@ public class ProductController {
 
     /**
      * 上架商品
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.上架商品（status=1）
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @return Result 200 上架成功
      */
     @OperationLog("商品上架")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PutMapping("/admin/onshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> onShelfProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         boolean success = productService.onShelfProduct(id);
         if (success) {
             return Result.ok("商品上架成功");
@@ -329,27 +303,22 @@ public class ProductController {
 
     /**
      * 下架商品
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.下架商品（status=0）
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @return Result 200 下架成功
      */
     @OperationLog("商品下架")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PutMapping("/admin/offshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> offShelfProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         boolean success = productService.offShelfProduct(id);
         if (success) {
             return Result.ok("商品下架成功");
@@ -359,28 +328,23 @@ public class ProductController {
 
     /**
      * 扣减商品库存（分布式锁保护）
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.使用分布式锁保护库存扣减操作
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @param quantity 扣减数量
      * @return Result 200 扣减成功
      */
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PutMapping("/admin/deduct-stock/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "库存操作过于频繁，请稍后再试")
     public Result<?> deductStock(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id,
             @RequestParam @Min(1) int quantity
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         boolean success = productService.deductStock(id, quantity);
         if (success) {
             return Result.ok("库存扣减成功");
@@ -390,33 +354,28 @@ public class ProductController {
 
     /**
      * 上传商品图片
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.上传图片到服务器
      * 3.保存图片记录到数据库
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param productId 商品ID
      * @param file 上传的图片文件
      * @param isMain 是否为主图（0否 1是）
      * @param sort 排序号
      * @return Result 200 上传成功
      */
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PostMapping("/admin/upload-image")
     @RateLimit(window = 60, maxRequests = 5, message = "图片上传过于频繁，请稍后再试")
     public Result<?> uploadProductImage(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestParam @Min(1) Long productId,
             @RequestParam("file") MultipartFile file,
             @RequestParam(defaultValue = "0") int isMain,
             @RequestParam(defaultValue = "0") int sort
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         // 保存图片文件
         String imageUrl = fileStorageService.storeProductImage(file);
 
@@ -436,28 +395,23 @@ public class ProductController {
 
     /**
      * 删除商品图片
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.删除图片文件和数据库记录
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param imageId 图片ID
      * @param productId 商品ID
      * @return Result 200 删除成功
      */
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @DeleteMapping("/admin/delete-image")
     @RateLimit(window = 60, maxRequests = 5, message = "图片操作过于频繁，请稍后再试")
     public Result<?> deleteProductImage(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestParam @Min(1) Long imageId,
             @RequestParam @Min(1) Long productId
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         // 获取图片信息
         List<ProductImage> images = productService.getProductImages(productId);
         ProductImage targetImage = null;
@@ -484,27 +438,22 @@ public class ProductController {
 
     /**
      * 新增卖家
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.保存卖家信息
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param seller 卖家实体
      * @return Result 200 新增成功
      */
     @OperationLog("新增卖家")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PostMapping("/admin/seller/add")
     @RateLimit(window = 60, maxRequests = 5, message = "卖家操作过于频繁，请稍后再试")
     public Result<?> addSeller(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestBody Seller seller
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         boolean success = sellerService.saveSeller(seller);
         if (success) {
             return Result.ok("卖家新增成功");
@@ -514,29 +463,24 @@ public class ProductController {
 
     /**
      * 更新卖家信息
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.更新卖家信息
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 卖家ID
      * @param seller 卖家实体（更新字段）
      * @return Result 200 更新成功
      */
     @OperationLog("更新卖家")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @PutMapping("/admin/seller/update/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "卖家操作过于频繁，请稍后再试")
     public Result<?> updateSeller(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id,
             @RequestBody Seller seller
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         seller.setId(id);
         boolean success = sellerService.updateSeller(seller);
         if (success) {
@@ -547,27 +491,22 @@ public class ProductController {
 
     /**
      * 删除卖家
-     * 1.校验管理员权限
+     * 1.@UserCheck 切面校验管理员权限
      * 2.逻辑删除卖家
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 卖家ID
      * @return Result 200 删除成功
      */
     @OperationLog("删除卖家")
+    @UserCheck(roles = {"ROLE_ADMIN"}, roleErrorMessage = "权限不足，仅管理员可操作")
     @DeleteMapping("/admin/seller/delete/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "卖家操作过于频繁，请稍后再试")
     public Result<?> deleteSeller(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id
     ) {
-        // 权限校验
-        String username = validateAdmin(token);
-        if (username == null) {
-            return Result.error(403, "权限不足，仅管理员可操作");
-        }
-
         boolean success = sellerService.deleteSeller(id);
         if (success) {
             return Result.ok("卖家删除成功");
@@ -579,23 +518,24 @@ public class ProductController {
 
     /**
      * 商家查看自己的商品列表（分页）
-     * 1.校验商家身份（userRole 包含 SELLER）
+     * 1.@UserCheck 切面校验商家身份
      * 2.返回该卖家的商品列表（分页）
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param page 页码
      * @param size 每页条数
      * @return Result 分页商品列表
      */
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
     @GetMapping("/seller/products")
     @RateLimit(window = 60, maxRequests = 20, message = "商品列表请求过于频繁，请稍后再试")
     public Result<?> getSellerProducts(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        // 校验商家身份
-        Long sellerId = validateSeller(token);
+        // 解析当前商家的卖家ID
+        Long sellerId = resolveSellerId(currentUser);
         if (sellerId == null) {
             return Result.error(403, "权限不足，仅商家可操作");
         }
@@ -606,23 +546,24 @@ public class ProductController {
 
     /**
      * 商家新增商品
-     * 1.校验商家身份
+     * 1.@UserCheck 切面校验商家身份
      * 2.设置 sellerId 为当前商家
      * 3.保存商品
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param product 商品实体
-     * @return Result 200 新增成功
+     * @return Result 200 返回新商品（含自增ID，供后续上传主图/细节图使用）
      */
     @OperationLog("商家新增商品")
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
     @PostMapping("/seller/add")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> addSellerProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @RequestBody Product product) {
-        // 校验商家身份
-        Long sellerId = validateSeller(token);
+        // 解析当前商家的卖家ID
+        Long sellerId = resolveSellerId(currentUser);
         if (sellerId == null) {
             return Result.error(403, "权限不足，仅商家可操作");
         }
@@ -636,32 +577,33 @@ public class ProductController {
 
         boolean success = productService.saveProduct(product);
         if (success) {
-            return Result.ok("商品新增成功");
+            return Result.ok(product);
         }
         return Result.error(400, "商品新增失败");
     }
 
     /**
      * 商家更新商品
-     * 1.校验商家身份
+     * 1.@UserCheck 切面校验商家身份
      * 2.校验商品归属
      * 3.更新商品信息
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @param product 商品更新信息
      * @return Result 200 更新成功
      */
     @OperationLog("商家更新商品")
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
     @PutMapping("/seller/update/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> updateSellerProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id,
             @RequestBody Product product) {
-        // 校验商家身份
-        Long sellerId = validateSeller(token);
+        // 解析当前商家的卖家ID
+        Long sellerId = resolveSellerId(currentUser);
         if (sellerId == null) {
             return Result.error(403, "权限不足，仅商家可操作");
         }
@@ -685,24 +627,140 @@ public class ProductController {
     }
 
     /**
+     * 商家上传商品图片（主图/细节图）
+     * 1.@UserCheck 切面校验商家身份
+     * 2.校验商品归属
+     * 3.保存图片记录；主图同步更新 sys_product.main_image_url 冗余字段
+     * <p>
+     * @author ZuiM
+     * @param currentUser 当前登录用户（切面注入）
+     * @param productId 商品ID
+     * @param file 上传的图片文件
+     * @param isMain 是否主图（0细节图 1主图）
+     * @param sort 排序号（细节图排序）
+     * @return Result 200 返回图片访问URL
+     */
+    @OperationLog("商家上传商品图片")
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
+    @PostMapping("/seller/upload-image")
+    @RateLimit(window = 60, maxRequests = 10, message = "图片上传过于频繁，请稍后再试")
+    public Result<?> uploadSellerProductImage(
+            User currentUser,
+            @RequestParam @Min(1) Long productId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(defaultValue = "0") int isMain,
+            @RequestParam(defaultValue = "0") int sort
+    ) {
+        // 校验商品归属
+        Product existing = productService.getProductById(productId);
+        if (existing == null) {
+            return Result.error(400, "商品不存在");
+        }
+        Long sellerId = resolveSellerId(currentUser);
+        if (sellerId == null || !existing.getSellerId().equals(sellerId)) {
+            return Result.error(403, "无权操作其他商家的商品");
+        }
+
+        // 保存图片文件
+        String imageUrl = fileStorageService.storeProductImage(file);
+
+        // 保存图片记录
+        ProductImage productImage = new ProductImage();
+        productImage.setProductId(productId);
+        productImage.setImageUrl(imageUrl);
+        productImage.setIsMain(isMain);
+        productImage.setSort(sort);
+
+        boolean success = productService.addProductImage(productImage);
+        if (!success) {
+            return Result.error(400, "图片保存失败");
+        }
+
+        // 主图同步更新商品冗余字段（并触发详情缓存刷新）
+        if (isMain == 1) {
+            Product update = new Product();
+            update.setId(productId);
+            update.setMainImageUrl(imageUrl);
+            productService.updateProduct(update);
+        }
+
+        return Result.ok(imageUrl);
+    }
+
+    /**
+     * 商家删除商品图片
+     * 1.@UserCheck 切面校验商家身份
+     * 2.校验商品归属
+     * 3.删除图片记录和物理文件
+     * <p>
+     * @author ZuiM
+     * @param currentUser 当前登录用户（切面注入）
+     * @param imageId 图片ID
+     * @param productId 商品ID
+     * @return Result 200 删除成功
+     */
+    @OperationLog("商家删除商品图片")
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
+    @DeleteMapping("/seller/delete-image")
+    @RateLimit(window = 60, maxRequests = 10, message = "图片操作过于频繁，请稍后再试")
+    public Result<?> deleteSellerProductImage(
+            User currentUser,
+            @RequestParam @Min(1) Long imageId,
+            @RequestParam @Min(1) Long productId
+    ) {
+        // 校验商品归属
+        Product existing = productService.getProductById(productId);
+        if (existing == null) {
+            return Result.error(400, "商品不存在");
+        }
+        Long sellerId = resolveSellerId(currentUser);
+        if (sellerId == null || !existing.getSellerId().equals(sellerId)) {
+            return Result.error(403, "无权操作其他商家的商品");
+        }
+
+        // 获取图片信息
+        List<ProductImage> images = productService.getProductImages(productId);
+        ProductImage targetImage = null;
+        for (ProductImage img : images) {
+            if (img.getId().equals(imageId)) {
+                targetImage = img;
+                break;
+            }
+        }
+        if (targetImage == null) {
+            return Result.error(400, "图片不存在");
+        }
+
+        // 删除数据库记录
+        boolean success = productService.deleteProductImage(imageId, productId);
+        if (success) {
+            // 删除物理文件
+            fileStorageService.deleteProductImage(targetImage.getImageUrl());
+            return Result.ok("图片删除成功");
+        }
+        return Result.error(400, "图片删除失败");
+    }
+
+    /**
      * 商家上架商品
-     * 1.校验商家身份
+     * 1.@UserCheck 切面校验商家身份
      * 2.校验商品归属
      * 3.上架商品
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @return Result 200 上架成功
      */
     @OperationLog("商家上架商品")
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
     @PutMapping("/seller/onshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> onShelfSellerProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id) {
-        // 校验商家身份
-        Long sellerId = validateSeller(token);
+        // 解析当前商家的卖家ID
+        Long sellerId = resolveSellerId(currentUser);
         if (sellerId == null) {
             return Result.error(403, "权限不足，仅商家可操作");
         }
@@ -725,23 +783,24 @@ public class ProductController {
 
     /**
      * 商家下架商品
-     * 1.校验商家身份
+     * 1.@UserCheck 切面校验商家身份
      * 2.校验商品归属
      * 3.下架商品
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @return Result 200 下架成功
      */
     @OperationLog("商家下架商品")
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
     @PutMapping("/seller/offshelf/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> offShelfSellerProduct(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id) {
-        // 校验商家身份
-        Long sellerId = validateSeller(token);
+        // 解析当前商家的卖家ID
+        Long sellerId = resolveSellerId(currentUser);
         if (sellerId == null) {
             return Result.error(403, "权限不足，仅商家可操作");
         }
@@ -764,26 +823,27 @@ public class ProductController {
 
     /**
      * 商家设置商品为推荐/取消推荐（会员卖家权益，商城置顶曝光）
-     * 1.校验商家身份
+     * 1.@UserCheck 切面校验商家身份
      * 2.校验商品归属
      * 3.校验是否为会员卖家（ROLE_VIP_SELLER）
      * 4.设置推荐位
      * <p>
      * @author ZuiM
-     * @param token 登录令牌
+     * @param currentUser 当前登录用户（切面注入）
      * @param id 商品ID
      * @param recommend 1推荐 0取消
      * @return Result 200 操作成功
      */
     @OperationLog("商家设置商品推荐位")
+    @UserCheck(roles = {"ROLE_SELLER", "ROLE_VIP_SELLER"}, roleErrorMessage = "权限不足，仅商家可操作")
     @PutMapping("/seller/recommend/{id}")
     @RateLimit(window = 60, maxRequests = 5, message = "商品操作过于频繁，请稍后再试")
     public Result<?> setSellerRecommend(
-            @RequestHeader("Authorization") String token,
+            User currentUser,
             @PathVariable @Min(1) Long id,
             @RequestParam int recommend) {
-        // 校验商家身份
-        Long sellerId = validateSeller(token);
+        // 解析当前商家的卖家ID
+        Long sellerId = resolveSellerId(currentUser);
         if (sellerId == null) {
             return Result.error(403, "权限不足，仅商家可操作");
         }
@@ -795,8 +855,8 @@ public class ProductController {
         if (!existing.getSellerId().equals(sellerId)) {
             return Result.error(403, "无权操作其他商家的商品");
         }
-        // 校验会员卖家身份
-        if (!isVipSeller(token)) {
+        // 校验会员卖家身份（ROLE_VIP_SELLER）
+        if (currentUser.getUserRole() == null || !currentUser.getUserRole().contains("VIP_SELLER")) {
             return Result.error(403, "推荐位为会员卖家专属权益，请先升级为会员卖家");
         }
         boolean success = productService.setRecommend(id, recommend);
@@ -806,89 +866,22 @@ public class ProductController {
         return Result.error(400, "操作失败");
     }
 
-    /**
-     * 校验商家是否为会员卖家（ROLE_VIP_SELLER）
-     * <p>
-     * @author ZuiM
-     * @param token 登录令牌
-     * @return boolean true=会员卖家
-     */
-    private boolean isVipSeller(String token) {
-        String username = jwtUtil.parseUsername(token.substring(7));
-        com.xuwenye.demo.Entity.User user = userService.findAllUser(username);
-        return user != null && user.getUserRole() != null && user.getUserRole().contains("VIP_SELLER");
-    }
-
     // ======================== 内部工具方法 ========================
 
     /**
-     * 校验管理员权限
-     * 1.校验 token 有效性
-     * 2.校验用户角色为 ROLE_ADMIN
+     * 根据登录用户名解析卖家ID（卖家账号的用户名 = 卖家名称）
+     * 登录态与 SELLER 角色校验已由 @UserCheck 切面完成，此处仅做卖家归属解析
      * <p>
      * @author ZuiM
-     * @param token 登录令牌（Bearer xxx）
-     * @return String 用户名（null表示校验失败）
+     * @param currentUser 当前登录用户（切面注入）
+     * @return Long 卖家ID（null=无对应卖家）
      */
-    private String validateAdmin(String token) {
-        // 校验 token
-        if (token == null || !token.startsWith("Bearer ")) {
+    private Long resolveSellerId(User currentUser) {
+        if (currentUser == null) {
             return null;
         }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return null;
-        }
-        // 解析用户名
-        String username = jwtUtil.parseUsername(realToken);
-        // 权限校验：仅管理员可操作
-        if (!userService.isAdmin(username)) {
-            return null;
-        }
-        return username;
-    }
-
-    /**
-     * 校验商家身份
-     * 1.校验 token 有效性
-     * 2.校验用户角色包含 SELLER
-     * 3.返回 sellerId（用于后续商品归属校验）
-     * <p>
-     * @author ZuiM
-     * @param token 登录令牌（Bearer xxx）
-     * @return Long sellerId（null表示校验失败）
-     */
-    private Long validateSeller(String token) {
-        // 校验 token
-        if (token == null || !token.startsWith("Bearer ")) {
-            return null;
-        }
-        String realToken = token.substring(7);
-        if (!jwtUtil.validate(realToken)) {
-            return null;
-        }
-        // 解析用户名
-        String username = jwtUtil.parseUsername(realToken);
-        // 查询用户信息
-        com.xuwenye.demo.Entity.User user = userService.findAllUser(username);
-        if (user == null) {
-            return null;
-        }
-        // 校验角色是否包含 SELLER
-        String userRole = user.getUserRole();
-        if (userRole == null || !userRole.contains("SELLER")) {
-            return null;
-        }
-        // 获取该用户关联的卖家ID
-        // 此处通过 SellerMapper 查询用户对应的卖家
-        // 由于用户和卖家目前没有直接关联字段，使用用户的用户名作为卖家名称查询
-        // 实际项目中可以通过 user_seller 关联表实现
-        com.xuwenye.demo.Entity.Seller seller = sellerService.getSellerBySellerName(username);
-        if (seller == null) {
-            // 如果找不到卖家，返回 0 表示无法操作
-            return 0L;
-        }
-        return seller.getId();
+        Seller seller = sellerService.getSellerBySellerName(currentUser.getUsername());
+        return seller == null ? null : seller.getId();
     }
 
     /**

@@ -53,7 +53,20 @@ api.interceptors.response.use(
         localStorage.removeItem('role')
         window.location.href = '/login'
       }
+      // 后端返回了非200状态码，但已经是JSON格式的错误
+      // 尝试提取错误信息
+      if (error.response.data) {
+        const data = error.response.data
+        const msg = data.mes || data.message || ('请求失败 (HTTP ' + status + ')')
+        return Promise.reject(new Error(msg))
+      }
+      return Promise.reject(new Error('服务异常 (HTTP ' + status + ')'))
+    } else if (error.request) {
+      // 请求已发出但未收到响应（后端未启动/网络中断）
+      console.error('后端服务不可达:', error.message)
+      return Promise.reject(new Error('后端服务连接失败，请检查服务是否已启动'))
     }
+    // 其他错误
     return Promise.reject(error)
   }
 )
@@ -208,8 +221,10 @@ export function getAdminUsers(page = 1, size = 10) {
  * @param {number|string} id - 用户ID
  * @returns {Promise}
  */
-export function toggleUserStatus(id) {
-  return api.put(`/admin/user/status/${id}`)
+export function toggleUserStatus(id, status) {
+  // 如果调用方未传status，默认传1（启用）
+  const s = status !== undefined ? status : 1
+  return api.put(`/admin/user/status/${id}`, null, { params: { status: s } })
 }
 
 /**
@@ -404,6 +419,32 @@ export function updateSellerProduct(id, productData) {
 }
 
 /**
+ * 商家上传商品图片（主图/细节图）
+ * @param {number|string} productId - 商品ID
+ * @param {File} file - 图片文件
+ * @param {number} isMain - 是否主图（0细节图 1主图）
+ * @param {number} sort - 排序号（细节图排序）
+ * @returns {Promise}
+ */
+export function uploadSellerProductImage(productId, file, isMain = 0, sort = 0) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/product/seller/upload-image', formData, {
+    params: { productId, isMain, sort }
+  })
+}
+
+/**
+ * 商家删除商品图片
+ * @param {number|string} imageId - 图片ID
+ * @param {number|string} productId - 商品ID
+ * @returns {Promise}
+ */
+export function deleteSellerProductImage(imageId, productId) {
+  return api.delete('/product/seller/delete-image', { params: { imageId, productId } })
+}
+
+/**
  * 商家上架商品
  * @param {number|string} id - 商品ID
  * @returns {Promise}
@@ -487,6 +528,35 @@ export function adminGrantCoupon(userId, couponId, expireDays = 30) {
  */
 export function adminGrantCouponAllVip(couponId, expireDays = 30) {
   return api.post('/coupon/admin/grant-all-vip', null, { params: { couponId, expireDays } })
+}
+
+/**
+ * 管理员向全部注册用户批量发放优惠券
+ * @param {number} couponId
+ * @param {number} expireDays
+ * @returns {Promise}
+ */
+export function adminGrantCouponAllUsers(couponId, expireDays = 30) {
+  return api.post('/coupon/admin/grant-all-users', null, { params: { couponId, expireDays } })
+}
+
+// ==================== 领券中心（用户自助领取） API ====================
+
+/**
+ * 获取可领取的优惠券模板列表（公开）
+ * @returns {Promise<{code, mes, data: Coupon[]}>}
+ */
+export function getClaimableCoupons() {
+  return api.get('/coupon/user/templates')
+}
+
+/**
+ * 用户自助领取优惠券
+ * @param {number} couponId - 优惠券模板ID
+ * @returns {Promise}
+ */
+export function claimCoupon(couponId) {
+  return api.post('/coupon/user/claim', null, { params: { couponId } })
 }
 
 // ==================== 买家聊天 API ====================
@@ -662,6 +732,249 @@ export function setUserVip(id, enable) {
  */
 export function setSellerVip(id, enable) {
   return api.put(`/admin/seller/vip/${id}`, null, { params: { enable } })
+}
+
+// ==================== 用户资料管理 API ====================
+
+/**
+ * 更新用户昵称
+ * @param {string} nickname - 新昵称
+ * @returns {Promise}
+ */
+export function updateUserProfile(nickname) {
+  const params = new URLSearchParams()
+  params.append('nickname', nickname)
+  return api.put('/user/update_profile', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 修改密码
+ * @param {string} oldPassword - 旧密码
+ * @param {string} newPassword - 新密码
+ * @param {string} newPasswordCheck - 确认新密码
+ * @returns {Promise}
+ */
+export function changePassword(oldPassword, newPassword, newPasswordCheck) {
+  const params = new URLSearchParams()
+  params.append('oldPassword', oldPassword)
+  params.append('newPassword', newPassword)
+  params.append('newPassword_check', newPasswordCheck)
+  return api.post('/user/change_password', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 换绑邮箱
+ * @param {string} oldEmail - 当前绑定邮箱
+ * @param {string} oldEmailCode - 旧邮箱验证码
+ * @param {string} newEmail - 新邮箱
+ * @param {string} newEmailCode - 新邮箱验证码
+ * @returns {Promise}
+ */
+export function changeEmail(oldEmail, oldEmailCode, newEmail, newEmailCode) {
+  const params = new URLSearchParams()
+  params.append('oldEmail', oldEmail)
+  params.append('oldEmail_code', oldEmailCode)
+  params.append('newEmail', newEmail)
+  params.append('newEmail_code', newEmailCode)
+  return api.put('/user/change_email', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 发送换绑邮箱验证码
+ * @param {string} email - 目标邮箱
+ * @param {number} type - 3=旧邮箱验证 4=新邮箱验证
+ * @returns {Promise}
+ */
+export function sendChangeEmailCode(email, type) {
+  const params = new URLSearchParams()
+  params.append('email', email)
+  params.append('type', type)
+  return api.post('/user/send-changeEmail', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 发送账号注销验证码
+ * @param {string} email - 绑定邮箱
+ * @returns {Promise}
+ */
+export function sendDeleteCode(email) {
+  const params = new URLSearchParams()
+  params.append('email', email)
+  return api.post('/user/send-deletecode', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 用户注销账号（逻辑删除）
+ * @param {string} email - 绑定邮箱
+ * @param {string} code - 验证码
+ * @returns {Promise}
+ */
+export function deleteSelfAccount(email, code) {
+  const params = new URLSearchParams()
+  params.append('email', email)
+  params.append('code', code)
+  return api.delete('/user/delete_user', {
+    data: params,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 发送账号恢复验证码
+ * @param {string} username - 用户名
+ * @param {string} email - 绑定邮箱
+ * @returns {Promise}
+ */
+export function sendRecoverCode(username, email) {
+  const params = new URLSearchParams()
+  params.append('username', username)
+  params.append('email', email)
+  return api.post('/user/send-recovercode', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 用户恢复账号
+ * @param {string} username - 用户名
+ * @param {string} email - 绑定邮箱
+ * @param {string} code - 验证码
+ * @returns {Promise}
+ */
+export function recoverUserAccount(username, email, code) {
+  const params = new URLSearchParams()
+  params.append('username', username)
+  params.append('email', email)
+  params.append('code', code)
+  return api.put('/user/recover_user', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
+}
+
+/**
+ * 上传头像（multipart/form-data）
+ * @param {File} file - 图片文件
+ * @returns {Promise}
+ */
+export function uploadAvatar(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/user/avatar', formData)
+}
+
+// ==================== 管理员商品管理 API ====================
+
+/**
+ * 管理员新增商品
+ * @param {object} product - 商品数据
+ * @returns {Promise}
+ */
+export function adminAddProduct(product) {
+  return api.post('/product/admin/add', product)
+}
+
+/**
+ * 管理员更新商品
+ * @param {number} id - 商品ID
+ * @param {object} product - 商品数据
+ * @returns {Promise}
+ */
+export function adminUpdateProduct(id, product) {
+  return api.put(`/product/admin/update/${id}`, product)
+}
+
+/**
+ * 管理员删除商品
+ * @param {number} id - 商品ID
+ * @returns {Promise}
+ */
+export function adminDeleteProduct(id) {
+  return api.delete(`/product/admin/delete/${id}`)
+}
+
+/**
+ * 管理员上架商品
+ * @param {number} id - 商品ID
+ * @returns {Promise}
+ */
+export function adminOnshelfProduct(id) {
+  return api.put(`/product/admin/onshelf/${id}`)
+}
+
+/**
+ * 管理员下架商品
+ * @param {number} id - 商品ID
+ * @returns {Promise}
+ */
+export function adminOffshelfProduct(id) {
+  return api.put(`/product/admin/offshelf/${id}`)
+}
+
+// ==================== 管理员卖家管理 API ====================
+
+/**
+ * 管理员新增卖家
+ * @param {object} seller - 卖家数据
+ * @returns {Promise}
+ */
+export function adminAddSeller(seller) {
+  return api.post('/product/admin/seller/add', seller)
+}
+
+/**
+ * 管理员更新卖家
+ * @param {number} id - 卖家ID
+ * @param {object} seller - 卖家数据
+ * @returns {Promise}
+ */
+export function adminUpdateSeller(id, seller) {
+  return api.put(`/product/admin/seller/update/${id}`, seller)
+}
+
+/**
+ * 管理员删除卖家
+ * @param {number} id - 卖家ID
+ * @returns {Promise}
+ */
+export function adminDeleteSeller(id) {
+  return api.delete(`/product/admin/seller/delete/${id}`)
+}
+
+// ==================== 公开查询 API ====================
+
+/**
+ * 获取所有上架商品列表（不分页）
+ * @returns {Promise}
+ */
+export function getAllProducts() {
+  return api.get('/product/list')
+}
+
+/**
+ * 获取所有卖家列表
+ * @returns {Promise}
+ */
+export function getAllSellers() {
+  return api.get('/product/sellers')
+}
+
+/**
+ * 获取卖家详情
+ * @param {number} id - 卖家ID
+ * @returns {Promise}
+ */
+export function getSellerDetail(id) {
+  return api.get(`/product/seller/${id}`)
 }
 
 export default api

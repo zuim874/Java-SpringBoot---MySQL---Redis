@@ -52,4 +52,16 @@ public interface UserCouponMapper extends BaseMapper<UserCoupon> {
     @Update("UPDATE sys_user_coupon SET status = 1, use_time = NOW(), order_id = #{orderId} " +
             "WHERE id = #{id} AND user_id = #{userId} AND status = 0 AND expire_time > NOW()")
     int markUsed(@Param("id") Long id, @Param("userId") Long userId, @Param("orderId") Long orderId);
+
+    /**
+     * 统计用户已领取指定模板的张数
+     * 用于限制同一用户对同一模板的重复自助领取
+     * <p>
+     * @author ZuiM
+     * @param userId 用户ID
+     * @param couponId 优惠券模板ID
+     * @return int 已领取张数
+     */
+    @Select("SELECT COUNT(*) FROM sys_user_coupon WHERE user_id = #{userId} AND coupon_id = #{couponId}")
+    int countByUserAndCoupon(@Param("userId") Long userId, @Param("couponId") Long couponId);
 }

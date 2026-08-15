@@ -1,64 +1,88 @@
 <template>
-  <div class="recover-page">
-    <!-- 背景装饰 -->
-    <div class="bg-shapes">
-      <div class="bg-circle bg-circle--1"></div>
-      <div class="bg-circle bg-circle--2"></div>
-      <div class="bg-circle bg-circle--3"></div>
-    </div>
+  <div class="auth-page">
+    <!-- ===== 左侧品牌展示区（电商氛围） ===== -->
+    <aside class="auth-aside">
+      <div class="aside-decor" aria-hidden="true">
+        <span class="decor-circle c1"></span>
+        <span class="decor-circle c2"></span>
+        <span class="decor-circle c3"></span>
+        <span class="decor-ring"></span>
+      </div>
 
-    <!-- 导航条 -->
-    <nav class="nav">
-      <div class="nav-logo">ZuiMShop</div>
-      <div class="nav-slogan">恢复账号</div>
-    </nav>
+      <div class="aside-content">
+        <div class="aside-logo">ZuiM<span>Shop</span></div>
+        <h1 class="aside-title">账号安全，<br />由我们守护</h1>
+        <p class="aside-sub">通过注册邮箱验证身份，找回你的购物账号<br />正品严选 · 极速发货 · 七天无理由退换</p>
 
-    <!-- 恢复卡片 -->
-    <div class="recover-wrapper">
-      <div class="recover-card">
-        <div class="recover-header">
-          <div class="recover-icon">🔄</div>
-          <h2 class="recover-title">恢复账号</h2>
-          <p class="recover-desc">验证身份后即可恢复您的账号</p>
+        <!-- 安全提示卡（纯装饰） -->
+        <div class="aside-tips" aria-hidden="true">
+          <div class="tip-card tc-1">
+            <span class="tc-icon">🔑</span>
+            <div class="tc-body">
+              <p class="tc-title">邮箱验证</p>
+              <p class="tc-sub">仅需 3 步即可完成</p>
+            </div>
+          </div>
+          <div class="tip-card tc-2">
+            <span class="tc-icon">🔒</span>
+            <div class="tc-body">
+              <p class="tc-title">信息加密</p>
+              <p class="tc-sub">全程加密传输</p>
+            </div>
+          </div>
+          <div class="tip-card tc-3">
+            <span class="tc-icon">🛡️</span>
+            <div class="tc-body">
+              <p class="tc-title">安全护航</p>
+              <p class="tc-sub">保护你的购物资产</p>
+            </div>
+          </div>
         </div>
 
-        <form @submit.prevent="handleRecover" class="recover-form">
+        <!-- 服务保障 -->
+        <ul class="aside-benefits">
+          <li><span class="benefit-dot">🛡️</span>正品保障 · 假一赔十</li>
+          <li><span class="benefit-dot">🚚</span>满 ¥99 免运费 · 极速发货</li>
+          <li><span class="benefit-dot">↩️</span>七天无理由退换货</li>
+        </ul>
+      </div>
+
+      <p class="aside-copyright">© 2026 ZuiMShop 优选商城</p>
+    </aside>
+
+    <!-- ===== 右侧表单区 ===== -->
+    <main class="auth-main">
+      <div class="auth-mobile-logo">ZuiM<span>Shop</span></div>
+
+      <div class="auth-card">
+        <div class="auth-header">
+          <span class="auth-eyebrow">ACCOUNT RECOVERY</span>
+          <h2 class="auth-title">找回账号</h2>
+          <p class="auth-desc">通过注册邮箱验证身份，安全找回你的账号</p>
+        </div>
+
+        <form @submit.prevent="handleRecover" class="auth-form">
           <div class="form-group">
-            <label>用户名</label>
+            <label for="username">用户名</label>
             <div class="input-wrap">
               <span class="input-icon">👤</span>
-              <input
-                v-model="username"
-                type="text"
-                placeholder="请输入用户名"
-                required
-              />
+              <input id="username" v-model="username" type="text" placeholder="请输入用户名" autocomplete="username" required />
             </div>
           </div>
 
           <div class="form-group">
-            <label>邮箱</label>
+            <label for="email">注册邮箱</label>
             <div class="input-wrap">
               <span class="input-icon">📧</span>
-              <input
-                v-model="email"
-                type="email"
-                placeholder="请输入注册邮箱"
-                required
-              />
+              <input id="email" v-model="email" type="email" placeholder="请输入注册邮箱" autocomplete="email" required />
             </div>
           </div>
 
           <div class="form-group">
-            <label>验证码</label>
+            <label for="code">验证码</label>
             <div class="input-wrap code-wrap">
               <span class="input-icon">🔑</span>
-              <input
-                v-model="code"
-                type="text"
-                placeholder="请输入验证码"
-                required
-              />
+              <input id="code" v-model="code" type="text" placeholder="请输入验证码" maxlength="6" required />
               <button
                 type="button"
                 class="send-code-btn"
@@ -72,27 +96,24 @@
             </div>
           </div>
 
-          <button type="submit" class="recover-btn" :disabled="loading">
+          <button type="submit" class="auth-btn" :disabled="loading">
             <span v-if="loading" class="btn-loading"></span>
-            <span v-else>恢复账号</span>
+            <template v-else>找回账号</template>
           </button>
         </form>
-
-        <div class="login-link">
-          <span>已有账号？</span>
-          <router-link to="/login">立即登录</router-link>
-        </div>
 
         <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">
           {{ message }}
         </p>
-      </div>
-    </div>
 
-    <!-- 底部版权 -->
-    <div class="recover-footer">
-      <span>© 2026 ZuiMShop. All rights reserved.</span>
-    </div>
+        <div class="auth-switch">
+          <span>已想起密码？</span>
+          <router-link to="/login">立即登录 →</router-link>
+        </div>
+      </div>
+
+      <p class="auth-mobile-copyright">© 2026 ZuiMShop 优选商城</p>
+    </main>
   </div>
 </template>
 
@@ -187,313 +208,347 @@ async function handleRecover() {
 </script>
 
 <style scoped>
-/* ===== 全局 ===== */
-.recover-page {
+/* ============ 整体布局 ============ */
+.auth-page {
   min-height: 100vh;
+  display: flex;
+  background: var(--bg, #f2f5f9);
+  font-family: var(--font-sans, 'DM Sans', sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============ 左侧品牌区 ============ */
+.auth-aside {
+  position: relative;
+  flex: 0 0 46%;
+  max-width: 46%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 56px;
+  color: #fff;
+  overflow: hidden;
+  background:
+    radial-gradient(1100px 520px at -10% -20%, rgba(19, 194, 194, 0.38), transparent 62%),
+    radial-gradient(820px 640px at 112% 18%, rgba(47, 84, 235, 0.55), transparent 56%),
+    linear-gradient(160deg, #0e1b3f 0%, #12295f 46%, #0e7490 100%);
+}
+.aside-decor { position: absolute; inset: 0; pointer-events: none; }
+.decor-circle {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+.decor-circle.c1 { width: 420px; height: 420px; top: -140px; right: -120px; }
+.decor-circle.c2 { width: 280px; height: 280px; bottom: 60px; left: -120px; border-color: rgba(19, 194, 194, 0.25); }
+.decor-circle.c3 { width: 160px; height: 160px; top: 42%; right: 12%; border-color: rgba(255, 255, 255, 0.14); }
+.decor-ring {
+  position: absolute;
+  top: 20%; right: 6%;
+  width: 240px; height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 70%);
+  filter: blur(2px);
+}
+
+.aside-content { position: relative; z-index: 1; }
+
+.aside-logo {
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 52px;
+}
+.aside-logo span { color: #7ef0ef; }
+
+.aside-title {
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  margin-bottom: 20px;
+}
+.aside-sub {
+  font-size: 0.95rem;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 40px;
+}
+
+/* 安全提示卡 */
+.aside-tips { position: relative; height: 168px; margin-bottom: 32px; }
+.tip-card {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg, 18px);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  animation: floatY 6s ease-in-out infinite;
+}
+.tip-card.tc-1 { left: 0; top: 4px; }
+.tip-card.tc-2 { left: 218px; top: 64px; animation-delay: 1.2s; }
+.tip-card.tc-3 { left: 46px; top: 124px; animation-delay: 2.4s; }
+.tc-icon {
+  display: grid;
+  place-items: center;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  font-size: 1.4rem;
+  background: rgba(255, 255, 255, 0.16);
+}
+.tc-title { font-size: 0.84rem; color: rgba(255, 255, 255, 0.92); font-weight: 600; }
+.tc-sub { font-size: 0.74rem; color: rgba(255, 255, 255, 0.62); margin-top: 2px; }
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* 服务保障 */
+.aside-benefits {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+}
+.aside-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.86);
+}
+.benefit-dot { font-size: 1rem; }
+
+.aside-copyright {
+  position: relative;
+  z-index: 1;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ============ 右侧表单区 ============ */
+.auth-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #f1f3f5 100%);
-  font-family: 'DM Sans', -apple-system, sans-serif;
-  position: relative;
-  overflow: hidden;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ===== 背景装饰 ===== */
-.bg-shapes {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.bg-circle {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.35;
-}
-.bg-circle--1 {
-  width: 600px; height: 600px;
-  top: -200px; right: -200px;
-  background: radial-gradient(circle, #4a9eff, #2b6cb0);
-}
-.bg-circle--2 {
-  width: 500px; height: 500px;
-  bottom: -150px; left: -150px;
-  background: radial-gradient(circle, #7c3aed, #5b21b6);
-}
-.bg-circle--3 {
-  width: 300px; height: 300px;
-  top: 40%; left: 10%;
-  background: radial-gradient(circle, #4a9eff, transparent);
-}
-
-/* ===== 导航 ===== */
-.nav {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 56px;
-  background: rgba(255,255,255,0.60);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border-bottom: 1px solid rgba(255,255,255,0.30);
-  z-index: 100;
-}
-.nav-logo {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.03em;
-}
-.nav-slogan {
-  font-size: 0.75rem;
-  color: #adb5bd;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* ===== 恢复卡片 ===== */
-.recover-wrapper {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 100px 24px 60px;
-  position: relative;
-  z-index: 1;
-}
-.recover-card {
-  width: 420px;
-  max-width: 100%;
   padding: 48px 40px;
-  background: rgba(255,255,255,0.75);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,0.50);
-  box-shadow:
-    0 4px 24px rgba(0,0,0,0.04),
-    0 20px 60px rgba(0,0,0,0.06),
-    inset 0 1px 0 rgba(255,255,255,0.60);
-  animation: cardIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  background:
+    radial-gradient(600px 400px at 100% 0%, rgba(47, 84, 235, 0.05), transparent 60%),
+    var(--bg, #f2f5f9);
 }
-
-@keyframes cardIn {
-  from { opacity: 0; transform: translateY(24px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* ===== 卡片头部 ===== */
-.recover-header {
-  text-align: center;
-  margin-bottom: 36px;
-}
-.recover-icon {
-  font-size: 2rem;
-  margin-bottom: 12px;
-  animation: pulse 2s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(1.1); opacity: 1; }
-}
-.recover-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  font-size: 1.8rem;
+.auth-mobile-logo {
+  display: none;
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 1.5rem;
   font-weight: 700;
-  color: #212529;
+  color: var(--primary, #2f54eb);
+  margin-bottom: 28px;
+}
+.auth-mobile-logo span { color: var(--accent, #13c2c2); }
+
+.auth-card {
+  width: 400px;
+  max-width: 100%;
+  padding: 44px 40px 32px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e4e9f0);
+  border-radius: var(--radius-lg, 18px);
+  box-shadow: var(--shadow-lg, 0 18px 50px rgba(23, 35, 61, 0.12));
+}
+
+/* 头部 */
+.auth-header { text-align: center; margin-bottom: 30px; }
+.auth-eyebrow {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--primary, #2f54eb);
+  margin-bottom: 10px;
+}
+.auth-title {
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text, #17233d);
   margin-bottom: 8px;
 }
-.recover-desc {
-  font-size: 0.9rem;
-  color: #868e96;
-}
+.auth-desc { font-size: 0.88rem; color: var(--text-3, #8a94a6); }
 
-/* ===== 表单 ===== */
-.recover-form { margin-bottom: 16px; }
-.form-group {
-  margin-bottom: 20px;
-}
+/* 表单 */
+.auth-form { margin-bottom: 6px; }
+.form-group { margin-bottom: 18px; }
 .form-group label {
   display: block;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #495057;
+  color: var(--text-2, #4e5a70);
   margin-bottom: 8px;
   letter-spacing: 0.02em;
 }
 .input-wrap {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 16px;
-  border: 1px solid #dee2e6;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.60);
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong, #cdd6e1);
+  border-radius: var(--radius, 12px);
+  background: var(--surface-2, #f8fafc);
+  transition: all 0.25s ease;
 }
 .input-wrap:focus-within {
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74,158,255,0.12);
-  background: white;
+  border-color: var(--primary, #2f54eb);
+  box-shadow: 0 0 0 3px var(--primary-soft, rgba(47, 84, 235, 0.08));
+  background: var(--surface, #fff);
 }
-.input-icon {
-  font-size: 1rem;
-  opacity: 0.5;
-}
+.input-icon { font-size: 1rem; opacity: 0.55; }
 .input-wrap input {
   flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
-  padding: 14px 0;
+  padding: 13px 0;
   font-size: 0.9rem;
-  font-family: 'DM Sans', sans-serif;
-  color: #212529;
+  font-family: var(--font-sans, 'DM Sans', sans-serif);
+  color: var(--text, #17233d);
   outline: none;
 }
-.input-wrap input::placeholder {
-  color: #adb5bd;
-  font-weight: 400;
-}
+.input-wrap input::placeholder { color: var(--text-4, #b3bac6); }
 
-/* ===== 验证码输入框 ===== */
-.code-wrap {
-  padding-right: 4px;
-}
+/* 验证码按钮 */
+.code-wrap { padding-right: 4px; }
 .send-code-btn {
   flex-shrink: 0;
   height: 36px;
   padding: 0 14px;
   border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff);
-  color: white;
-  font-family: 'DM Sans', sans-serif;
+  border-radius: var(--radius-sm, 8px);
+  background: linear-gradient(135deg, var(--primary, #2f54eb), var(--accent, #13c2c2));
+  color: #fff;
+  font-family: var(--font-sans, 'DM Sans', sans-serif);
   font-size: 0.78rem;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: all 0.25s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 90px;
+  min-width: 96px;
 }
 .send-code-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(43,108,176,0.30);
+  box-shadow: var(--shadow-primary, 0 8px 20px rgba(47, 84, 235, 0.28));
 }
-.send-code-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.send-code-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-loading-small {
   display: inline-block;
   width: 14px; height: 14px;
-  border: 2px solid rgba(255,255,255,0.30);
-  border-top-color: white;
+  border: 2px solid rgba(255, 255, 255, 0.30);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
 
-/* ===== 按钮 ===== */
-.recover-btn {
+/* 提交按钮 */
+.auth-btn {
   width: 100%;
-  padding: 16px;
+  margin-top: 8px;
+  padding: 15px;
   border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: white;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.9rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  border-radius: var(--radius, 12px);
+  background: linear-gradient(135deg, var(--primary, #2f54eb) 0%, var(--accent, #13c2c2) 130%);
+  color: #fff;
+  font-family: var(--font-sans, 'DM Sans', sans-serif);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: all 0.25s ease;
   position: relative;
   overflow: hidden;
 }
-.recover-btn:hover:not(:disabled) {
+.auth-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.28) 50%, transparent 60%);
+  transform: translateX(-120%);
+  transition: transform 0.6s ease;
+}
+.auth-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 12px 32px rgba(43,108,176,0.30);
+  box-shadow: var(--shadow-primary, 0 8px 20px rgba(47, 84, 235, 0.28));
 }
-.recover-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.auth-btn:hover:not(:disabled)::after { transform: translateX(120%); }
+.auth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-loading {
   display: inline-block;
   width: 20px; height: 20px;
-  border: 2px solid rgba(255,255,255,0.30);
-  border-top-color: white;
+  border: 2px solid rgba(255, 255, 255, 0.30);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.login-link {
-  text-align: center;
-  margin-top: 16px;
-  font-size: 0.85rem;
-  color: #868e96;
-}
-.login-link a {
-  color: #2b6cb0;
-  font-weight: 600;
-  text-decoration: none;
-  transition: color 0.3s;
-}
-.login-link a:hover { color: #4a9eff; }
-
-/* ===== 消息提示 ===== */
+/* 消息提示 */
 .msg {
   margin-top: 16px;
   text-align: center;
   font-size: 0.85rem;
   padding: 10px 16px;
-  border-radius: 10px;
+  border-radius: var(--radius, 12px);
   animation: fadeIn 0.3s ease;
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .msg--success {
-  color: #2b8a3e;
-  background: rgba(43,138,62,0.06);
-  border: 1px solid rgba(43,138,62,0.12);
+  color: var(--success, #2f9e44);
+  background: var(--success-soft, rgba(47, 158, 68, 0.10));
+  border: 1px solid rgba(47, 158, 68, 0.14);
 }
 .msg--error {
-  color: #c92a2a;
-  background: rgba(201,42,42,0.06);
-  border: 1px solid rgba(201,42,42,0.12);
+  color: var(--danger, #e03131);
+  background: var(--danger-soft, rgba(224, 49, 49, 0.08));
+  border: 1px solid rgba(224, 49, 49, 0.14);
 }
 
-/* ===== 底部 ===== */
-.recover-footer {
-  position: relative;
-  z-index: 1;
-  padding: 24px 56px;
+/* 切换链接 */
+.auth-switch {
+  margin-top: 22px;
   text-align: center;
+  font-size: 0.86rem;
+  color: var(--text-3, #8a94a6);
 }
-.recover-footer span {
-  font-size: 0.7rem;
-  color: #adb5bd;
-  letter-spacing: 0.02em;
+.auth-switch a {
+  color: var(--primary, #2f54eb);
+  font-weight: 600;
+  margin-left: 4px;
+  transition: opacity 0.2s;
 }
+.auth-switch a:hover { opacity: 0.8; }
 
-/* ===== 响应式 ===== */
+.auth-mobile-copyright { display: none; }
+
+/* ============ 响应式 ============ */
+@media (max-width: 960px) {
+  .auth-aside { display: none; }
+  .auth-main { justify-content: flex-start; padding-top: 64px; }
+  .auth-mobile-logo { display: block; }
+  .auth-mobile-copyright { display: block; margin-top: 24px; font-size: 0.72rem; color: var(--text-4, #b3bac6); }
+}
 @media (max-width: 480px) {
-  .nav { padding: 0 24px; }
-  .nav-slogan { display: none; }
-  .recover-card { padding: 36px 24px; }
+  .auth-card { padding: 32px 22px 24px; }
 }
 </style>

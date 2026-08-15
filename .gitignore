@@ -28,6 +28,7 @@ uploads/
 
 # reasonix
 .reasonix/
+reasonix.toml
 
 # IDE 文件
 .idea/

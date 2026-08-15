@@ -1,13 +1,6 @@
 <template>
   <div class="seller-page">
-    <!-- 背景装饰 -->
-    <div class="bg-shapes">
-      <div class="bg-circle bg-circle--1"></div>
-      <div class="bg-circle bg-circle--2"></div>
-      <div class="bg-circle bg-circle--3"></div>
-    </div>
-
-    <!-- 导航条 -->
+    <!-- 顶部导航 -->
     <nav class="nav">
       <div class="nav-logo">ZuiMShop</div>
       <div class="nav-actions">
@@ -15,47 +8,50 @@
           <span class="nav-btn-icon">🏪</span>
           <span class="nav-btn-text">返回商城</span>
         </button>
-        <button class="nav-btn" @click="goSellerDashboard">商家工作台</button>
-        <button class="nav-btn nav-btn--outline" @click="handleLogout">退出登录</button>
+        <button class="nav-btn nav-btn--profile" @click="goSellerDashboard">商家工作台</button>
+        <button class="nav-btn nav-btn--logout" @click="handleLogout">
+          <span class="nav-btn-icon">🚪</span>
+          <span class="nav-btn-text">退出登录</span>
+        </button>
       </div>
     </nav>
 
     <!-- 主内容 -->
-    <div class="seller-wrapper">
-      <div class="seller-card">
-        <div class="seller-header">
-          <div class="seller-icon">🏪</div>
-          <h2 class="seller-title">商家商品管理</h2>
-          <p class="seller-desc">管理您的商品，包括新增、编辑、上架/下架操作</p>
+    <main class="seller-body">
+      <!-- 页头 -->
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">商家商品管理</h1>
+          <p class="page-sub">管理您的商品，包括新增、编辑、上架/下架操作</p>
         </div>
+        <button class="btn btn--primary" @click="openAddDialog">
+          <span class="btn-icon">＋</span>新增商品
+        </button>
+      </header>
 
-        <!-- 新增商品按钮 -->
-        <div class="toolbar">
-          <button class="add-btn" @click="openAddDialog">+ 新增商品</button>
-        </div>
+      <!-- 加载中 -->
+      <div class="loading-state" v-if="loading">
+        <div class="loading-spinner"></div>
+        <p>加载商品数据...</p>
+      </div>
 
-        <!-- 加载中 -->
-        <div class="loading-state" v-if="loading">
-          <div class="loading-spinner"></div>
-          <p>加载商品数据...</p>
-        </div>
+      <!-- 错误状态 -->
+      <div class="empty-state" v-else-if="error">
+        <div class="state-icon">⚠️</div>
+        <p>商品加载失败</p>
+        <button class="retry-btn" @click="fetchProducts">重新加载</button>
+      </div>
 
-        <!-- 错误状态 -->
-        <div class="empty-state" v-else-if="error">
-          <div class="error-icon">⚠️</div>
-          <p>商品加载失败</p>
-          <button class="retry-btn" @click="fetchProducts">重新加载</button>
-        </div>
+      <!-- 空数据 -->
+      <div class="empty-state" v-else-if="products.length === 0">
+        <div class="state-icon">📦</div>
+        <p>暂无商品</p>
+        <p class="empty-hint">点击右上角「新增商品」创建您的第一个商品</p>
+      </div>
 
-        <!-- 空数据 -->
-        <div class="empty-state" v-else-if="products.length === 0">
-          <div class="empty-icon">📦</div>
-          <p>暂无商品</p>
-          <p class="empty-hint">点击上方按钮新增您的第一个商品</p>
-        </div>
-
-        <!-- 商品表格 -->
-        <div class="table-wrap" v-else>
+      <!-- 商品表格 -->
+      <section v-else class="panel">
+        <div class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
@@ -71,14 +67,14 @@
             </thead>
             <tbody>
               <tr v-for="prod in products" :key="prod.id">
-                <td>{{ prod.id }}</td>
+                <td class="cell-dim">{{ prod.id }}</td>
                 <td class="name-cell">{{ prod.productName }}</td>
-                <td>¥{{ (prod.price || 0).toFixed(2) }}</td>
+                <td class="price">¥{{ (prod.price || 0).toFixed(2) }}</td>
                 <td>{{ prod.stock || 0 }}</td>
                 <td>{{ prod.sold || 0 }}</td>
-                <td>{{ prod.category || '-' }}</td>
+                <td><span class="cat-chip">{{ prod.category || '-' }}</span></td>
                 <td>
-                  <span :class="['status-badge', prod.status === 1 ? 'status--active' : 'status--disabled']">
+                  <span class="status-badge" :class="prod.status === 1 ? 'status--ok' : 'status--off'">
                     {{ prod.status === 1 ? '上架' : '下架' }}
                   </span>
                 </td>
@@ -100,19 +96,20 @@
           <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
           <button class="page-btn" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">›</button>
         </div>
+      </section>
 
-        <!-- 消息提示 -->
-        <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">{{ message }}</p>
-      </div>
-    </div>
+      <!-- 消息提示 -->
+      <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">{{ message }}</p>
+    </main>
 
     <!-- ===== 新增/编辑商品弹窗 ===== -->
     <Teleport to="body">
       <div v-if="showDialog" class="modal-overlay" @click.self="showDialog = false">
         <div class="modal-card">
-          <div class="modal-icon">{{ editingProduct ? '✏️' : '📦' }}</div>
-          <h3 class="modal-title">{{ editingProduct ? '编辑商品' : '新增商品' }}</h3>
-
+          <div class="modal-head">
+            <span class="modal-icon">{{ editingProduct ? '✏️' : '📦' }}</span>
+            <h3 class="modal-title">{{ editingProduct ? '编辑商品' : '新增商品' }}</h3>
+          </div>
           <div class="modal-form">
             <div class="modal-field-row">
               <label>商品名称</label>
@@ -133,9 +130,22 @@
               </div>
             </div>
             <div class="modal-field-row">
-              <label>分类</label>
+              <label>分类（可多选 / 自定义输入）</label>
               <div class="modal-field">
-                <input v-model="form.category" type="text" placeholder="请输入分类名称" />
+                <div class="category-tag-input">
+                  <span v-for="(cat, ci) in selectedCategories" :key="ci" class="cat-tag">
+                    {{ cat }}
+                    <button type="button" class="cat-tag-del" @click="removeCategory(ci)">×</button>
+                  </span>
+                  <input v-model="categoryInput" type="text" placeholder="输入分类后按回车添加（多个用逗号分隔）"
+                         @keydown.enter.prevent="addCategoryInput" />
+                </div>
+              </div>
+              <div class="category-presets">
+                <span v-for="cat in presetCategories" :key="cat"
+                      class="cat-preset-chip"
+                      :class="{ active: selectedCategories.includes(cat) }"
+                      @click="toggleCategory(cat)">{{ cat }}</span>
               </div>
             </div>
             <div class="modal-field-row">
@@ -144,11 +154,50 @@
                 <textarea v-model="form.description" placeholder="请输入商品描述" class="modal-textarea"></textarea>
               </div>
             </div>
+            <!-- ===== 图片上传区域 ===== -->
+            <div class="modal-field-row">
+              <label>商品主图</label>
+              <div class="image-upload-row">
+                <div class="upload-box upload-box--main" @click="triggerMainUpload">
+                  <input ref="mainImageInput" type="file" accept="image/*" hidden @change="onMainImageChange" />
+                  <span v-if="mainImagePreview" class="upload-preview-wrap">
+                    <img :src="mainImagePreview" alt="主图预览" class="upload-preview" />
+                    <button type="button" class="upload-preview-del" @click.stop="clearMainImage">×</button>
+                  </span>
+                  <span v-else-if="form.mainImageUrl" class="upload-preview-wrap">
+                    <img :src="form.mainImageUrl" alt="当前主图" class="upload-preview" />
+                  </span>
+                  <span v-else class="upload-placeholder">
+                    <span class="upload-icon">📷</span>
+                    <span class="upload-text">点击上传主图</span>
+                  </span>
+                </div>
+                <div class="main-image-info">
+                  <p class="image-info-text">将作为首页展示的商品主图</p>
+                  <p class="image-info-text" v-if="form.mainImageUrl">已上传：{{ form.mainImageUrl }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="modal-field-row">
+              <label>商品细节图（可多张）</label>
+              <div class="detail-image-grid">
+                <div v-for="(img, di) in detailImages" :key="di" class="detail-image-item">
+                  <img :src="img.preview || img.url" alt="细节图" class="detail-image-preview" />
+                  <button type="button" class="upload-preview-del" @click="removeDetailImage(di)">×</button>
+                </div>
+                <div class="upload-box upload-box--detail" @click="triggerDetailUpload">
+                  <input ref="detailImageInput" type="file" accept="image/*" multiple hidden @change="onDetailImageChange" />
+                  <span class="upload-placeholder">
+                    <span class="upload-icon">🖼️</span>
+                    <span class="upload-text">添加图片</span>
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-
           <div class="modal-actions">
             <button class="modal-btn modal-btn--cancel" @click="showDialog = false">取消</button>
-            <button class="modal-btn modal-btn--blue" @click="submitForm" :disabled="formLoading">
+            <button class="modal-btn modal-btn--primary" @click="submitForm" :disabled="formLoading">
               {{ editingProduct ? '保存' : '新增' }}
             </button>
           </div>
@@ -157,16 +206,16 @@
     </Teleport>
 
     <!-- 底部 -->
-    <div class="seller-footer">
+    <footer class="page-footer">
       <span>© 2026 ZuiMShop. All rights reserved.</span>
-    </div>
+    </footer>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getUserInfo, getSellerProducts, addSellerProduct, updateSellerProduct, onshelfProduct, offshelfProduct } from '../api/index.js'
+import { getUserInfo, getSellerProducts, addSellerProduct, updateSellerProduct, onshelfProduct, offshelfProduct, getCategories, getProductDetail, uploadSellerProductImage, deleteSellerProductImage } from '../api/index.js'
 
 const router = useRouter()
 
@@ -232,8 +281,40 @@ const form = ref({
   price: '',
   stock: '',
   category: '',
-  description: ''
+  description: '',
+  mainImageUrl: ''
 })
+
+// 预置分类（供快捷选择，加载后并入商品已有的分类）
+const presetCategories = ref(['手机配件', '电脑外设', '音频设备', '智能家居', '穿戴设备', '摄影器材', '其他'])
+
+// 已选分类列表（逗号分隔存储到 form.category）
+const selectedCategories = ref([])
+const categoryInput = ref('')
+
+// 图片上传状态
+const mainImageInput = ref(null)
+const detailImageInput = ref(null)
+const mainImagePreview = ref('')      // 主图本地预览 URL
+const mainImageFile = ref(null)       // 主图待上传文件
+const detailImages = ref([])          // 细节图列表（含已上传的 url 和待上传的 file）
+const detailImageFiles = ref([])      // 细节图待上传文件列表
+const oldMainImageId = ref(null)      // 编辑时已存在的主图记录ID（换主图时删除）
+
+/**
+ * 加载分类预设（含已有分类）
+ */
+async function loadCategories() {
+  try {
+    const res = await getCategories()
+    if (res && res.code === 200 && Array.isArray(res.data)) {
+      const existing = res.data.filter(c => c && !presetCategories.value.includes(c))
+      presetCategories.value.push(...existing)
+    }
+  } catch (e) {
+    console.error('获取分类失败:', e)
+  }
+}
 
 // ===== 消息提示 =====
 const message = ref('')
@@ -277,27 +358,63 @@ function goToPage(page) {
  */
 function openAddDialog() {
   editingProduct.value = null
-  form.value = { productName: '', price: '', stock: '', category: '', description: '' }
+  form.value = { productName: '', price: '', stock: '', category: '', description: '', mainImageUrl: '' }
+  selectedCategories.value = []
+  categoryInput.value = ''
+  mainImagePreview.value = ''
+  mainImageFile.value = null
+  detailImages.value = []
+  detailImageFiles.value = []
+  oldMainImageId.value = null
   showDialog.value = true
 }
 
 /**
- * 打开编辑商品弹窗
+ * 打开编辑商品弹窗（回显图片）
  */
-function openEditDialog(prod) {
+async function openEditDialog(prod) {
   editingProduct.value = prod
   form.value = {
     productName: prod.productName || '',
     price: prod.price || '',
     stock: prod.stock || '',
     category: prod.category || '',
-    description: prod.description || ''
+    description: prod.description || '',
+    mainImageUrl: prod.mainImageUrl || ''
   }
+  selectedCategories.value = (prod.category || '').split(',').map(s => s.trim()).filter(Boolean)
+  categoryInput.value = ''
+  mainImagePreview.value = ''
+  mainImageFile.value = null
+  detailImages.value = []
+  detailImageFiles.value = []
+  oldMainImageId.value = null
   showDialog.value = true
+
+  // 加载已有图片回显
+  try {
+    const res = await getProductDetail(prod.id)
+    if (res && res.code === 200 && res.data && Array.isArray(res.data.images)) {
+      res.data.images.forEach(img => {
+        if (img.isMain === 1) {
+          form.value.mainImageUrl = img.imageUrl
+          oldMainImageId.value = img.id
+        } else {
+          detailImages.value.push({ url: img.imageUrl, id: img.id })
+        }
+      })
+    }
+  } catch (e) {
+    console.error('加载商品图片失败:', e)
+  }
 }
 
 /**
  * 提交表单（新增或编辑）
+ * 1.保存商品基本信息（分类为逗号分隔的多分类串）
+ * 2.更换主图时先删除旧主图记录
+ * 3.上传新主图（isMain=1）
+ * 4.上传新增细节图（isMain=0）
  */
 async function submitForm() {
   // 表单验证
@@ -309,41 +426,208 @@ async function submitForm() {
     showMessage('请输入有效的价格', false)
     return
   }
+  if (selectedCategories.value.length === 0) {
+    showMessage('请至少选择一个分类', false)
+    return
+  }
 
   formLoading.value = true
   try {
+    const categoryStr = selectedCategories.value.join(',')
+    let productId = editingProduct.value?.id
     let res
+
     if (editingProduct.value) {
       // 编辑商品
       res = await updateSellerProduct(editingProduct.value.id, {
         productName: form.value.productName,
         price: Number(form.value.price),
         stock: Number(form.value.stock) || 0,
-        category: form.value.category,
+        category: categoryStr,
         description: form.value.description
       })
     } else {
-      // 新增商品
+      // 新增商品（后端返回新商品ID）
       res = await addSellerProduct({
         productName: form.value.productName,
         price: Number(form.value.price),
         stock: Number(form.value.stock) || 0,
-        category: form.value.category,
+        category: categoryStr,
         description: form.value.description
       })
+      if (res && res.code === 200 && res.data && res.data.id) {
+        productId = res.data.id
+      }
     }
 
-    if (res && res.code === 200) {
-      showMessage(editingProduct.value ? '商品已更新' : '商品已新增', true)
-      showDialog.value = false
-      fetchProducts()
-    } else {
+    if (!res || res.code !== 200) {
       showMessage(res?.mes || '操作失败', false)
+      return
     }
+
+    // 编辑场景：更换了主图，先删除旧主图记录（避免重复主图）
+    if (mainImageFile.value && oldMainImageId.value) {
+      try {
+        await deleteSellerProductImage(oldMainImageId.value, productId)
+        oldMainImageId.value = null
+      } catch (e) {
+        console.error('删除旧主图失败:', e)
+      }
+    }
+
+    // 上传主图
+    if (mainImageFile.value) {
+      const imgRes = await uploadSellerProductImage(productId, mainImageFile.value, 1, 0)
+      if (!imgRes || imgRes.code !== 200) {
+        showMessage('主图上传失败，商品信息已保存', false)
+        showDialog.value = false
+        fetchProducts()
+        return
+      }
+    }
+
+    // 上传新增细节图（按顺序排序）
+    for (let i = 0; i < detailImageFiles.value.length; i++) {
+      const imgRes = await uploadSellerProductImage(productId, detailImageFiles.value[i], 0, i)
+      if (!imgRes || imgRes.code !== 200) {
+        showMessage('细节图上传失败，请稍后重试', false)
+        break
+      }
+    }
+
+    showMessage(editingProduct.value ? '商品已更新' : '商品已新增', true)
+    showDialog.value = false
+    fetchProducts()
   } catch (e) {
     showMessage('网络错误，请检查后端服务', false)
   } finally {
     formLoading.value = false
+  }
+}
+
+// ===== 分类操作（多选 / 自定义输入） =====
+
+/**
+ * 添加分类（回车触发，支持中英文逗号分隔多个分类）
+ */
+function addCategoryInput() {
+  const cats = categoryInput.value.split(/[,，]/).map(c => c.trim()).filter(Boolean)
+  if (cats.length === 0) return
+  cats.forEach(cat => {
+    if (!selectedCategories.value.includes(cat)) {
+      selectedCategories.value.push(cat)
+    }
+  })
+  categoryInput.value = ''
+}
+
+/**
+ * 切换预置分类（选中/取消）
+ */
+function toggleCategory(cat) {
+  const index = selectedCategories.value.indexOf(cat)
+  if (index === -1) {
+    selectedCategories.value.push(cat)
+  } else {
+    selectedCategories.value.splice(index, 1)
+  }
+}
+
+/**
+ * 删除已选分类
+ */
+function removeCategory(index) {
+  selectedCategories.value.splice(index, 1)
+}
+
+// ===== 主图上传 =====
+
+/**
+ * 触发主图文件选择
+ */
+function triggerMainUpload() {
+  mainImageInput.value?.click()
+}
+
+/**
+ * 主图选择回调（生成本地预览）
+ */
+function onMainImageChange(e) {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    showMessage('请选择图片文件', false)
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showMessage('图片大小不能超过 10MB', false)
+    return
+  }
+  // 释放旧预览，绑定新文件
+  if (mainImagePreview.value) URL.revokeObjectURL(mainImagePreview.value)
+  mainImageFile.value = file
+  mainImagePreview.value = URL.createObjectURL(file)
+  e.target.value = ''
+}
+
+/**
+ * 清除主图选择
+ */
+function clearMainImage() {
+  if (mainImagePreview.value) URL.revokeObjectURL(mainImagePreview.value)
+  mainImageFile.value = null
+  mainImagePreview.value = ''
+}
+
+// ===== 细节图上传 =====
+
+/**
+ * 触发细节图文件选择（可多选）
+ */
+function triggerDetailUpload() {
+  detailImageInput.value?.click()
+}
+
+/**
+ * 细节图选择回调（生成本地预览）
+ */
+function onDetailImageChange(e) {
+  const files = Array.from(e.target.files || [])
+  files.forEach(file => {
+    if (!file.type.startsWith('image/')) {
+      showMessage('请选择图片文件', false)
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showMessage('图片大小不能超过 10MB', false)
+      return
+    }
+    detailImageFiles.value.push(file)
+    detailImages.value.push({ file, preview: URL.createObjectURL(file) })
+  })
+  e.target.value = ''
+}
+
+/**
+ * 删除细节图
+ * 1.本地待上传：直接移除
+ * 2.已上传：调用后端接口删除
+ */
+async function removeDetailImage(index) {
+  const img = detailImages.value[index]
+  if (img.preview) URL.revokeObjectURL(img.preview)
+  detailImages.value.splice(index, 1)
+  if (img.file) {
+    // 本地待上传文件，仅从列表移除
+    const fi = detailImageFiles.value.indexOf(img.file)
+    if (fi !== -1) detailImageFiles.value.splice(fi, 1)
+  } else if (img.id && editingProduct.value) {
+    // 已上传图片，调用接口删除
+    try {
+      await deleteSellerProductImage(img.id, editingProduct.value.id)
+    } catch (e) {
+      console.error('删除细节图失败:', e)
+    }
   }
 }
 
@@ -389,6 +673,7 @@ onMounted(() => {
   document.addEventListener('click', closePopups)
   fetchProducts()
   fetchUserProfile()
+  loadCategories()
 })
 
 onUnmounted(() => {
@@ -397,234 +682,286 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ===== 全局 ===== */
+/* ===== 页面骨架 ===== */
 .seller-page {
-  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #f1f3f5 100%);
-  font-family: 'DM Sans', -apple-system, sans-serif; position: relative; overflow: hidden;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  font-family: var(--font-sans);
+  color: var(--text);
 }
-.bg-shapes { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.bg-circle {
-  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35;
-}
-.bg-circle--1 { width: 600px; height: 600px; top: -200px; right: -200px; background: radial-gradient(circle, #4a9eff, #2b6cb0); }
-.bg-circle--2 { width: 500px; height: 500px; bottom: -150px; left: -150px; background: radial-gradient(circle, #7c3aed, #5b21b6); }
-.bg-circle--3 { width: 300px; height: 300px; top: 40%; left: 10%; background: radial-gradient(circle, #4a9eff, transparent); }
 
-/* ===== 导航 ===== */
+/* ===== 顶部导航 ===== */
 .nav {
-  position: fixed; top: 0; left: 0; right: 0; height: 72px; z-index: 100;
+  position: fixed; top: 0; left: 0; right: 0; height: 68px; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 56px; background: rgba(255,255,255,0.60);
-  backdrop-filter: blur(20px) saturate(1.8);
-  border-bottom: 1px solid rgba(255,255,255,0.30);
+  padding: 0 clamp(20px, 4vw, 48px);
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border-bottom: 1px solid var(--border);
 }
 .nav-logo {
-  font-family: 'Playfair Display', Georgia, serif; font-size: 1.4rem; font-weight: 700;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
-.nav-actions { display: flex; gap: 12px; }
+.nav-actions { display: flex; align-items: center; gap: 10px; }
 .nav-btn {
-  padding: 8px 20px; border: 1px solid rgba(43,108,176,0.20); border-radius: 10px;
-  background: rgba(255,255,255,0.60); font-family: 'DM Sans', sans-serif;
-  font-size: 0.8rem; font-weight: 600; color: #2b6cb0; cursor: pointer; transition: all 0.3s;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-2);
+  font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease;
 }
-.nav-btn:hover { background: #2b6cb0; color: white; border-color: #2b6cb0; }
-.nav-btn--outline { color: #c92a2a; border-color: rgba(201,42,42,0.20); }
-.nav-btn--outline:hover { background: #c92a2a; border-color: #c92a2a; color: white; }
-.nav-btn-icon { font-size: 0.9rem; }
-.nav-nickname { font-size: 0.85rem; font-weight: 500; color: #2b6cb0; padding: 0 4px; }
+.nav-btn:hover { border-color: var(--primary); color: var(--primary); box-shadow: var(--shadow-sm); }
+.nav-btn--profile:hover { border-color: var(--primary); color: var(--primary); }
+.nav-btn--logout:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+.nav-btn-icon { font-size: 0.95rem; }
 
-/* ===== 用户头像与下拉菜单 ===== */
-.avatar-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
-.nav-balance {
-  padding: 5px 12px; border-radius: 50px;
-  background: rgba(43,108,176,0.08); border: 1px solid rgba(43,108,176,0.15);
-  color: #2b6cb0; font-size: 0.75rem; font-weight: 600;
-  white-space: nowrap;
+/* ===== 主体布局 ===== */
+.seller-body {
+  flex: 1; width: 100%; max-width: var(--container); margin: 0 auto;
+  padding: 96px 24px 56px;
 }
-.avatar-btn { display: flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 2px; transition: transform 0.3s; }
-.avatar-btn:hover { transform: scale(1.05); }
-.avatar-circle { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(43,108,176,0.25); overflow: hidden; }
-.avatar-circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.avatar-caret { font-size: 0.7rem; color: #868e96; transition: transform 0.3s; }
-.avatar-caret.open { transform: rotate(180deg); }
-.profile-menu { position: absolute; top: calc(100% + 14px); right: 0; min-width: 180px; padding: 8px; background: rgba(255,255,255,0.96); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); border: 1px solid rgba(255,255,255,0.60); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.10); }
-.profile-menu-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #f1f3f5; margin-bottom: 6px; }
-.profile-menu-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed); color: white; font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-.profile-menu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.profile-menu-id { min-width: 0; }
-.profile-menu-name { font-size: 0.9rem; font-weight: 600; color: #212529; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-menu-role { font-size: 0.72rem; color: #adb5bd; margin: 2px 0 0; }
-.profile-menu-item { display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; border-radius: 8px; background: transparent; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; color: #495057; transition: all 0.2s; }
-.profile-menu-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.profile-menu-item--logout:hover { background: rgba(220,53,69,0.06); color: #dc3545; }
-.profile-menu-divider { height: 1px; background: #f1f3f5; margin: 6px 0; }
-.profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
-.profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
+.page-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; margin-bottom: 24px;
+}
+.page-title {
+  font-family: var(--font-display); font-size: 1.7rem; font-weight: 700;
+  color: var(--text); letter-spacing: -0.01em; line-height: 1.2;
+}
+.page-sub { margin-top: 6px; font-size: 0.9rem; color: var(--text-3); }
 
-/* ===== 主卡片 ===== */
-.seller-wrapper {
-  flex: 1; display: flex; align-items: flex-start; justify-content: center;
-  width: 100%; padding: 100px 24px 60px; position: relative; z-index: 1;
+/* ===== 按钮 ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 20px; border: none; border-radius: var(--radius);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: var(--font-sans);
+  transition: all 0.2s ease;
 }
-.seller-card {
-  width: 1100px; max-width: 100%; padding: 48px 40px;
-  background: rgba(255,255,255,0.75); backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 24px; border: 1px solid rgba(255,255,255,0.50);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.04), 0 20px 60px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.60);
-  animation: cardIn 0.6s both;
-}
-@keyframes cardIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-.seller-header { text-align: center; margin-bottom: 32px; }
-.seller-icon { font-size: 2rem; margin-bottom: 12px; animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.1); opacity: 1; } }
-.seller-title { font-family: 'Playfair Display', Georgia, serif; font-size: 1.8rem; font-weight: 700; color: #212529; margin-bottom: 8px; }
-.seller-desc { font-size: 0.9rem; color: #868e96; }
+.btn--primary { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; }
+.btn--primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-icon { font-size: 0.9rem; }
 
-/* ===== 工具栏 ===== */
-.toolbar { display: flex; justify-content: flex-end; margin-bottom: 20px; }
-.add-btn {
-  padding: 12px 28px; border: none; border-radius: 10px;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: white; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
-  cursor: pointer; transition: all 0.3s;
+/* ===== 内容面板 ===== */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  padding: 24px; margin-bottom: 20px;
+  animation: panelIn 0.35s ease both;
 }
-.add-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(43,108,176,0.30); }
+@keyframes panelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* ===== 表格 ===== */
-.table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid rgba(0,0,0,0.05); }
-.data-table {
-  width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 700px;
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 820px; }
+.data-table thead th {
+  text-align: left; padding: 12px 16px; background: var(--surface-3);
+  color: var(--text-2); font-weight: 600; font-size: 0.74rem;
+  letter-spacing: 0.04em; white-space: nowrap; border-bottom: 1px solid var(--border);
 }
-.data-table th {
-  text-align: left; padding: 12px 16px;
-  background: rgba(43,108,176,0.04); color: #495057;
-  font-weight: 600; font-size: 0.75rem; text-transform: uppercase;
-  letter-spacing: 0.04em; border-bottom: 1px solid rgba(0,0,0,0.06);
-  white-space: nowrap;
+.data-table tbody td {
+  padding: 13px 16px; color: var(--text); border-bottom: 1px solid var(--border);
+  vertical-align: middle;
 }
-.data-table td {
-  padding: 12px 16px; color: #212529; border-bottom: 1px solid rgba(0,0,0,0.04);
+.data-table tbody tr:nth-child(even) td { background: var(--surface-2); }
+.data-table tbody tr:hover td { background: var(--primary-softer); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.name-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.cell-dim { color: var(--text-3); font-size: 0.8rem; }
+.cat-chip {
+  display: inline-block; padding: 2px 10px; border-radius: var(--radius-pill);
+  background: var(--surface-3); color: var(--text-2); font-size: 0.72rem; font-weight: 600;
 }
-.data-table tr:last-child td { border-bottom: none; }
-.data-table tr:hover td { background: rgba(43,108,176,0.02); }
-.name-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.price { color: var(--price); font-weight: 700; white-space: nowrap; }
 .action-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ===== 状态标签 ===== */
 .status-badge {
-  display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+  border-radius: var(--radius-pill); font-size: 0.72rem; font-weight: 600; white-space: nowrap;
 }
-.status--active { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.status--disabled { background: rgba(201,42,42,0.08); color: #c92a2a; }
+.status--ok { background: var(--success-soft); color: var(--success); }
+.status--off { background: var(--danger-soft); color: var(--danger); }
 
 /* ===== 操作按钮 ===== */
 .action-btn {
-  padding: 5px 12px; border: 1px solid #dee2e6; border-radius: 6px;
-  background: transparent; color: #495057; font-size: 0.75rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
-  white-space: nowrap;
+  padding: 5px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--text-2); font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease; white-space: nowrap;
 }
-.action-btn:hover:not(:disabled) { border-color: #4a9eff; color: #4a9eff; }
-.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.action-btn--toggle { color: #2b6cb0; }
-.action-btn--toggle:hover:not(:disabled) { border-color: #2b6cb0; }
+.action-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-softer); }
+.action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.action-btn--toggle:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-softer); }
 
 /* ===== 分页 ===== */
-.pagination {
-  display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 24px;
-}
+.pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 20px; }
 .page-btn {
-  padding: 8px 16px; border: 1px solid #dee2e6; border-radius: 8px;
-  background: transparent; color: #495057; font-size: 0.85rem; cursor: pointer;
-  transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-2); font-size: 0.9rem; cursor: pointer;
+  transition: all 0.2s ease;
 }
-.page-btn:hover:not(:disabled) { border-color: #4a9eff; color: #4a9eff; }
+.page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.page-info { font-size: 0.85rem; color: #868e96; }
+.page-info { font-size: 0.85rem; color: var(--text-3); }
 
 /* ===== 加载 & 空状态 ===== */
-.loading-state, .empty-state { text-align: center; padding: 60px 0; color: #868e96; }
+.loading-state, .empty-state { text-align: center; padding: 48px 16px; color: var(--text-3); font-size: 0.88rem; }
 .loading-spinner {
-  width: 36px; height: 36px; margin: 0 auto 12px;
-  border: 3px solid #f1f3f5; border-top-color: #2b6cb0;
+  width: 34px; height: 34px; margin: 0 auto 12px;
+  border: 3px solid var(--border); border-top-color: var(--primary);
   border-radius: 50%; animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.error-icon, .empty-icon { font-size: 3rem; margin-bottom: 12px; }
-.empty-hint { font-size: 0.85rem; color: #adb5bd; margin-top: 8px; }
+.state-icon { font-size: 3rem; margin-bottom: 12px; }
+.empty-hint { font-size: 0.82rem; color: var(--text-4); margin-top: 8px; }
 .retry-btn {
-  margin-top: 16px; padding: 10px 24px; border: 1px solid #2b6cb0; border-radius: 50px;
-  background: transparent; color: #2b6cb0; font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.3s;
+  margin-top: 16px; padding: 9px 22px; border: 1px solid var(--primary); border-radius: var(--radius-pill);
+  background: var(--surface); color: var(--primary); font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease;
 }
-.retry-btn:hover { background: rgba(43,108,176,0.06); }
-
-/* ===== 消息提示 ===== */
-.msg { margin-top: 16px; text-align: center; font-size: 0.85rem; padding: 10px; border-radius: 10px; animation: fadeIn 0.3s ease; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.msg--success { color: #2b8a3e; background: rgba(43,138,62,0.06); border: 1px solid rgba(43,138,62,0.12); }
-.msg--error { color: #c92a2a; background: rgba(201,42,42,0.06); border: 1px solid rgba(201,42,42,0.12); }
+.retry-btn:hover { background: var(--primary-soft); }
 
 /* ===== 弹窗 ===== */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center; z-index: 200;
-  animation: overlayIn 0.2s ease;
+  position: fixed; inset: 0; background: rgba(23, 35, 61, 0.45);
+  backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px; animation: overlayIn 0.2s ease;
 }
 @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
 .modal-card {
-  width: 460px; max-width: 90%; padding: 36px 32px;
-  background: rgba(255,255,255,0.90); backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 20px; border: 1px solid rgba(255,255,255,0.50);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.12); text-align: center;
-  animation: modalIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  width: 560px; max-width: 100%; padding: 26px;
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); animation: modalIn 0.3s ease;
 }
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(16px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes modalIn { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+.modal-head {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border);
 }
-.modal-icon { font-size: 2.4rem; margin-bottom: 12px; }
-.modal-title { font-family: 'Playfair Display', Georgia, serif; font-size: 1.3rem; font-weight: 700; color: #212529; margin-bottom: 20px; }
-.modal-form { text-align: left; margin-bottom: 20px; }
+.modal-icon {
+  width: 42px; height: 42px; border-radius: var(--radius); background: var(--primary-soft);
+  display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;
+}
+.modal-title {
+  font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--text); margin: 0;
+}
+.modal-form { margin-bottom: 20px; }
 .modal-field-row { margin-bottom: 14px; }
 .modal-field-row label {
-  display: block; font-size: 0.78rem; font-weight: 600; color: #495057; margin-bottom: 6px;
+  display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-2); margin-bottom: 6px;
 }
 .modal-field {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 14px; border: 1px solid #dee2e6; border-radius: 10px;
-  background: rgba(255,255,255,0.60); transition: all 0.3s;
+  display: flex; align-items: center; padding: 0 14px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface-2); transition: all 0.2s ease;
 }
-.modal-field:focus-within { border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.12); }
+.modal-field:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); background: var(--surface); }
 .modal-field input, .modal-textarea {
-  flex: 1; border: none; background: transparent; padding: 12px 0;
-  font-size: 0.88rem; font-family: 'DM Sans', sans-serif; color: #212529; outline: none;
+  flex: 1; border: none; background: transparent; padding: 11px 0;
+  font-size: 0.88rem; color: var(--text); outline: none;
 }
-.modal-textarea {
-  min-height: 80px; resize: vertical; padding: 12px 0; line-height: 1.5;
-}
+.modal-textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
 .modal-actions { display: flex; gap: 12px; }
 .modal-btn {
-  flex: 1; padding: 12px; border: none; border-radius: 10px;
-  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
-  cursor: pointer; transition: all 0.3s;
+  flex: 1; padding: 12px; border: none; border-radius: var(--radius-sm);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;
 }
-.modal-btn--cancel { background: #f1f3f5; color: #495057; }
-.modal-btn--cancel:hover { background: #e9ecef; }
-.modal-btn--blue { background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: white; }
-.modal-btn--blue:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(43,108,176,0.25); }
+.modal-btn--cancel { background: var(--surface-3); color: var(--text-2); }
+.modal-btn--cancel:hover { background: var(--bg-deep); }
+.modal-btn--primary { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; }
+.modal-btn--primary:hover:not(:disabled) { box-shadow: var(--shadow-primary); transform: translateY(-1px); }
 .modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* ===== 分类多选 / 自定义输入 ===== */
+.category-tag-input {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface-2); transition: all 0.2s ease;
+}
+.category-tag-input:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); background: var(--surface); }
+.category-tag-input input {
+  flex: 1; min-width: 160px; border: none; background: transparent;
+  padding: 4px 0; font-size: 0.88rem; color: var(--text); outline: none;
+}
+.cat-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); color: var(--primary);
+  font-size: 0.74rem; font-weight: 600;
+}
+.cat-tag-del {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border: none; border-radius: 50%;
+  background: transparent; color: var(--primary); font-size: 0.85rem;
+  line-height: 1; cursor: pointer; transition: all 0.2s ease;
+}
+.cat-tag-del:hover { background: var(--danger-soft); color: var(--danger); }
+.category-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cat-preset-chip {
+  padding: 4px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--text-2); font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease; user-select: none;
+}
+.cat-preset-chip:hover { border-color: var(--primary); color: var(--primary); }
+.cat-preset-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* ===== 图片上传 ===== */
+.image-upload-row { display: flex; align-items: flex-start; gap: 14px; }
+.upload-box {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  border: 1.5px dashed var(--border-strong); border-radius: var(--radius);
+  background: var(--surface-2); cursor: pointer; overflow: hidden;
+  transition: all 0.2s ease;
+}
+.upload-box:hover { border-color: var(--primary); background: var(--primary-softer); }
+.upload-box--main { width: 120px; height: 120px; flex-shrink: 0; }
+.upload-box--detail { width: 88px; height: 88px; }
+.upload-placeholder { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-3); }
+.upload-icon { font-size: 1.6rem; }
+.upload-text { font-size: 0.72rem; font-weight: 600; }
+.upload-preview-wrap { position: relative; width: 100%; height: 100%; }
+.upload-preview { width: 100%; height: 100%; object-fit: cover; }
+.upload-preview-del {
+  position: absolute; top: 6px; right: 6px;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border: none; border-radius: 50%;
+  background: rgba(23, 35, 61, 0.55); color: #fff; font-size: 0.9rem;
+  line-height: 1; cursor: pointer; transition: all 0.2s ease;
+}
+.upload-preview-del:hover { background: var(--danger); }
+.main-image-info { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+.image-info-text { font-size: 0.76rem; color: var(--text-3); line-height: 1.4; word-break: break-all; }
+.detail-image-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.detail-image-item { position: relative; width: 88px; height: 88px; }
+.detail-image-preview { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); }
+
+/* ===== 消息提示 ===== */
+.msg {
+  margin-top: 18px; text-align: center; font-size: 0.85rem; padding: 12px;
+  border-radius: var(--radius-sm); animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.msg--success { color: var(--success); background: var(--success-soft); border: 1px solid rgba(47, 158, 68, 0.18); }
+.msg--error { color: var(--danger); background: var(--danger-soft); border: 1px solid rgba(224, 49, 49, 0.18); }
+
 /* ===== 底部 ===== */
-.seller-footer { position: relative; z-index: 1; padding: 24px 56px; text-align: center; }
-.seller-footer span { font-size: 0.7rem; color: #adb5bd; }
+.page-footer { padding: 8px 0 28px; text-align: center; }
+.page-footer span { font-size: 0.72rem; color: var(--text-4); }
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
-  .nav { padding: 0 24px; }
-  .seller-card { padding: 32px 20px; }
+  .seller-body { padding: 84px 16px 40px; }
+  .nav-btn-text { display: none; }
+  .page-head { flex-direction: column; align-items: flex-start; }
 }
 </style>

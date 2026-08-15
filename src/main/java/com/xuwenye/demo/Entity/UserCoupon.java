@@ -42,6 +42,10 @@ public class UserCoupon {
     /** 使用门槛（快照） */
     private BigDecimal minAmount;
 
+    /** 适用人群（快照）：1普通 2VIP专属 */
+    @TableField("target_type")
+    private Integer targetType;
+
     /** 状态：0未使用 1已使用 2已过期 */
     private Integer status;
 

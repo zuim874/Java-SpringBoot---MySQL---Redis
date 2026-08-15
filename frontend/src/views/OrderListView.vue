@@ -1,17 +1,10 @@
 <template>
   <div class="orders-page">
-    <!-- 背景装饰 -->
-    <div class="bg-shapes">
-      <div class="bg-circle bg-circle--1"></div>
-      <div class="bg-circle bg-circle--2"></div>
-      <div class="bg-circle bg-circle--3"></div>
-    </div>
-
-    <!-- 导航条 -->
+    <!-- 顶部导航 -->
     <nav class="nav">
       <div class="nav-logo" @click="goHome">ZuiMShop</div>
       <div class="nav-actions">
-        <!-- 头像组件 -->
+        <!-- 用户头像与菜单 -->
         <div class="avatar-wrapper" @click.stop>
           <span class="nav-balance" v-if="userBalance !== null">余额 ¥{{ Number(userBalance).toFixed(2) }}</span>
           <span class="nav-nickname">{{ nickname }}</span>
@@ -33,7 +26,11 @@
                 </div>
               </div>
               <button class="profile-menu-item" @click="profileMenuOpen = false; goHome()">返回商城</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goOrders()">我的订单</button>
               <button class="profile-menu-item" @click="profileMenuOpen = false; goProfile()">个人中心</button>
+              <button class="profile-menu-item" @click="profileMenuOpen = false; goCoupons()">我的优惠券</button>
+              <button class="profile-menu-item" v-if="isAdminUser" @click="profileMenuOpen = false; goAdmin()">管理后台</button>
+              <button class="profile-menu-item" v-if="isSellerUser" @click="profileMenuOpen = false; goSeller()">商家管理</button>
               <div class="profile-menu-divider"></div>
               <button class="profile-menu-item profile-menu-item--logout" @click="handleLogout">退出登录</button>
             </div>
@@ -42,121 +39,125 @@
       </div>
     </nav>
 
-    <!-- 主内容 -->
-    <div class="orders-wrapper">
-      <div class="orders-layout">
-        <!-- 左侧纵向筛选 -->
-        <div class="status-sidebar">
-          <div class="sidebar-header">
-            <div class="sidebar-icon">📋</div>
-            <h3>订单筛选</h3>
-          </div>
-          <button v-for="tab in statusTabs" :key="tab.value"
-                  class="sidebar-tab" :class="{ active: activeStatus === tab.value }"
-                  @click="switchStatus(tab.value)">
-            <span class="sidebar-tab-dot" :class="'dot--' + getStatusDotClass(tab.value)"></span>
-            {{ tab.label }}
-          </button>
+    <!-- 订单中心主体 -->
+    <main class="orders-main">
+      <!-- 订单页头 -->
+      <div class="orders-head">
+        <div class="head-left">
+          <h1 class="head-title">我的订单</h1>
+          <p class="head-sub">{{ nickname }}，这里记录着您的每一笔消费</p>
+        </div>
+        <button class="head-btn" @click="goHome">返回商城</button>
+      </div>
+
+      <!-- 状态筛选 Tabs -->
+      <div class="status-tabs">
+        <button
+          v-for="tab in statusTabs"
+          :key="tab.value"
+          class="status-tab"
+          :class="{ active: activeStatus === tab.value }"
+          @click="switchStatus(tab.value)"
+        >
+          <span class="status-tab-dot" :class="'dot--' + getStatusDotClass(tab.value)"></span>
+          <span class="status-tab-label">{{ tab.label }}</span>
+        </button>
+      </div>
+
+      <!-- 订单内容卡片 -->
+      <div class="orders-panel">
+        <!-- 加载中 -->
+        <div class="state-box" v-if="loading">
+          <div class="spinner"></div>
+          <p class="state-hint">加载订单中...</p>
         </div>
 
-        <!-- 右侧订单列表 -->
-        <div class="orders-content">
-          <div class="orders-card">
-            <div class="orders-header">
-              <div class="orders-icon">📋</div>
-              <h2 class="orders-title">我的订单</h2>
-              <p class="orders-desc">查看和管理您的所有订单</p>
+        <!-- 错误状态 -->
+        <div class="state-box" v-else-if="error">
+          <div class="state-icon">⚠️</div>
+          <p class="state-title">订单加载失败</p>
+          <p class="state-hint">网络似乎开小差了，请稍后重试</p>
+          <button class="btn btn--primary" @click="fetchOrders">重新加载</button>
+        </div>
+
+        <!-- 空订单 -->
+        <div class="state-box" v-else-if="orders.length === 0">
+          <div class="state-icon">🛒</div>
+          <p class="state-title">暂无订单</p>
+          <p class="state-hint">快去商城挑选心仪的商品吧</p>
+          <button class="btn btn--primary" @click="goHome">去逛逛</button>
+        </div>
+
+        <!-- 订单列表 -->
+        <div class="order-list" v-else>
+          <div v-for="order in orders" :key="order.id" class="order-card" @click="goToOrderDetail(order.id)">
+            <!-- 订单头部 -->
+            <div class="order-head">
+              <div class="order-meta">
+                <span class="order-no">订单号：{{ order.orderNo || order.id }}</span>
+                <span class="order-time">{{ formatDate(order.createTime) }}</span>
+              </div>
+              <span class="status-badge" :class="getOrderStatusClass(order.status)">
+                {{ getOrderStatusText(order.status) }}
+              </span>
             </div>
 
-            <!-- 加载中 -->
-            <div class="loading-state" v-if="loading">
-              <div class="loading-spinner"></div>
-              <p>加载订单中...</p>
-            </div>
-
-            <!-- 错误状态 -->
-            <div class="empty-state" v-else-if="error">
-              <div class="error-icon">⚠️</div>
-              <p>订单加载失败</p>
-              <button class="retry-btn" @click="fetchOrders">重新加载</button>
-            </div>
-
-            <!-- 空订单 -->
-            <div class="empty-state" v-else-if="orders.length === 0">
-              <div class="empty-icon">📭</div>
-              <p>暂无订单</p>
-              <p class="empty-hint">快去商城挑选心仪的商品吧</p>
-              <button class="retry-btn" @click="goHome">去逛逛</button>
-            </div>
-
-            <!-- 订单列表 -->
-            <div class="order-list" v-else>
-              <div v-for="order in orders" :key="order.id" class="order-card" @click="goToOrderDetail(order.id)">
-                <!-- 订单头部 -->
-                <div class="order-header">
-                  <div class="order-meta">
-                    <span class="order-no">订单号: {{ order.orderNo || order.id }}</span>
-                    <span class="order-time">{{ formatDate(order.createTime) }}</span>
-                  </div>
-                  <span class="order-status" :class="getOrderStatusClass(order.status)">
-                    {{ getOrderStatusText(order.status) }}
-                  </span>
+            <!-- 订单商品行 -->
+            <div class="order-items">
+              <div v-for="item in (order.items || order.orderItems || [])" :key="item.id" class="order-item">
+                <img
+                  :src="item.mainImageUrl || item.image || '/uploads/hero/hero-1.jpg'"
+                  :alt="item.productName"
+                  class="item-thumb"
+                >
+                <div class="item-info">
+                  <h4 class="item-name">{{ item.productName }}</h4>
+                  <span class="item-price">¥{{ (item.price || 0).toFixed(2) }}</span>
                 </div>
-
-                <!-- 订单商品列表 -->
-                <div class="order-items">
-                  <div v-for="item in (order.items || order.orderItems || [])" :key="item.id" class="order-item">
-                    <img :src="item.mainImageUrl || item.image || '/uploads/hero/hero-1.jpg'"
-                         :alt="item.productName" class="item-image">
-                    <div class="item-info">
-                      <h4>{{ item.productName }}</h4>
-                      <p class="item-price">¥{{ (item.price || 0).toFixed(2) }}</p>
-                    </div>
-                    <span class="item-qty">x{{ item.quantity || item.qty || 1 }}</span>
-                  </div>
-                  <!-- 如果 items 为空，显示商品名 -->
-                  <div v-if="!order.items && !order.orderItems && order.productName" class="order-item">
-                    <div class="item-info">
-                      <h4>{{ order.productName }}</h4>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 订单底部 -->
-                <div class="order-footer">
-                  <div class="order-total">
-                    <span>共 {{ getItemCount(order) }} 件商品</span>
-                    <span class="total-amount">合计: ¥{{ (order.totalAmount || 0).toFixed(2) }}</span>
-                  </div>
-                  <div class="order-actions" @click.stop>
-                    <button class="action-btn" @click="handlePay(order)"
-                            v-if="order.status === 0"
-                            :disabled="actionLoading">立即支付</button>
-                    <button class="action-btn action-btn--cancel" @click="handleCancel(order)"
-                            v-if="order.status === 0"
-                            :disabled="actionLoading">取消订单</button>
-                    <button class="action-btn action-btn--refund" @click="handleRefund(order)"
-                            v-if="order.status === 1 || order.status === 2"
-                            :disabled="actionLoading">申请退款</button>
-                    <button class="action-btn action-btn--detail" @click="goToOrderDetail(order.id)">查看详情</button>
-                  </div>
+                <span class="item-qty">×{{ item.quantity || item.qty || 1 }}</span>
+              </div>
+              <!-- 如果 items 为空，显示商品名 -->
+              <div v-if="!order.items && !order.orderItems && order.productName" class="order-item">
+                <div class="item-info">
+                  <h4 class="item-name">{{ order.productName }}</h4>
                 </div>
               </div>
             </div>
 
-            <!-- 分页 -->
-            <div class="pagination" v-if="totalPages > 1">
-              <button class="page-btn" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">‹ 上一页</button>
-              <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-              <button class="page-btn" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">下一页 ›</button>
+            <!-- 订单底部 -->
+            <div class="order-foot">
+              <div class="order-total">
+                <span class="total-count">共 {{ getItemCount(order) }} 件商品</span>
+                <span class="total-label">合计：</span>
+                <span class="total-price">¥{{ (order.totalAmount || 0).toFixed(2) }}</span>
+              </div>
+              <div class="order-actions" @click.stop>
+                <button class="btn btn--primary" @click="handlePay(order)"
+                        v-if="order.status === 0"
+                        :disabled="actionLoading">立即支付</button>
+                <button class="btn btn--ghost btn--danger-text" @click="handleCancel(order)"
+                        v-if="order.status === 0"
+                        :disabled="actionLoading">取消订单</button>
+                <button class="btn btn--ghost btn--warn-text" @click="handleRefund(order)"
+                        v-if="order.status === 1 || order.status === 2"
+                        :disabled="actionLoading">申请退款</button>
+                <button class="btn btn--ghost" @click="goToOrderDetail(order.id)">查看详情</button>
+              </div>
             </div>
-
-            <!-- 消息提示 -->
-            <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">{{ message }}</p>
           </div>
         </div>
+
+        <!-- 分页 -->
+        <div class="pagination" v-if="totalPages > 1">
+          <button class="page-btn" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">‹ 上一页</button>
+          <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+          <button class="page-btn" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">下一页 ›</button>
+        </div>
+
+        <!-- 消息提示 -->
+        <p v-if="message" :class="['msg', msgSuccess ? 'msg--success' : 'msg--error']">{{ message }}</p>
       </div>
-    </div>
+    </main>
 
     <!-- 底部 -->
     <div class="orders-footer">
@@ -169,6 +170,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getUserOrders, payOrder, cancelOrder, refundOrder, getUserInfo } from '../api/index.js'
+import { getCachedAvatar } from '../utils/avatarCache.js'
+import { getCachedRoles } from '../utils/auth.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -192,9 +195,13 @@ const profileMenuOpen = ref(false)
 
 const nickname = ref(localStorage.getItem('nickname') || '用户')
 
+const cachedRoles = getCachedRoles()
+const isAdminUser = computed(() => cachedRoles.includes('ROLE_ADMIN'))
+const isSellerUser = computed(() => cachedRoles.includes('ROLE_SELLER'))
 const roleLabel = computed(() => {
-  const roles = ['普通用户']
-  return roles[0]
+  if (isAdminUser.value) return '管理员'
+  if (isSellerUser.value) return '商家'
+  return '普通用户'
 })
 
 // 状态标签选项（后端使用数字状态：0-待支付 1-已支付 2-已发货 3-已完成 4-已取消 5-已退款）
@@ -384,7 +391,11 @@ function showMessage(msg, success) {
 }
 
 function goHome() { router.push('/home') }
+function goOrders() { router.push('/orders') }
 function goProfile() { router.push('/profile') }
+function goCoupons() { router.push('/coupons') }
+function goAdmin() { router.push('/admin/dashboard') }
+function goSeller() { router.push('/seller/dashboard') }
 function handleLogout() {
   localStorage.removeItem('token')
   localStorage.removeItem('nickname')
@@ -397,7 +408,7 @@ async function fetchUserProfile() {
     const res = await getUserInfo()
     if (res && res.code === 200 && res.data) {
       const u = res.data
-      if (u.avatar) avatarUrl.value = u.avatar
+      if (u.avatar) avatarUrl.value = getCachedAvatar(u.avatar)
       if (u.nickname) nickname.value = u.nickname
       if (u.balance !== undefined && u.balance !== null) {
         userBalance.value = Number(u.balance)
@@ -435,45 +446,57 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ===== 全局 ===== */
+/* ===== 页面骨架 ===== */
 .orders-page {
-  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #f1f3f5 100%);
-  font-family: 'DM Sans', -apple-system, sans-serif; position: relative; overflow: hidden;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  font-family: var(--font-sans);
+  color: var(--text);
 }
-.bg-shapes { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.bg-circle {
-  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35;
-}
-.bg-circle--1 { width: 600px; height: 600px; top: -200px; right: -200px; background: radial-gradient(circle, #4a9eff, #2b6cb0); }
-.bg-circle--2 { width: 500px; height: 500px; bottom: -150px; left: -150px; background: radial-gradient(circle, #7c3aed, #5b21b6); }
-.bg-circle--3 { width: 300px; height: 300px; top: 40%; left: 10%; background: radial-gradient(circle, #4a9eff, transparent); }
 
-/* ===== 导航 ===== */
+/* ===== 顶部导航 ===== */
 .nav {
-  position: fixed; top: 0; left: 0; right: 0; height: 72px; z-index: 100;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 56px; background: rgba(255,255,255,0.60);
-  backdrop-filter: blur(20px) saturate(1.8);
-  border-bottom: 1px solid rgba(255,255,255,0.30);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 68px;
+  padding: 0 32px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border-bottom: 1px solid var(--border);
 }
 .nav-logo {
-  font-family: 'Playfair Display', Georgia, serif; font-size: 1.4rem; font-weight: 700;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   cursor: pointer;
 }
-.nav-actions { display: flex; gap: 12px; align-items: center; }
+.nav-actions { display: flex; align-items: center; gap: 12px; }
 
 /* ===== 用户头像与下拉菜单 ===== */
 .avatar-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
 .nav-balance {
-  padding: 5px 12px; border-radius: 50px;
-  background: rgba(43,108,176,0.08); border: 1px solid rgba(43,108,176,0.15);
-  color: #2b6cb0; font-size: 0.75rem; font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  border: 1px solid var(--border);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
 }
-.nav-nickname { font-size: 0.85rem; font-weight: 500; color: #2b6cb0; padding: 0 4px; }
+.nav-nickname { font-size: 0.85rem; font-weight: 600; color: var(--text-2); padding: 0 4px; }
 .avatar-btn {
   display: flex; align-items: center; gap: 4px;
   background: none; border: none; cursor: pointer; padding: 2px;
@@ -482,36 +505,34 @@ onUnmounted(() => {
 .avatar-btn:hover { transform: scale(1.05); }
 .avatar-circle {
   width: 38px; height: 38px; border-radius: 50%;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: white; font-family: 'DM Sans', sans-serif;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: #fff; font-family: var(--font-sans);
   font-size: 1rem; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(43,108,176,0.25);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 .avatar-circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.avatar-caret {
-  font-size: 0.7rem; color: #868e96; transition: transform 0.3s;
-}
+.avatar-caret { font-size: 0.7rem; color: var(--text-3); transition: transform 0.3s; }
 .avatar-caret.open { transform: rotate(180deg); }
 .profile-menu {
   position: absolute; top: calc(100% + 14px); right: 0;
   min-width: 180px; padding: 8px;
-  background: rgba(255,255,255,0.96);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border: 1px solid rgba(255,255,255,0.60);
-  border-radius: 14px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.10);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
 }
 .profile-menu-header {
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px; border-bottom: 1px solid #f1f3f5; margin-bottom: 6px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); margin-bottom: 6px;
 }
 .profile-menu-avatar {
   width: 40px; height: 40px; border-radius: 50%;
-  background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-  color: white; font-family: 'DM Sans', sans-serif;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: #fff; font-family: var(--font-sans);
   font-size: 1.05rem; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; overflow: hidden;
@@ -519,224 +540,289 @@ onUnmounted(() => {
 .profile-menu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .profile-menu-id { min-width: 0; }
 .profile-menu-name {
-  font-size: 0.9rem; font-weight: 600; color: #212529; margin: 0;
+  font-size: 0.9rem; font-weight: 600; color: var(--text); margin: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.profile-menu-role { font-size: 0.72rem; color: #adb5bd; margin: 2px 0 0; }
+.profile-menu-role { font-size: 0.72rem; color: var(--text-3); margin: 2px 0 0; }
 .profile-menu-item {
   display: block; width: 100%; text-align: left;
-  padding: 10px 14px; border: none; border-radius: 8px;
+  padding: 10px 14px; border: none; border-radius: var(--radius-sm);
   background: transparent; cursor: pointer;
-  font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
-  color: #495057; transition: all 0.2s;
+  font-family: var(--font-sans); font-size: 0.85rem;
+  color: var(--text-2); transition: all 0.2s;
 }
-.profile-menu-item:hover { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.profile-menu-item--logout:hover { background: rgba(220,53,69,0.06); color: #dc3545; }
-.profile-menu-divider { height: 1px; background: #f1f3f5; margin: 6px 0; }
+.profile-menu-item:hover { background: var(--primary-soft); color: var(--primary); }
+.profile-menu-item--logout:hover { background: var(--danger-soft); color: var(--danger); }
+.profile-menu-divider { height: 1px; background: var(--border); margin: 6px 0; }
 .profile-enter-active, .profile-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .profile-enter-from, .profile-leave-to { opacity: 0; transform: translateY(-6px); }
 
-/* ===== 主卡片 ===== */
-.orders-wrapper {
-  flex: 1; display: flex; align-items: flex-start; justify-content: center;
-  width: 100%; padding: 100px 24px 60px; position: relative; z-index: 1;
-}
-.orders-layout {
-  display: flex; gap: 24px; max-width: 1200px; width: 100%;
-  align-items: flex-start;
-}
-/* 左侧状态筛选侧边栏 */
-.status-sidebar {
-  width: 220px; flex-shrink: 0;
-  background: rgba(255,255,255,0.75); backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 20px; border: 1px solid rgba(255,255,255,0.50);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.04), 0 20px 60px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.60);
-  padding: 24px 16px;
-  position: sticky; top: 100px;
-  animation: cardIn 0.6s both;
-}
-.sidebar-header {
-  display: flex; align-items: center; gap: 10px;
-  padding-bottom: 16px; margin-bottom: 12px;
-  border-bottom: 1px solid #f1f3f5;
-}
-.sidebar-icon { font-size: 1.4rem; }
-.sidebar-header h3 {
-  margin: 0; font-size: 1.1rem; font-weight: 700; color: #212529;
-  font-family: 'DM Sans', sans-serif;
-}
-.sidebar-tab {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%; padding: 12px 14px; margin-bottom: 6px;
-  border: none; border-radius: 10px;
-  background: transparent; color: #495057; cursor: pointer;
-  text-align: left; font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
-  transition: all 0.2s;
-}
-.sidebar-tab:hover { background: rgba(43,108,176,0.06); color: #2b6cb0; }
-.sidebar-tab.active {
-  background: linear-gradient(135deg, rgba(43,108,176,0.08), rgba(124,58,237,0.08));
-  color: #2b6cb0; border: 1px solid rgba(43,108,176,0.2);
-}
-.sidebar-tab-dot {
-  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-}
-/* 状态点颜色对应 */
-.sidebar-tab-dot.dot--all { background: #495057; }
-.sidebar-tab-dot.dot--pending { background: #f08c00; }
-.sidebar-tab-dot.dot--paid { background: #2b6cb0; }
-.sidebar-tab-dot.dot--shipped { background: #7c3aed; }
-.sidebar-tab-dot.dot--completed { background: #2b8a3e; }
-.sidebar-tab-dot.dot--cancelled { background: #868e96; }
-.sidebar-tab-dot.dot--refunded { background: #c92a2a; }
-.sidebar-tab-dot.dot--unknown { background: #adb5bd; }
-
-/* 右侧内容区 */
-.orders-content {
+/* ===== 主体布局 ===== */
+.orders-main {
   flex: 1;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 24px 60px;
 }
-.orders-card {
-  background: rgba(255,255,255,0.75); backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 24px; border: 1px solid rgba(255,255,255,0.50);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.04), 0 20px 60px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.60);
-  animation: cardIn 0.6s both;
-  padding: 48px 40px;
-}
-@keyframes cardIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-.orders-header { text-align: center; margin-bottom: 32px; }
-.orders-icon { font-size: 2rem; margin-bottom: 12px; animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.1); opacity: 1; } }
-.orders-title { font-family: 'Playfair Display', Georgia, serif; font-size: 1.8rem; font-weight: 700; color: #212529; margin-bottom: 8px; }
-.orders-desc { font-size: 0.9rem; color: #868e96; }
 
-/* 旧状态标签样式保留但隐藏（如果还需要的话） */
-.status-tabs { display: none; }
-.status-tab { display: none; }
+/* 订单页头 */
+.orders-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.head-title {
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+.head-sub { margin-top: 6px; font-size: 0.88rem; color: var(--text-3); }
+.head-btn {
+  flex-shrink: 0;
+  padding: 9px 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.head-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ===== 状态筛选 Tabs ===== */
+.status-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+  white-space: nowrap;
+}
+.status-tab:hover { background: var(--surface-3); color: var(--primary); }
+.status-tab.active {
+  background: var(--primary-soft);
+  border-color: var(--border-strong);
+  color: var(--primary);
+}
+.status-tab-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.status-tab-dot.dot--all { background: var(--text-3); }
+.status-tab-dot.dot--pending { background: var(--warning); }
+.status-tab-dot.dot--paid { background: var(--primary); }
+.status-tab-dot.dot--shipped { background: var(--accent); }
+.status-tab-dot.dot--completed { background: var(--success); }
+.status-tab-dot.dot--cancelled { background: var(--text-3); }
+.status-tab-dot.dot--refunded { background: var(--danger); }
+.status-tab-dot.dot--unknown { background: var(--text-4); }
+
+/* ===== 订单面板 ===== */
+.orders-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 28px;
+}
+
+/* ===== 加载 & 空态 ===== */
+.state-box { text-align: center; padding: 72px 16px; color: var(--text-3); }
+.state-icon { font-size: 3rem; margin-bottom: 12px; }
+.state-title { font-size: 1.05rem; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+.state-hint { font-size: 0.85rem; color: var(--text-3); margin-bottom: 18px; }
 
 /* ===== 订单卡片 ===== */
-.order-list { display: flex; flex-direction: column; gap: 16px; }
+.order-list { display: flex; flex-direction: column; gap: 18px; }
 .order-card {
-  background: white; border: 1px solid #dee2e6; border-radius: 16px;
-  overflow: hidden; cursor: pointer; transition: all 0.3s;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.3s, border-color 0.3s, transform 0.3s;
 }
-.order-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.06); border-color: transparent; }
-.order-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 20px; background: #f8f9fa; border-bottom: 1px solid #dee2e6;
+.order-card:hover {
+  box-shadow: var(--shadow);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+/* 订单头部 */
+.order-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 .order-meta { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-.order-no { font-size: 0.8rem; font-weight: 600; color: #495057; }
-.order-time { font-size: 0.75rem; color: #adb5bd; }
-.order-status {
-  font-size: 0.8rem; font-weight: 600; padding: 4px 12px; border-radius: 20px;
-}
-.order-status.status--pending { background: rgba(240,140,0,0.08); color: #f08c00; }
-.order-status.status--paid { background: rgba(43,108,176,0.08); color: #2b6cb0; }
-.order-status.status--shipped { background: rgba(124,58,237,0.08); color: #7c3aed; }
-.order-status.status--completed { background: rgba(43,138,62,0.08); color: #2b8a3e; }
-.order-status.status--cancelled { background: rgba(134,142,150,0.08); color: #868e96; }
-.order-status.status--refunded { background: rgba(201,42,42,0.08); color: #c92a2a; }
+.order-no { font-size: 0.82rem; font-weight: 700; color: var(--text-2); letter-spacing: 0.3px; }
+.order-time { font-size: 0.75rem; color: var(--text-3); }
 
-/* ===== 订单商品 ===== */
-.order-items { padding: 16px 20px; }
+/* 状态标签 */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.status-badge.status--pending { color: var(--warning); background: var(--warning-soft); }
+.status-badge.status--paid { color: var(--primary); background: var(--primary-soft); }
+.status-badge.status--shipped { color: var(--accent); background: var(--accent-soft); }
+.status-badge.status--completed { color: var(--success); background: var(--success-soft); }
+.status-badge.status--cancelled { color: var(--text-3); background: var(--surface-3); }
+.status-badge.status--refunded { color: var(--danger); background: var(--danger-soft); }
+.status-badge.status--unknown { color: var(--text-4); background: var(--surface-3); }
+
+/* 商品行 */
+.order-items { padding: 14px 20px; }
 .order-item {
-  display: flex; align-items: center; gap: 12px; padding: 8px 0;
-  border-bottom: 1px solid #f1f3f5;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
 }
 .order-item:last-child { border-bottom: none; }
-.item-image { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #f8f9fa; }
+.item-thumb {
+  width: 62px; height: 62px;
+  border-radius: var(--radius);
+  object-fit: cover;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
 .item-info { flex: 1; min-width: 0; }
-.item-info h4 { font-size: 0.9rem; font-weight: 600; color: #212529; margin-bottom: 4px; }
-.item-price { font-size: 0.85rem; font-weight: 600; color: #2b6cb0; }
-.item-qty { font-size: 0.85rem; color: #868e96; }
+.item-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item-price { font-size: 0.85rem; font-weight: 700; color: var(--price); }
+.item-qty { font-size: 0.85rem; color: var(--text-3); flex-shrink: 0; }
 
-/* ===== 订单底部 ===== */
-.order-footer {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 20px; border-top: 1px solid #dee2e6; flex-wrap: wrap; gap: 12px;
+/* 订单底部 */
+.order-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
 }
-.order-total { display: flex; gap: 16px; align-items: center; }
-.order-total span { font-size: 0.8rem; color: #868e96; }
-.total-amount { font-size: 1rem; font-weight: 700; color: #212529; }
-.order-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.action-btn {
-  padding: 8px 18px; border: 1px solid #dee2e6; border-radius: 8px;
-  background: white; color: #495057; font-size: 0.78rem; font-weight: 500;
-  cursor: pointer; transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+.order-total { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.total-count { font-size: 0.8rem; color: var(--text-3); margin-right: 8px; }
+.total-label { font-size: 0.85rem; color: var(--text-2); font-weight: 500; }
+.total-price { font-size: 1.15rem; font-weight: 800; color: var(--price); font-family: var(--font-sans); }
+.order-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ===== 按钮（覆盖全局 btn 以适配冷色风格） ===== */
+.btn--primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  border: none;
+  color: #fff;
+  box-shadow: var(--shadow-primary);
 }
-.action-btn:hover:not(:disabled) { border-color: #2b6cb0; color: #2b6cb0; }
-.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.action-btn--cancel { color: #c92a2a; }
-.action-btn--cancel:hover:not(:disabled) { border-color: #c92a2a; }
-.action-btn--refund { color: #f08c00; }
-.action-btn--refund:hover:not(:disabled) { border-color: #f08c00; }
-.action-btn--detail { background: linear-gradient(135deg, #2b6cb0, #4a9eff); color: white; border-color: transparent; }
-.action-btn--detail:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(43,108,176,0.25); }
+.btn--primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(47, 84, 235, 0.35);
+}
+.btn--danger-text { color: var(--danger); }
+.btn--danger-text:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.btn--warn-text { color: var(--warning); }
+.btn--warn-text:hover:not(:disabled) { border-color: var(--warning); color: var(--warning); }
 
 /* ===== 分页 ===== */
 .pagination {
-  display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 28px;
 }
 .page-btn {
-  padding: 10px 20px; border: 1px solid #dee2e6; border-radius: 10px;
-  background: transparent; color: #495057; font-size: 0.85rem; cursor: pointer;
-  transition: all 0.3s; font-family: 'DM Sans', sans-serif;
+  padding: 10px 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
 }
-.page-btn:hover:not(:disabled) { border-color: #4a9eff; color: #4a9eff; }
+.page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.page-info { font-size: 0.85rem; color: #868e96; }
-
-/* ===== 加载 & 空状态 ===== */
-.loading-state, .empty-state { text-align: center; padding: 60px 0; color: #868e96; }
-.loading-spinner {
-  width: 36px; height: 36px; margin: 0 auto 12px;
-  border: 3px solid #f1f3f5; border-top-color: #2b6cb0;
-  border-radius: 50%; animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.error-icon, .empty-icon { font-size: 3rem; margin-bottom: 12px; }
-.empty-hint { font-size: 0.85rem; color: #adb5bd; margin-top: 8px; }
-.retry-btn {
-  margin-top: 16px; padding: 10px 24px; border: 1px solid #2b6cb0; border-radius: 50px;
-  background: transparent; color: #2b6cb0; font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.3s;
-}
-.retry-btn:hover { background: rgba(43,108,176,0.06); }
+.page-info { font-size: 0.85rem; color: var(--text-3); font-weight: 600; }
 
 /* ===== 消息提示 ===== */
-.msg { margin-top: 16px; text-align: center; font-size: 0.85rem; padding: 10px; border-radius: 10px; animation: fadeIn 0.3s ease; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.msg--success { color: #2b8a3e; background: rgba(43,138,62,0.06); border: 1px solid rgba(43,138,62,0.12); }
-.msg--error { color: #c92a2a; background: rgba(201,42,42,0.06); border: 1px solid rgba(201,42,42,0.12); }
+.msg {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 12px;
+  border-radius: var(--radius);
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.msg--success { color: var(--success); background: var(--success-soft); border: 1px solid rgba(47, 158, 68, 0.2); }
+.msg--error { color: var(--danger); background: var(--danger-soft); border: 1px solid rgba(224, 49, 49, 0.2); }
 
 /* ===== 底部 ===== */
-.orders-footer { position: relative; z-index: 1; padding: 24px 56px; text-align: center; }
-.orders-footer span { font-size: 0.7rem; color: #adb5bd; }
+.orders-footer { padding: 24px 32px; text-align: center; }
+.orders-footer span { font-size: 0.72rem; color: var(--text-4); }
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
-  .nav { padding: 0 24px; }
-  .orders-layout { flex-direction: column; }
-  .status-sidebar {
-    width: 100%; position: static; display: flex; flex-wrap: wrap;
-    gap: 8px; padding: 16px; overflow-x: auto;
-  }
-  .sidebar-header { display: none; }
-  .sidebar-tab {
-    flex: 0 0 auto; padding: 8px 14px; margin-bottom: 0;
-    font-size: 0.8rem; border: 1px solid #dee2e6; border-radius: 50px;
-  }
-  .sidebar-tab.active {
-    background: linear-gradient(135deg, #2b6cb0, #4a9eff, #7c3aed);
-    color: white; border-color: transparent;
-  }
-  .orders-card { padding: 32px 20px; }
-  .order-header { flex-direction: column; gap: 8px; align-items: flex-start; }
-  .order-footer { flex-direction: column; align-items: flex-start; }
+  .nav { padding: 0 20px; }
+  .nav-balance { display: none; }
+  .orders-main { padding: 28px 16px 48px; }
+  .orders-head { flex-direction: column; align-items: flex-start; }
+  .head-btn { width: 100%; }
+  .status-tabs { flex-wrap: nowrap; overflow-x: auto; padding: 6px; }
+  .status-tab { flex-shrink: 0; padding: 8px 14px; font-size: 0.8rem; }
+  .orders-panel { padding: 16px; }
+  .order-head { flex-direction: column; align-items: flex-start; }
+  .order-foot { flex-direction: column; align-items: stretch; }
   .order-actions { width: 100%; }
-  .action-btn { flex: 1; text-align: center; }
-  /* 移动端：头像菜单右对齐 */
-  .avatar-wrapper { flex: 1; justify-content: flex-end; }
-  .profile-menu { right: 0; }
+  .order-actions .btn { flex: 1; text-align: center; }
 }
 </style>

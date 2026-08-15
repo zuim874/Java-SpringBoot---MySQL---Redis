@@ -298,7 +298,7 @@ public class UserController {
      * @param currentUser 当前登录用户（切面注入）
      * @return Result<?> 200/400/401：成功/失败
      */
-    @RateLimit(window = 60, maxRequests = 3, message = "用户资料刷新频繁，请稍后再试")
+    @RateLimit(window = 60, maxRequests = 20, message = "用户资料刷新频繁，请稍后再试")
     @UserCheck
     @GetMapping("/me")
     public Result<?> getCurrentUser(User currentUser) {

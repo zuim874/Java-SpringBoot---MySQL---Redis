@@ -76,6 +76,10 @@ export async function request(url, options = {}) {
         return data
     } catch (error) {
         console.error('请求失败:', error)
+        // 改善网络错误提示
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            throw new Error('后端服务连接失败，请检查服务是否已启动')
+        }
         throw error
     }
 }

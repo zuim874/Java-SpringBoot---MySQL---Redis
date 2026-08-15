@@ -18,13 +18,14 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 
 /**
- * 用户身份校验切面：配合 @UserCheck 注解，统一完成「登录态校验 + 当前用户查询注入」
+ * 用户身份校验切面：配合 @UserCheck 注解，统一完成「登录态校验 + 角色校验 + 当前用户查询注入」
  * <p>
  * 1.校验请求头 Authorization 中的 Bearer Token（未登录/无效 → 401）
  * 2.解析用户名并查询当前登录用户（用户不存在 → 按注解配置返回错误）
- * 3.将 currentUser 注入到方法参数（方法需声明一个 User 类型参数接收，如：
+ * 3.按注解 roles 配置校验角色（角色不匹配 → 按 roleErrorCode/roleErrorMessage 返回 403）
+ * 4.将 currentUser 注入到方法参数（方法需声明一个 User 类型参数接收，如：
  *    public Result&lt;?&gt; xxx(User currentUser, @RequestParam ...)）
- * 4.注入后执行原方法——Controller 中不再需要重复的 token 校验 / 查用户样板代码
+ * 5.注入后执行原方法——Controller 中不再需要重复的 token 校验 / 查用户样板代码
  * <p>
  * 注意：User 类型参数无需（也不应）添加 @RequestParam/@RequestBody 等绑定注解，
  * 由切面直接替换参数值注入；Spring MVC 对无注解复杂类型的 ModelAttribute 绑定
@@ -49,7 +50,8 @@ public class UserCheckAspect {
      * 2.校验 Authorization 头（未携带 / 格式错误 / 令牌失效 → 401）
      * 3.查询当前登录用户（不存在 → 按注解 errorCode/errorMessage 返回）
      * 4.按注解 checkUser 决定是否注入（checkUser=false 时仅校验 Token，不注入）
-     * 5.将当前用户注入到方法参数后执行原方法
+     * 5.按注解 roles 校验角色（角色不匹配 → 按 roleErrorCode/roleErrorMessage 返回 403）
+     * 6.将当前用户注入到方法参数后执行原方法
      * <p>
      * @author ZuiM
      * @param joinPoint 连接点
@@ -97,6 +99,14 @@ public class UserCheckAspect {
             return Result.error(userCheck.errorCode(), userCheck.errorMessage());
         }
 
+        // 5b. 按注解 roles 配置校验角色（未配置 roles 则跳过）
+        String[] requiredRoles = userCheck.roles();
+        if (requiredRoles != null && requiredRoles.length > 0) {
+            if (!hasAnyRole(currentUser.getUserRole(), requiredRoles)) {
+                return Result.error(userCheck.roleErrorCode(), userCheck.roleErrorMessage());
+            }
+        }
+
         // 6. 注入到方法参数（查找 User 类型参数）
         Object[] args = joinPoint.getArgs();
         Parameter[] parameters = method.getParameters();
@@ -115,5 +125,31 @@ public class UserCheckAspect {
 
         // 7. 执行原方法（携带注入后的参数）
         return joinPoint.proceed(args);
+    }
+
+    /**
+     * 判断用户角色字符串（逗号分隔）是否命中任一要求角色
+     * <p>
+     * @author ZuiM
+     * @param userRole 用户角色串（可为 null，如 "ROLE_USER,ROLE_SELLER"）
+     * @param requiredRoles 要求的角色编码集合
+     * @return boolean true=命中任一角色
+     */
+    private boolean hasAnyRole(String userRole, String[] requiredRoles) {
+        if (userRole == null || requiredRoles == null || requiredRoles.length == 0) {
+            return false;
+        }
+        for (String role : userRole.split(",")) {
+            String trimmed = role.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            for (String required : requiredRoles) {
+                if (required.equals(trimmed)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

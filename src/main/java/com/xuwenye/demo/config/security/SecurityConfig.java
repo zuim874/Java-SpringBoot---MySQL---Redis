@@ -73,6 +73,8 @@ public class SecurityConfig {
                                 "/api/product/sellers").permitAll()
                         // 卖家详情公开接口（GET请求）
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/product/seller/**").permitAll()
+                        // 领券中心可领模板公开接口（GET请求，无需登录）
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/coupon/user/templates").permitAll()
                         .anyRequest().authenticated()
                 )
                 // 未认证访问返回 401 JSON（避免 Spring Security 默认 403 空响应导致前端 JSON 解析报错）

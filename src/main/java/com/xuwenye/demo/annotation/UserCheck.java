@@ -17,4 +17,14 @@ public @interface UserCheck {
 
     // 错误信息
     String errorMessage() default "未登录或登录信息已过期";
+
+    // 需要匹配的角色编码（如 ROLE_ADMIN / ROLE_SELLER / ROLE_VIP_USER）
+    // 为空表示仅校验登录态，不校验角色
+    String[] roles() default {};
+
+    // 角色校验失败返回错误码
+    int roleErrorCode() default 403;
+
+    // 角色校验失败错误信息
+    String roleErrorMessage() default "权限不足";
 }
