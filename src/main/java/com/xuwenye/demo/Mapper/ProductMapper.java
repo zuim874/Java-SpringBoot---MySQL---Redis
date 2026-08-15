@@ -61,13 +61,15 @@ public interface ProductMapper extends BaseMapper<Product> {
     Product findProductById(@Param("id") Long id);
 
     /**
-     * 查询所有分类（不重复）
+     * 统计引用指定分类的商品数量（用于删除分类前的引用校验）
+     * 商品的 category 字段以英文逗号分隔存储分类ID集合，使用 FIND_IN_SET 判断
      * <p>
      * @author ZuiM
-     * @return List<String> 分类列表
+     * @param categoryId 分类ID
+     * @return Long 引用该分类的商品数量（0=无引用）
      */
-    @Select("SELECT DISTINCT category FROM sys_product WHERE is_deleted = 0 AND category IS NOT NULL")
-    List<String> findAllCategories();
+    @Select("SELECT COUNT(*) FROM sys_product WHERE is_deleted = 0 AND FIND_IN_SET(#{categoryId}, category) > 0")
+    Long countByCategoryId(@Param("categoryId") Long categoryId);
 
     // ======================== 分页查询方法 ========================
 

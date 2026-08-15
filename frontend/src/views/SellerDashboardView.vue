@@ -72,7 +72,12 @@
                 <td class="price">¥{{ (prod.price || 0).toFixed(2) }}</td>
                 <td>{{ prod.stock || 0 }}</td>
                 <td>{{ prod.sold || 0 }}</td>
-                <td><span class="cat-chip">{{ prod.category || '-' }}</span></td>
+                <td>
+                  <template v-if="getProductCategoryNames(prod.category).length">
+                    <span class="cat-chip" v-for="(name, i) in getProductCategoryNames(prod.category)" :key="i">{{ name }}</span>
+                  </template>
+                  <span v-else class="cat-chip cat-chip--empty">-</span>
+                </td>
                 <td>
                   <span class="status-badge" :class="prod.status === 1 ? 'status--ok' : 'status--off'">
                     {{ prod.status === 1 ? '上架' : '下架' }}
@@ -264,8 +269,22 @@
               <div class="modal-field"><input v-model="form.stock" type="number" placeholder="请输入库存" /></div>
             </div>
             <div class="modal-field-row">
-              <label>分类</label>
-              <div class="modal-field"><input v-model="form.category" type="text" placeholder="请输入分类" /></div>
+              <label>分类（可多选，分类由平台管理员维护）</label>
+              <div class="modal-field">
+                <div class="category-tag-input">
+                  <span v-for="(cat, ci) in selectedCategories" :key="ci" class="cat-tag">
+                    {{ categoryNameById[cat] || ('#' + cat) }}
+                    <button type="button" class="cat-tag-del" @click="removeCategory(ci)">×</button>
+                  </span>
+                  <span v-if="selectedCategories.length === 0" class="category-empty-hint">请从下方选择分类</span>
+                </div>
+              </div>
+              <div class="category-presets">
+                <span v-for="cat in presetCategories" :key="cat.id"
+                      class="cat-preset-chip"
+                      :class="{ active: selectedCategories.includes(cat.id) }"
+                      @click="toggleCategory(cat)">{{ cat.name }}</span>
+              </div>
             </div>
             <div class="modal-field-row">
               <label>商品描述</label>
@@ -327,7 +346,7 @@ import {
   getSellerOrders, getSellerOrderDetail, sellerShipOrder,
   getSellerShop, updateSellerShop,
   getSellerConversations, sendSellerMessage, getSellerMessages, markSellerConversationRead,
-  getUserInfo
+  getUserInfo, getCategoryList
 } from '../api/index.js'
 import { getCachedAvatar } from '../utils/avatarCache.js'
 import { toastError } from '../utils/toast.js'
@@ -367,6 +386,46 @@ const showDialog = ref(false)
 const editingProduct = ref(null)
 const formLoading = ref(false)
 const form = ref({ productName: '', price: '', stock: '', category: '', description: '' })
+// 预置分类（管理员维护，卖家只能从中选取，不可自定义）
+const presetCategories = ref([])
+// 分类ID → 名称 映射（用于回显/展示）
+const categoryNameById = ref({})
+// 已选分类ID列表（以英文逗号分隔存储到 form.category）
+const selectedCategories = ref([])
+
+async function loadCategories() {
+  try {
+    const res = await getCategoryList()
+    if (res && res.code === 200 && Array.isArray(res.data)) {
+      presetCategories.value = res.data.filter(c => c && c.id != null)
+      const map = {}
+      presetCategories.value.forEach(c => { map[c.id] = c.name })
+      categoryNameById.value = map
+    }
+  } catch (e) {
+    console.error('获取分类失败:', e)
+  }
+}
+
+function getProductCategoryNames(categoryIds) {
+  if (!categoryIds) return []
+  const names = []
+  String(categoryIds).split(',').forEach(part => {
+    const id = Number(part.trim())
+    if (id && categoryNameById.value[id]) names.push(categoryNameById.value[id])
+  })
+  return names
+}
+
+function toggleCategory(cat) {
+  const index = selectedCategories.value.indexOf(cat.id)
+  if (index === -1) selectedCategories.value.push(cat.id)
+  else selectedCategories.value.splice(index, 1)
+}
+
+function removeCategory(index) {
+  selectedCategories.value.splice(index, 1)
+}
 
 async function fetchProducts() {
   productsLoading.value = true
@@ -386,6 +445,7 @@ async function fetchProducts() {
 function openAddDialog() {
   editingProduct.value = null
   form.value = { productName: '', price: '', stock: '', category: '', description: '' }
+  selectedCategories.value = []
   showDialog.value = true
 }
 
@@ -398,19 +458,22 @@ function openEditDialog(prod) {
     category: prod.category || '',
     description: prod.description || ''
   }
+  // 分类ID集合解析为已选分类ID数组（商品的 category 存分类ID）
+  selectedCategories.value = String(prod.category || '').split(',').map(s => Number(s.trim())).filter(n => n > 0)
   showDialog.value = true
 }
 
 async function submitForm() {
   if (!form.value.productName.trim()) { showMessage('请输入商品名称', false); return }
   if (!form.value.price || Number(form.value.price) <= 0) { showMessage('请输入有效价格', false); return }
+  if (selectedCategories.value.length === 0) { showMessage('请至少选择一个分类', false); return }
   formLoading.value = true
   try {
     const payload = {
       productName: form.value.productName,
       price: Number(form.value.price),
       stock: Number(form.value.stock) || 0,
-      category: form.value.category,
+      category: selectedCategories.value.join(','),
       description: form.value.description
     }
     const res = editingProduct.value
@@ -697,6 +760,7 @@ let pollTimer = null
 onMounted(() => {
   fetchProducts()
   fetchShop()
+  loadCategories()
   pollTimer = setInterval(pollMessages, 4000)
 })
 onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
@@ -837,6 +901,8 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
   display: inline-block; padding: 2px 10px; border-radius: var(--radius-pill);
   background: var(--surface-3); color: var(--text-2); font-size: 0.72rem; font-weight: 600;
 }
+.cat-chip + .cat-chip { margin-left: 4px; }
+.cat-chip--empty { color: var(--text-4); }
 .price { color: var(--price); font-weight: 700; white-space: nowrap; }
 .action-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -1058,6 +1124,38 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .modal-btn--primary { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; }
 .modal-btn--primary:hover:not(:disabled) { box-shadow: var(--shadow-primary); transform: translateY(-1px); }
 .modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ===== 分类多选（仅可从预设分类中选取） ===== */
+.category-tag-input {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface-2); transition: all 0.2s ease;
+}
+.category-tag-input:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); background: var(--surface); }
+.cat-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); color: var(--primary);
+  font-size: 0.74rem; font-weight: 600;
+}
+.cat-tag-del {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border: none; border-radius: 50%;
+  background: transparent; color: var(--primary); font-size: 0.85rem;
+  line-height: 1; cursor: pointer; transition: all 0.2s ease;
+}
+.cat-tag-del:hover { background: var(--danger-soft); color: var(--danger); }
+.category-empty-hint { font-size: 0.78rem; color: var(--text-4); }
+.category-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cat-preset-chip {
+  padding: 4px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--text-2); font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease; user-select: none;
+}
+.cat-preset-chip:hover { border-color: var(--primary); color: var(--primary); }
+.cat-preset-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
 /* ===== 消息提示 ===== */
 .msg {

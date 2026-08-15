@@ -72,7 +72,12 @@
                 <td class="price">¥{{ (prod.price || 0).toFixed(2) }}</td>
                 <td>{{ prod.stock || 0 }}</td>
                 <td>{{ prod.sold || 0 }}</td>
-                <td><span class="cat-chip">{{ prod.category || '-' }}</span></td>
+                <td>
+                  <template v-if="getProductCategoryNames(prod.category).length">
+                    <span class="cat-chip" v-for="(name, i) in getProductCategoryNames(prod.category)" :key="i">{{ name }}</span>
+                  </template>
+                  <span v-else class="cat-chip cat-chip--empty">-</span>
+                </td>
                 <td>
                   <span class="status-badge" :class="prod.status === 1 ? 'status--ok' : 'status--off'">
                     {{ prod.status === 1 ? '上架' : '下架' }}
@@ -130,22 +135,21 @@
               </div>
             </div>
             <div class="modal-field-row">
-              <label>分类（可多选 / 自定义输入）</label>
+              <label>分类（可多选，分类由平台管理员维护）</label>
               <div class="modal-field">
                 <div class="category-tag-input">
                   <span v-for="(cat, ci) in selectedCategories" :key="ci" class="cat-tag">
-                    {{ cat }}
+                    {{ categoryNameById[cat] || ('#' + cat) }}
                     <button type="button" class="cat-tag-del" @click="removeCategory(ci)">×</button>
                   </span>
-                  <input v-model="categoryInput" type="text" placeholder="输入分类后按回车添加（多个用逗号分隔）"
-                         @keydown.enter.prevent="addCategoryInput" />
+                  <span v-if="selectedCategories.length === 0" class="category-empty-hint">请从下方选择分类</span>
                 </div>
               </div>
               <div class="category-presets">
-                <span v-for="cat in presetCategories" :key="cat"
+                <span v-for="cat in presetCategories" :key="cat.id"
                       class="cat-preset-chip"
-                      :class="{ active: selectedCategories.includes(cat) }"
-                      @click="toggleCategory(cat)">{{ cat }}</span>
+                      :class="{ active: selectedCategories.includes(cat.id) }"
+                      @click="toggleCategory(cat)">{{ cat.name }}</span>
               </div>
             </div>
             <div class="modal-field-row">
@@ -215,7 +219,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getUserInfo, getSellerProducts, addSellerProduct, updateSellerProduct, onshelfProduct, offshelfProduct, getCategories, getProductDetail, uploadSellerProductImage, deleteSellerProductImage } from '../api/index.js'
+import { getUserInfo, getSellerProducts, addSellerProduct, updateSellerProduct, onshelfProduct, offshelfProduct, getCategoryList, getProductDetail, uploadSellerProductImage, deleteSellerProductImage } from '../api/index.js'
 
 const router = useRouter()
 
@@ -285,12 +289,13 @@ const form = ref({
   mainImageUrl: ''
 })
 
-// 预置分类（供快捷选择，加载后并入商品已有的分类）
-const presetCategories = ref(['手机配件', '电脑外设', '音频设备', '智能家居', '穿戴设备', '摄影器材', '其他'])
+// 预置分类（管理员维护，拉取后展示为可多选的分类卡片）
+const presetCategories = ref([])
+// 分类ID → 名称 映射（用于回显/展示）
+const categoryNameById = ref({})
 
-// 已选分类列表（逗号分隔存储到 form.category）
+// 已选分类ID列表（以英文逗号分隔存储到 form.category）
 const selectedCategories = ref([])
-const categoryInput = ref('')
 
 // 图片上传状态
 const mainImageInput = ref(null)
@@ -302,18 +307,35 @@ const detailImageFiles = ref([])      // 细节图待上传文件列表
 const oldMainImageId = ref(null)      // 编辑时已存在的主图记录ID（换主图时删除）
 
 /**
- * 加载分类预设（含已有分类）
+ * 加载分类预设（管理员维护的启用分类，卖家只能从中选取，不可自定义）
  */
 async function loadCategories() {
   try {
-    const res = await getCategories()
+    const res = await getCategoryList()
     if (res && res.code === 200 && Array.isArray(res.data)) {
-      const existing = res.data.filter(c => c && !presetCategories.value.includes(c))
-      presetCategories.value.push(...existing)
+      presetCategories.value = res.data.filter(c => c && c.id != null)
+      const map = {}
+      presetCategories.value.forEach(c => { map[c.id] = c.name })
+      categoryNameById.value = map
     }
   } catch (e) {
     console.error('获取分类失败:', e)
   }
+}
+
+/**
+ * 商品分类ID集合 → 名称列表（表格展示用）
+ * @param {string} categoryIds - 逗号分隔的分类ID（如 "1,2"）
+ * @returns {string[]} 分类名称列表
+ */
+function getProductCategoryNames(categoryIds) {
+  if (!categoryIds) return []
+  const names = []
+  String(categoryIds).split(',').forEach(part => {
+    const id = Number(part.trim())
+    if (id && categoryNameById.value[id]) names.push(categoryNameById.value[id])
+  })
+  return names
 }
 
 // ===== 消息提示 =====
@@ -360,7 +382,6 @@ function openAddDialog() {
   editingProduct.value = null
   form.value = { productName: '', price: '', stock: '', category: '', description: '', mainImageUrl: '' }
   selectedCategories.value = []
-  categoryInput.value = ''
   mainImagePreview.value = ''
   mainImageFile.value = null
   detailImages.value = []
@@ -382,8 +403,8 @@ async function openEditDialog(prod) {
     description: prod.description || '',
     mainImageUrl: prod.mainImageUrl || ''
   }
-  selectedCategories.value = (prod.category || '').split(',').map(s => s.trim()).filter(Boolean)
-  categoryInput.value = ''
+  // 分类ID集合解析为已选分类ID数组（商品的 category 存分类ID）
+  selectedCategories.value = String(prod.category || '').split(',').map(s => Number(s.trim())).filter(n => n > 0)
   mainImagePreview.value = ''
   mainImageFile.value = null
   detailImages.value = []
@@ -505,29 +526,16 @@ async function submitForm() {
   }
 }
 
-// ===== 分类操作（多选 / 自定义输入） =====
+// ===== 分类操作（仅可从预设分类中多选，不可自定义输入） =====
 
 /**
- * 添加分类（回车触发，支持中英文逗号分隔多个分类）
- */
-function addCategoryInput() {
-  const cats = categoryInput.value.split(/[,，]/).map(c => c.trim()).filter(Boolean)
-  if (cats.length === 0) return
-  cats.forEach(cat => {
-    if (!selectedCategories.value.includes(cat)) {
-      selectedCategories.value.push(cat)
-    }
-  })
-  categoryInput.value = ''
-}
-
-/**
- * 切换预置分类（选中/取消）
+ * 切换预设分类（选中/取消，按分类ID）
+ * @param {object} cat - 分类对象 { id, name }
  */
 function toggleCategory(cat) {
-  const index = selectedCategories.value.indexOf(cat)
+  const index = selectedCategories.value.indexOf(cat.id)
   if (index === -1) {
-    selectedCategories.value.push(cat)
+    selectedCategories.value.push(cat.id)
   } else {
     selectedCategories.value.splice(index, 1)
   }
@@ -778,6 +786,8 @@ onUnmounted(() => {
   display: inline-block; padding: 2px 10px; border-radius: var(--radius-pill);
   background: var(--surface-3); color: var(--text-2); font-size: 0.72rem; font-weight: 600;
 }
+.cat-chip + .cat-chip { margin-left: 4px; }
+.cat-chip--empty { color: var(--text-4); }
 .price { color: var(--price); font-weight: 700; white-space: nowrap; }
 .action-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -905,6 +915,7 @@ onUnmounted(() => {
   line-height: 1; cursor: pointer; transition: all 0.2s ease;
 }
 .cat-tag-del:hover { background: var(--danger-soft); color: var(--danger); }
+.category-empty-hint { font-size: 0.78rem; color: var(--text-4); }
 .category-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .cat-preset-chip {
   padding: 4px 12px; border-radius: var(--radius-pill);

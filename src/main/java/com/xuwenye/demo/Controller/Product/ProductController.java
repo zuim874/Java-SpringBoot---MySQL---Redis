@@ -902,6 +902,8 @@ public class ProductController {
         item.put("status", product.getStatus());
         item.put("description", product.getDescription());
         item.put("category", product.getCategory());
+        // 分类ID集合翻译为分类名称列表（商品表 category 存分类ID，展示需用名称）
+        item.put("categoryNames", productService.getCategoryNames(product.getCategory()));
         item.put("mainImageUrl", product.getMainImageUrl());
         item.put("recommend", product.getRecommend());
         item.put("createTime", product.getCreateTime());

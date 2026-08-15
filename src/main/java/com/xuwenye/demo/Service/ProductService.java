@@ -1,7 +1,7 @@
 package com.xuwenye.demo.Service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xuwenye.demo.Entity.Category;
 import com.xuwenye.demo.Entity.Product;
 import com.xuwenye.demo.Entity.ProductImage;
 import com.xuwenye.demo.Entity.Seller;
@@ -14,8 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -31,6 +32,7 @@ public class ProductService {
     private final ProductMapper productMapper;
     private final ProductImageMapper productImageMapper;
     private final SellerMapper sellerMapper;
+    private final CategoryService categoryService;
     private final RedisUtil redisUtil;
     private final RedisLockHelper redisLockHelper;
     private final MQProducer mqProducer;
@@ -46,12 +48,14 @@ public class ProductService {
     public ProductService(ProductMapper productMapper,
                           ProductImageMapper productImageMapper,
                           SellerMapper sellerMapper,
+                          CategoryService categoryService,
                           RedisUtil redisUtil,
                           RedisLockHelper redisLockHelper,
                           MQProducer mqProducer) {
         this.productMapper = productMapper;
         this.productImageMapper = productImageMapper;
         this.sellerMapper = sellerMapper;
+        this.categoryService = categoryService;
         this.redisUtil = redisUtil;
         this.redisLockHelper = redisLockHelper;
         this.mqProducer = mqProducer;
@@ -84,29 +88,60 @@ public class ProductService {
 
     /**
      * 按分类查询上架商品（含 Redis 缓存）
-     * 1.先从 Redis 查
-     * 2.未命中则查 MySQL
-     * 3.查到了写入 Redis
+     * 商品表 category 列现存储分类ID集合（英文逗号分隔），查询前先将分类名/ID翻译为ID
+     * 1.翻译分类参数为分类ID
+     * 2.先从 Redis 查
+     * 3.未命中则查 MySQL
+     * 4.查到了写入 Redis
      * <p>
      * @author ZuiM
-     * @param category 商品分类
+     * @param category 商品分类（分类名或分类ID均可）
      * @return List<Product> 指定分类的上架商品列表
      */
     @SuppressWarnings("unchecked")
     public List<Product> getProductsByCategory(String category) {
-        String cacheKey = PRODUCT_CATEGORY_CACHE_PREFIX + category;
+        if (category == null || category.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        // 分类参数翻译为分类ID（兼容传入分类名或直接传入分类ID）
+        String categoryId = translateCategoryParam(category);
+        if (categoryId == null) {
+            return new ArrayList<>();
+        }
+
+        String cacheKey = PRODUCT_CATEGORY_CACHE_PREFIX + categoryId;
         // 第 1 步：先从 Redis 查
         List<Product> cached = (List<Product>) redisUtil.get(cacheKey);
         if (cached != null) {
             return cached;
         }
         // 第 2 步：Redis 没有，查 MySQL
-        List<Product> products = productMapper.findProductsByCategory(category);
+        List<Product> products = productMapper.findProductsByCategory(categoryId);
         // 第 3 步：写入 Redis
         if (products != null && !products.isEmpty()) {
             redisUtil.set(cacheKey, products);
         }
         return products;
+    }
+
+    /**
+     * 将分类查询参数翻译为分类ID（字符串）
+     * 1.若参数为纯数字，视为分类ID直接使用
+     * 2.否则视为分类名称，查 sys_category 表翻译为ID
+     * <p>
+     * @author ZuiM
+     * @param category 分类名或分类ID
+     * @return String 分类ID（未匹配到返回 null）
+     */
+    private String translateCategoryParam(String category) {
+        String trimmed = category.trim();
+        // 纯数字视为分类ID
+        if (trimmed.matches("\\d+")) {
+            return trimmed;
+        }
+        // 否则按分类名称查询
+        Long id = categoryService.getCategoryIdByName(trimmed);
+        return id == null ? null : String.valueOf(id);
     }
 
     /**
@@ -137,12 +172,13 @@ public class ProductService {
 
     /**
      * 获取所有分类列表（含 Redis 缓存）
+     * 分类以管理员维护的 sys_category 表为唯一数据源
      * 1.先从 Redis 查
-     * 2.未命中则查 MySQL
+     * 2.未命中则查 sys_category 表
      * 3.查到了写入 Redis
      * <p>
      * @author ZuiM
-     * @return List<String> 分类列表
+     * @return List<String> 分类名称列表
      */
     @SuppressWarnings("unchecked")
     public List<String> getAllCategories() {
@@ -151,40 +187,69 @@ public class ProductService {
         if (cached != null) {
             return cached;
         }
-        // 第 2 步：Redis 没有，查 MySQL（商品分类以逗号分隔存储，需拆分去重）
-        List<String> categories = productMapper.findAllCategories();
-        List<String> result = splitAndDistinctCategories(categories);
+        // 第 2 步：Redis 没有，查 sys_category 表
+        List<Category> categories = categoryService.getAllCategories();
+        List<String> result = new ArrayList<>();
+        if (categories != null) {
+            for (Category c : categories) {
+                result.add(c.getName());
+            }
+        }
         // 第 3 步：写入 Redis
-        if (result != null && !result.isEmpty()) {
+        if (!result.isEmpty()) {
             redisUtil.set(ALL_CATEGORIES_CACHE_KEY, result);
         }
         return result;
     }
 
     /**
-     * 将数据库中的分类串拆分、去重、排序
-     * 商品 category 字段可能为 "手机,数码" 等多分类（英文逗号分隔）
+     * 获取分类ID到名称的映射（带缓存）
+     * 供商品分类ID集合翻译为分类名称展示使用
      * <p>
      * @author ZuiM
-     * @param categories 数据库查询出的原始分类列表
-     * @return List<String> 去重后的单个分类列表
+     * @return Map<Long, String> 分类ID→名称映射
      */
-    private List<String> splitAndDistinctCategories(List<String> categories) {
-        LinkedHashSet<String> set = new LinkedHashSet<>();
+    public Map<Long, String> getCategoryNameMap() {
+        Map<Long, String> map = new LinkedHashMap<>();
+        List<Category> categories = categoryService.getAllCategories();
         if (categories != null) {
-            for (String c : categories) {
-                if (c == null) {
-                    continue;
-                }
-                for (String part : c.split(",")) {
-                    String t = part.trim();
-                    if (!t.isEmpty()) {
-                        set.add(t);
-                    }
-                }
+            for (Category c : categories) {
+                map.put(c.getId(), c.getName());
             }
         }
-        return new ArrayList<>(set);
+        return map;
+    }
+
+    /**
+     * 将商品分类ID集合翻译为分类名称列表
+     * 商品的 category 字段存储分类ID集合（英文逗号分隔），展示时翻译为名称
+     * <p>
+     * @author ZuiM
+     * @param categoryIds 分类ID集合字符串（如 "1,2"）
+     * @return List<String> 分类名称列表（按原ID顺序）
+     */
+    public List<String> getCategoryNames(String categoryIds) {
+        List<String> names = new ArrayList<>();
+        if (categoryIds == null || categoryIds.trim().isEmpty()) {
+            return names;
+        }
+        Map<Long, String> nameMap = getCategoryNameMap();
+        for (String part : categoryIds.split(",")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            try {
+                Long id = Long.parseLong(trimmed);
+                String name = nameMap.get(id);
+                if (name != null) {
+                    names.add(name);
+                }
+            } catch (NumberFormatException ignored) {
+                // 忽略非数字的旧数据片段
+            }
+        }
+        return names;
     }
 
     /**
@@ -442,14 +507,8 @@ public class ProductService {
         List<String> keys = new ArrayList<>();
         keys.add(PRODUCT_LIST_CACHE_KEY);
         keys.add(ALL_CATEGORIES_CACHE_KEY);
-        // 清除所有分类缓存
-        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "手机配件");
-        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "电脑外设");
-        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "音频设备");
-        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "智能家居");
-        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "穿戴设备");
-        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "摄影器材");
-        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "其他");
+        // 清除所有按分类查询的商品缓存（模糊匹配）
+        keys.add(PRODUCT_CATEGORY_CACHE_PREFIX + "*");
         // 清除分页缓存（模糊匹配）
         keys.add("demo:product:page:*");
         keys.add("demo:product:admin:page:*");

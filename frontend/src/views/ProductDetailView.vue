@@ -7,7 +7,7 @@
           <div class="nav-logo" @click="goHome">ZuiMShop</div>
           <div class="nav-breadcrumb" v-if="product">
             <span class="breadcrumb-arrow">›</span>
-            <span class="breadcrumb-cat">{{ product.category }}</span>
+            <span class="breadcrumb-cat">{{ productCategoryNames[0] || '商品' }}</span>
             <span class="breadcrumb-arrow">›</span>
             <span class="breadcrumb-current">{{ product.productName }}</span>
           </div>
@@ -93,7 +93,7 @@
         <div class="info-panel">
           <!-- 分类标签 -->
           <div class="info-header">
-            <span class="cat-tag">{{ product.category }}</span>
+            <span class="cat-tag" v-for="(name, i) in productCategoryNames" :key="i">{{ name }}</span>
             <span class="badge badge-hot" v-if="product.sold > 100">热卖</span>
           </div>
 
@@ -315,7 +315,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getProductDetail, createOrder, getAvailableCoupons } from '../api/index.js'
+import { getProductDetail, createOrder, getAvailableCoupons, getCategoryList } from '../api/index.js'
 import { getUserAddresses, addAddress, getUserInfo } from '../api/index.js'
 import { toastError } from '../utils/toast.js'
 import { getCachedAvatar, DEFAULT_AVATAR } from '../utils/avatarCache.js'
@@ -387,6 +387,29 @@ const selectedCoupon = ref(null)
 // ===== 聊天抽屉状态 =====
 const showChat = ref(false)
 
+// ===== 商品分类展示 =====
+const categories = ref([])
+
+// 分类ID→名称映射（商品 category 字段存储分类ID集合，如 "1,2"）
+const categoryNameMap = computed(() => {
+  const map = {}
+  for (const c of categories.value) {
+    map[c.id] = c.name
+  }
+  return map
+})
+
+// 商品分类ID集合翻译为分类名称列表
+const productCategoryNames = computed(() => {
+  const raw = product.value?.category
+  if (!raw) return []
+  return String(raw)
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s !== '')
+    .map(id => categoryNameMap.value[id] || `#${id}`)
+})
+
 // 当前显示的图片
 const currentImage = computed(() => {
   if (images.value.length > 0 && images.value[currentImageIndex.value]) {
@@ -410,6 +433,18 @@ async function fetchProductDetail() {
     console.error('获取商品详情错误:', error)
   } finally {
     loading.value = false
+  }
+}
+
+// 获取分类列表（用于分类ID→名称翻译）
+async function fetchCategories() {
+  try {
+    const res = await getCategoryList()
+    if (res && res.code === 200 && Array.isArray(res.data)) {
+      categories.value = res.data
+    }
+  } catch (e) {
+    console.error('获取分类列表失败:', e)
   }
 }
 
@@ -633,6 +668,7 @@ onMounted(() => {
   window.addEventListener('scroll', onScroll)
   document.addEventListener('click', closePopups)
   fetchProductDetail()
+  fetchCategories()
   fetchUserProfile()
 })
 

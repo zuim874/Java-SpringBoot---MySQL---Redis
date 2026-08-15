@@ -172,7 +172,12 @@
                 <td class="price">¥{{ (prod.price || 0).toFixed(2) }}</td>
                 <td>{{ prod.stock || 0 }}</td>
                 <td>{{ prod.sold || 0 }}</td>
-                <td><span class="cat-chip">{{ prod.category || '-' }}</span></td>
+                <td>
+                  <template v-if="getProductCategoryNames(prod.category).length">
+                    <span class="cat-chip" v-for="(name, i) in getProductCategoryNames(prod.category)" :key="i">{{ name }}</span>
+                  </template>
+                  <span v-else class="cat-chip cat-chip--empty">-</span>
+                </td>
                 <td>
                   <span class="status-badge" :class="prod.status === 1 ? 'status--ok' : 'status--off'">
                     {{ prod.status === 1 ? '上架' : '下架' }}
@@ -197,6 +202,62 @@
           <button class="page-btn" :disabled="productPage <= 1" @click="productPage--; fetchProducts()">‹</button>
           <span class="page-info">{{ productPage }} / {{ productTotalPages }}</span>
           <button class="page-btn" :disabled="productPage >= productTotalPages" @click="productPage++; fetchProducts()">›</button>
+        </div>
+      </section>
+
+      <!-- ============ 分类管理 ============ -->
+      <section v-if="activeTab === 'categories'" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">商品分类管理</h3>
+        </div>
+        <div class="category-create">
+          <h4 class="category-create-title">新增分类</h4>
+          <p class="category-create-hint">商品分类仅由管理员维护；卖家新增/编辑商品时从预设分类中多选，不可自编辑</p>
+          <div class="category-create-row">
+            <input v-model="categoryForm.name" type="text" placeholder="分类名称（唯一）" class="coupon-input" />
+            <input v-model="categoryForm.sort" type="number" min="0" placeholder="排序号（默认0，越小越靠前）" class="coupon-input coupon-input--sort" />
+            <button class="charge-btn" :disabled="actionLoading" @click="handleAddCategory">
+              <span class="btn-icon">＋</span>新增
+            </button>
+          </div>
+        </div>
+        <div class="loading-state" v-if="categoriesLoading">
+          <div class="loading-spinner"></div>
+          <p>加载分类数据...</p>
+        </div>
+        <div class="table-wrap" v-else-if="categories.length > 0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>分类名称</th>
+                <th>排序号</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="cat in categories" :key="cat.id">
+                <td class="cell-dim">{{ cat.id }}</td>
+                <td class="name-cell">{{ cat.name }}</td>
+                <td>{{ cat.sort }}</td>
+                <td>
+                  <span class="status-badge" :class="cat.status === 1 ? 'status--ok' : 'status--off'">
+                    {{ cat.status === 1 ? '启用' : '禁用' }}
+                  </span>
+                </td>
+                <td class="cell-dim">{{ formatDate(cat.createTime) }}</td>
+                <td class="action-cell">
+                  <button class="action-btn action-btn--delete" @click="handleDeleteCategory(cat)"
+                          :disabled="actionLoading">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty-state" v-else-if="!categoriesLoading">
+          <p>暂无分类数据，请先新增分类</p>
         </div>
       </section>
 
@@ -502,7 +563,8 @@ import {
   getAdminRechargeRequests, approveRechargeRequest, rejectRechargeRequest,
   adminListCoupons, adminCreateCoupon, adminGrantCoupon, adminGrantCouponAllVip, adminGrantCouponAllUsers,
   setUserVip, setSellerVip,
-  getUserInfo
+  getUserInfo,
+  getCategoryList, adminAddCategory, adminDeleteCategory
 } from '../api/index.js'
 
 const router = useRouter()
@@ -546,6 +608,7 @@ const activeTab = ref('users')
 const tabs = [
   { key: 'users', label: '用户管理', icon: '👥' },
   { key: 'products', label: '商品管理', icon: '📦' },
+  { key: 'categories', label: '分类管理', icon: '🗂️' },
   { key: 'orders', label: '订单管理', icon: '📋' },
   { key: 'sellers', label: '卖家管理', icon: '🏪' },
   { key: 'recharge', label: '充值审核', icon: '💰' },
@@ -704,6 +767,83 @@ async function toggleProductStatus(prod) {
 async function handleDeleteProduct(prod) {
   if (!confirm(`确定要删除商品 ${prod.productName} 吗？`)) return
   showMessage('管理员暂不支持删除商品，请使用商家管理功能', false)
+}
+
+// ===== 分类管理 =====
+const categories = ref([])
+const categoriesLoading = ref(false)
+const categoryForm = ref({ name: '', sort: 0 })
+
+// 分类ID→名称映射（用于商品列表展示分类名）
+const categoryNameMap = computed(() => {
+  const map = {}
+  for (const c of categories.value) {
+    map[c.id] = c.name
+  }
+  return map
+})
+
+// 将商品分类ID集合字符串（如 "1,2"）翻译为分类名称列表
+function getProductCategoryNames(categoryStr) {
+  if (!categoryStr) return []
+  return String(categoryStr)
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s !== '')
+    .map(id => categoryNameMap.value[id] || `#${id}`)
+}
+
+async function fetchCategories() {
+  categoriesLoading.value = true
+  try {
+    const res = await getCategoryList()
+    if (res && res.code === 200 && Array.isArray(res.data)) {
+      categories.value = res.data
+    }
+  } catch (e) {
+    console.error('获取分类列表失败:', e)
+  } finally {
+    categoriesLoading.value = false
+  }
+}
+
+async function handleAddCategory() {
+  const name = (categoryForm.value.name || '').trim()
+  if (!name) { showMessage('请输入分类名称', false); return }
+  actionLoading.value = true
+  try {
+    const res = await adminAddCategory(name, Number(categoryForm.value.sort) || 0)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '分类新增成功', true)
+      categoryForm.value = { name: '', sort: 0 }
+      fetchCategories()
+    } else {
+      showMessage((res && res.mes) || '新增失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function handleDeleteCategory(cat) {
+  if (!confirm(`确定要删除分类「${cat.name}」吗？（已被商品使用的分类无法删除）`)) return
+  actionLoading.value = true
+  try {
+    const res = await adminDeleteCategory(cat.id)
+    if (res && res.code === 200) {
+      showMessage(res.mes || '分类删除成功', true)
+      fetchCategories()
+      fetchProducts()
+    } else {
+      showMessage((res && res.mes) || '删除失败', false)
+    }
+  } catch (e) {
+    showMessage('服务连接失败，请稍后重试', false)
+  } finally {
+    actionLoading.value = false
+  }
 }
 
 // ===== 订单管理 =====
@@ -1096,6 +1236,7 @@ onMounted(() => {
   document.addEventListener('click', closePopups)
   fetchUsers()
   fetchProducts()
+  fetchCategories()
   fetchOrders()
   fetchSellers()
   fetchCoupons()
@@ -1393,6 +1534,18 @@ watch(activeTab, (tab) => {
 .target-badge--all { background: rgba(96,108,132,0.12); color: var(--text-3); }
 .target-badge--vip { background: rgba(245,158,11,0.15); color: #b45309; }
 .coupon-hint { margin: 10px 0 0; font-size: 0.75rem; color: var(--text-4); }
+
+/* ===== 分类管理 ===== */
+.category-create {
+  margin-bottom: 20px; padding: 20px 24px;
+  background: var(--primary-softer); border: 1px solid rgba(47,84,235,0.14);
+  border-radius: var(--radius);
+}
+.category-create-title { margin: 0 0 6px; font-size: 0.9rem; font-weight: 600; color: var(--primary); letter-spacing: 0.02em; }
+.category-create-hint { margin: 0 0 14px; font-size: 0.75rem; color: var(--text-4); }
+.category-create-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.coupon-input--sort { flex: 0 0 240px; }
+.cat-chip--empty { color: var(--text-4); background: var(--surface-2); }
 
 /* ===== 弹窗 ===== */
 .modal-overlay {

@@ -472,6 +472,36 @@ export function getUserInfo() {
   return api.get('/user/me')
 }
 
+// ==================== 商品分类 API（管理员维护的预设分类） ====================
+
+/**
+ * 获取启用分类列表（公开，无需登录）
+ * 返回分类对象数组（含 id/name/sort），卖家/管理员新增编辑商品时从中多选
+ * @returns {Promise<{code, mes, data: Array<{id:number, name:string, sort:number}>}>}
+ */
+export function getCategoryList() {
+  return api.get('/category/list')
+}
+
+/**
+ * 管理员新增分类
+ * @param {string} name - 分类名称
+ * @param {number} sort - 排序号（可选，默认0）
+ * @returns {Promise}
+ */
+export function adminAddCategory(name, sort = 0) {
+  return api.post('/admin/category/add', null, { params: { name, sort } })
+}
+
+/**
+ * 管理员删除分类（若已被商品使用则拒绝）
+ * @param {number} id - 分类ID
+ * @returns {Promise}
+ */
+export function adminDeleteCategory(id) {
+  return api.delete(`/admin/category/${id}`)
+}
+
 // ==================== 优惠券 API ====================
 
 /**

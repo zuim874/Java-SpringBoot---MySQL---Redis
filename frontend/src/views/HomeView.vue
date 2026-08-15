@@ -406,7 +406,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { getProductPage, getCategories, createOrder, getAvailableCoupons, getClaimableCoupons, claimCoupon } from '../api/index.js'
+import { getProductPage, getCategories, createOrder, getAvailableCoupons, getClaimableCoupons, claimCoupon, getAllCoupons } from '../api/index.js'
 import { getUserAddresses, addAddress, getUserInfo } from '../api/index.js'
 import { toastError, toastSuccess } from '../utils/toast.js'
 import ChatDrawer from '../components/ChatDrawer.vue'
@@ -445,6 +445,9 @@ const selectedCoupon = ref(null)
 const claimableCoupons = ref([])
 const couponLoading = ref(true)
 const claimingId = ref(null)
+// 已领取优惠券模板ID集合（登录状态下获取，用于隐藏已领取的优惠券）
+const claimedCouponIds = ref([])
+const isLogin = computed(() => !!localStorage.getItem('token'))
 
 /**
  * 拉取可自助领取的优惠券模板（领券中心）
@@ -489,6 +492,7 @@ async function handleClaim(c) {
     if (res && res.code === 200) {
       toastSuccess(`已领取「${c.name}」，快去下单吧！`)
       fetchClaimableCoupons()
+      fetchClaimedCouponIds()
     } else {
       toastError((res && res.mes) || '领取失败')
     }
@@ -509,10 +513,32 @@ const isVipMember = computed(() =>
   cachedRoles.includes('ROLE_VIP_USER') || cachedRoles.includes('ROLE_VIP_SELLER')
 )
 
-// 领券中心可见列表：VIP券（targetType=2）仅 VIP 用户 / VIP 卖家可见，普通券所有人可见
+// 领券中心可见列表：
+// 1.VIP券（targetType=2）仅 VIP 用户 / VIP 卖家可见，普通券所有人可见
+// 2.已领取过的优惠券（登录状态下）不再展示，避免重复领取提示
 const visibleClaimableCoupons = computed(() =>
-  claimableCoupons.value.filter(c => c.targetType !== 2 || isVipMember.value)
+  claimableCoupons.value.filter(c => {
+    if (c.targetType === 2 && !isVipMember.value) return false
+    if (isLogin.value && claimedCouponIds.value.includes(c.id)) return false
+    return true
+  })
 )
+
+/**
+ * 拉取当前用户已领取的优惠券模板ID（含已用/已过期）
+ * 用于领券中心隐藏已领取的优惠券
+ */
+async function fetchClaimedCouponIds() {
+  if (!isLogin.value) return
+  try {
+    const res = await getAllCoupons()
+    if (res && res.code === 200 && Array.isArray(res.data)) {
+      claimedCouponIds.value = res.data.map(uc => uc.couponId)
+    }
+  } catch (e) {
+    console.error('获取已领取优惠券失败:', e)
+  }
+}
 
 // ===== 用户头像菜单 =====
 const profileMenuOpen = ref(false)
@@ -986,6 +1012,7 @@ onMounted(() => {
   fetchCategories()
   fetchUserProfile()
   fetchClaimableCoupons()
+  fetchClaimedCouponIds()
 
   window.addEventListener('scroll', onScroll)
   // 点击页面空白处关闭导航浮层（分类下拉菜单 / 用户头像菜单）
