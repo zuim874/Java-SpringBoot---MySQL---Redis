@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 public class InitAdminRunner implements CommandLineRunner {
     @Value("${test.username.status:false}")
     private Boolean examStatus;
-    @Value("${test.initEmailName}")
+    @Value("${test.initEmailName:example@mail.com}")
     private String testInitEmailName;
 
     private final UserService userService;

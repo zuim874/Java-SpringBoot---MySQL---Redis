@@ -17,7 +17,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * 2.提供唯一数据后缀：保证测试数据与开发数据互不冲突
  * 3.提供缓存清理钩子：测试结束后删除本次产生的 Redis 缓存
  * <p>
- * 说明：激活 test profile 加载 application-test.properties（自包含测试配置），
+ * 说明：激活 test profile 加载 application-dev.properties（自包含测试配置），
  * 避免测试依赖开发环境 application-dev.properties 的配置。
  * <p>
  * @author ZuiM

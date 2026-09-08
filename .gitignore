@@ -10,7 +10,6 @@
 *.class
 
 # properties 多环境配置
-application-dev.properties
 application-prod.properties
 application-test.properties
 application-local.properties
